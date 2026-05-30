@@ -179,6 +179,25 @@ main {
   padding-bottom: 36px;
 }
 
+.sync-banner {
+  align-items: center;
+  background: #eef7f1;
+  border: 1px solid #d4eadb;
+  border-radius: 8px;
+  color: var(--green-dark);
+  display: flex;
+  font-weight: 800;
+  margin-bottom: 16px;
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.sync-banner.error {
+  background: #fff1ef;
+  border-color: #f0c2bd;
+  color: var(--red);
+}
+
 .view-stack,
 .admin-layout {
   display: grid;

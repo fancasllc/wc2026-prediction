@@ -82,6 +82,35 @@ type CsvMatchRow = {
 const STORAGE_KEY = "wc2026-prediction-pool:data:v1";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 
+async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers ?? {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? `Request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function fetchAppState() {
+  return apiRequest<AppData>("/api/state");
+}
+
+async function postState(path: string, body?: unknown, method = "POST") {
+  const result = await apiRequest<{ state: AppData }>(path, {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return result.state;
+}
+
 const defaultMatches: MatchRecord[] = [
   {
     id: "sample-jpn-cmr",
@@ -321,6 +350,8 @@ function App() {
   const now = useNow();
   const [view, setView] = useState<View>("matches");
   const [data, setData] = useState<AppData>(() => loadData());
+  const [apiError, setApiError] = useState("");
+  const [isSyncing, setIsSyncing] = useState(true);
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
@@ -330,8 +361,46 @@ function App() {
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
 
   useEffect(() => {
+    let active = true;
+
+    fetchAppState()
+      .then((state) => {
+        if (!active) return;
+        setData(state);
+        setApiError("");
+      })
+      .catch((error: Error) => {
+        if (!active) return;
+        setApiError(`DB同期に失敗しました: ${error.message}`);
+      })
+      .finally(() => {
+        if (active) setIsSyncing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
+
+  async function syncState(action: () => Promise<AppData>) {
+    setIsSyncing(true);
+    setApiError("");
+    try {
+      const state = await action();
+      setData(state);
+      return state;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setApiError(`DB更新に失敗しました: ${message}`);
+      throw error;
+    } finally {
+      setIsSyncing(false);
+    }
+  }
 
   const sortedMatches = useMemo(
     () => [...data.matches].sort(sortByDateAsc),
@@ -420,7 +489,7 @@ function App() {
     }));
   }
 
-  function handleVote(match: MatchRecord, event: FormEvent<HTMLFormElement>) {
+  async function handleVote(match: MatchRecord, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const draft = getDraft(match);
     const name = normalizeName(draft.name);
@@ -446,28 +515,24 @@ function App() {
       return;
     }
 
-    const vote: VoteRecord = {
-      id: createId("vote"),
-      matchId: match.id,
-      optionId: draft.optionId,
-      userName: name,
-      amount,
-      createdAt: new Date().toISOString(),
-    };
-
-    setData((current) => ({
-      ...current,
-      votes: [vote, ...current.votes],
-      knownUsers: Array.from(new Set([...current.knownUsers, name])).sort((a, b) =>
-        a.localeCompare(b, "ja"),
-      ),
-    }));
-    localStorage.setItem(LAST_NAME_KEY, name);
-    setProfileName(name);
-    updateVoteDraft(match.id, { name, amount: "1000" });
+    try {
+      await syncState(() =>
+        postState("/api/votes", {
+          matchId: match.id,
+          optionId: draft.optionId,
+          userName: name,
+          amount,
+        }),
+      );
+      localStorage.setItem(LAST_NAME_KEY, name);
+      setProfileName(name);
+      updateVoteDraft(match.id, { name, amount: "1000" });
+    } catch {
+      window.alert("投票を保存できませんでした。時間を置いてもう一度試してください。");
+    }
   }
 
-  function addMatch(event: FormEvent<HTMLFormElement>) {
+  async function addMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const labels = splitOptions(matchDraft.optionsText);
 
@@ -492,8 +557,12 @@ function App() {
       options: makeOptions(labels),
     };
 
-    setData((current) => ({ ...current, matches: [...current.matches, match] }));
-    setMatchDraft(emptyMatchDraft);
+    try {
+      await syncState(() => postState("/api/matches", match));
+      setMatchDraft(emptyMatchDraft);
+    } catch {
+      window.alert("試合を登録できませんでした。入力内容を確認してください。");
+    }
   }
 
   function handleCsvFile(event: ChangeEvent<HTMLInputElement>) {
@@ -504,52 +573,38 @@ function App() {
     reader.readAsText(file);
   }
 
-  function importCsv() {
+  async function importCsv() {
     const { matches, errors } = parseCsvMatches(csvText);
     if (!matches.length) {
       setImportMessage("取り込める行がありませんでした。必須列と選択肢を確認してください。");
       return;
     }
 
-    setData((current) => ({ ...current, matches: [...current.matches, ...matches] }));
-    setImportMessage(
-      `${matches.length}件を登録しました${
-        errors.length ? `。CSV警告 ${errors.length}件` : ""
-      }。`,
-    );
+    try {
+      await syncState(() => postState("/api/matches/import", { matches }));
+      setImportMessage(
+        `${matches.length}件を登録しました${
+          errors.length ? `。CSV警告 ${errors.length}件` : ""
+        }。`,
+      );
+    } catch {
+      setImportMessage("CSVを登録できませんでした。内容を確認してください。");
+    }
   }
 
-  function settleMatch(matchId: string, optionId: string) {
+  async function settleMatch(matchId: string, optionId: string) {
     if (!optionId) return;
-    setData((current) => ({
-      ...current,
-      matches: current.matches.map((match) =>
-        match.id === matchId
-          ? { ...match, resultOptionId: optionId, settledAt: new Date().toISOString() }
-          : match,
-      ),
-    }));
+    await syncState(() => postState(`/api/matches/${matchId}/settle`, { optionId }));
   }
 
-  function reopenMatch(matchId: string) {
-    setData((current) => ({
-      ...current,
-      matches: current.matches.map((match) =>
-        match.id === matchId
-          ? { ...match, resultOptionId: undefined, settledAt: undefined }
-          : match,
-      ),
-    }));
+  async function reopenMatch(matchId: string) {
+    await syncState(() => postState(`/api/matches/${matchId}/reopen`));
   }
 
-  function deleteMatch(matchId: string) {
+  async function deleteMatch(matchId: string) {
     const ok = window.confirm("この試合と関連する投票を削除しますか？");
     if (!ok) return;
-    setData((current) => ({
-      ...current,
-      matches: current.matches.filter((match) => match.id !== matchId),
-      votes: current.votes.filter((vote) => vote.matchId !== matchId),
-    }));
+    await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE"));
   }
 
   function resetDemo() {
@@ -614,6 +669,12 @@ function App() {
       </datalist>
 
       <main>
+        {(apiError || isSyncing) && (
+          <div className={apiError ? "sync-banner error" : "sync-banner"}>
+            {apiError || "DBと同期中..."}
+          </div>
+        )}
+
         {view === "matches" && (
           <section className="view-stack">
             <div className="section-heading">
