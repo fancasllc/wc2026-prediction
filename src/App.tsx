@@ -6,11 +6,14 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  Gift,
   History,
   LayoutDashboard,
   ListPlus,
+  Medal,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Trophy,
   Upload,
   UserRound,
@@ -651,6 +654,9 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
+        <span className="confetti-dot c1" aria-hidden />
+        <span className="confetti-dot c2" aria-hidden />
+        <span className="confetti-dot c3" aria-hidden />
         <div className="brand-block">
           <div className="brand-mark">
             <Trophy aria-hidden size={24} />
@@ -658,8 +664,10 @@ function App() {
           <div>
             <p className="eyebrow">WC 2026 Prediction Pool</p>
             <h1>ワールドカップ予想プール</h1>
+            <p className="hero-lead">注目カードを選んで、無料で予想に参加しよう</p>
           </div>
         </div>
+        <div className="hero-ball" aria-hidden>⚽</div>
         <div className="compliance-strip">
           <ShieldCheck aria-hidden size={18} />
           <span>無料・架空ポイント / 換金不可 / 実เงินจริงなし</span>
@@ -765,6 +773,8 @@ function App() {
                 </article>
               ))}
             </div>
+
+            <GamePerks />
           </section>
         )}
 
@@ -1354,6 +1364,38 @@ function EmptyState({ title }: { title: string }) {
       <Database size={22} aria-hidden />
       <span>{title}</span>
     </div>
+  );
+}
+
+function GamePerks() {
+  return (
+    <section className="game-perks" aria-label="予想ゲームの特徴">
+      <div className="perk-card">
+        <div className="perk-icon teal">
+          <WalletCards size={26} aria-hidden />
+        </div>
+        <strong>完全無料で参加</strong>
+        <span>架空ポイントで楽しめます</span>
+      </div>
+      <div className="perk-card">
+        <div className="perk-icon green">
+          <Medal size={26} aria-hidden />
+        </div>
+        <strong>的中でポイント獲得</strong>
+        <span>プールをみんなで分配</span>
+      </div>
+      <div className="perk-card">
+        <div className="perk-icon blue">
+          <Gift size={26} aria-hidden />
+        </div>
+        <strong>ランキング上位へ</strong>
+        <span>マイページで収支を確認</span>
+      </div>
+      <div className="big-cta">
+        <Sparkles size={22} aria-hidden />
+        まずは1試合、無料で予想してみよう
+      </div>
+    </section>
   );
 }
 
