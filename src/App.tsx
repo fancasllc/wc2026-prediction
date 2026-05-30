@@ -94,12 +94,13 @@ const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const { headers, ...requestOptions } = options ?? {};
   const response = await fetch(path, {
+    ...requestOptions,
     headers: {
       "Content-Type": "application/json",
-      ...(options?.headers ?? {}),
+      ...(headers ?? {}),
     },
-    ...options,
   });
 
   if (!response.ok) {

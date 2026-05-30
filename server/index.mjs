@@ -466,10 +466,11 @@ app.post("/api/matches/import", requireAdmin, async (request, response, next) =>
 
 app.post("/api/votes", async (request, response, next) => {
   try {
-    const matchId = String(request.body.matchId ?? "");
-    const optionId = String(request.body.optionId ?? "");
-    const userName = normalizeName(request.body.userName);
-    const amount = Number(request.body.amount);
+    const body = request.body ?? {};
+    const matchId = String(body.matchId ?? "");
+    const optionId = String(body.optionId ?? "");
+    const userName = normalizeName(body.userName);
+    const amount = Number(body.amount);
 
     if (!matchId || !optionId || !userName || !Number.isFinite(amount) || amount <= 0) {
       response.status(400).json({ error: "Invalid vote payload" });
@@ -604,7 +605,7 @@ function getErrorDetails(error) {
       ["constraint", error.constraint],
       ["routine", error.routine],
       ["where", error.where],
-      ["stack", error.stack],
+      ["stack", process.env.DEBUG_ERRORS === "true" ? error.stack : undefined],
     ].filter(([, value]) => Boolean(value)),
   );
 }
