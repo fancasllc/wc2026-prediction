@@ -635,6 +635,29 @@ app.delete("/api/matches/:id", requireAdmin, async (request, response, next) => 
   }
 });
 
+app.delete("/api/votes/:id", requireAdmin, async (request, response, next) => {
+  try {
+    const result = await query(
+      `
+        delete from votes
+        where id = $1
+        returning match_id as "matchId", user_name as "userName", amount::float as amount
+      `,
+      [request.params.id],
+    );
+
+    if (!result.rowCount) {
+      response.status(404).json({ error: "Vote not found" });
+      return;
+    }
+
+    await writeAuditLog("vote.delete", request.params.id, result.rows[0]);
+    response.json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use(express.static(distDir));
 app.get(/.*/, (_request, response) => {
   response.sendFile(path.join(distDir, "index.html"));

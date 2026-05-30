@@ -333,6 +333,21 @@ function calculateVotePayout(vote: VoteRecord, match: MatchRecord, allVotes: Vot
   };
 }
 
+function getVotePayout(
+  vote: VoteRecord,
+  match: MatchRecord | undefined,
+  allVotes: VoteRecord[],
+) {
+  return match
+    ? calculateVotePayout(vote, match, allVotes)
+    : { gross: 0, net: 0, won: false, settled: false };
+}
+
+function getVoteOutcomeText(payout: ReturnType<typeof calculateVotePayout>) {
+  if (!payout.settled) return "未確定";
+  return payout.won ? "○ 的中" : "× 不的中";
+}
+
 function sortByDateAsc(a: MatchRecord, b: MatchRecord) {
   return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
 }
@@ -534,7 +549,7 @@ function App() {
           ...totals,
         };
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+      .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
   }, [data.matches, data.votes, data.knownUsers]);
 
   const selectedPersonVotes = useMemo(() => {
@@ -772,6 +787,30 @@ function App() {
     await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE", adminToken));
   }
 
+  async function deleteVote(vote: VoteRecord) {
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+
+    const match = data.matches.find((item) => item.id === vote.matchId);
+    const ok = window.confirm(
+      [
+        "この投票を削除しますか？",
+        "",
+        `名前: ${vote.userName}`,
+        `試合: ${match?.title ?? "削除済み"}`,
+        `選択: ${optionLabel(match, vote.optionId)}`,
+        `ポイント: ${formatPoints(vote.amount)}`,
+        "",
+        "削除後、総プール・オッズ・個人別収支は再計算されます。",
+      ].join("\n"),
+    );
+    if (!ok) return;
+
+    await syncState(() => postState(`/api/votes/${vote.id}`, undefined, "DELETE", adminToken));
+  }
+
   async function refreshState() {
     await syncState(() => fetchAppState());
   }
@@ -977,11 +1016,11 @@ function App() {
                       <small>{row.votes}件の投票</small>
                     </span>
                     <span>
-                      <b>{formatPoints(row.staked)}</b>
-                      <small className={row.net >= 0 ? "positive" : "negative"}>
+                      <b className={row.net >= 0 ? "positive" : "negative"}>
                         確定収支 {row.net >= 0 ? "+" : ""}
                         {formatPoints(row.net)}
-                      </small>
+                      </b>
+                      <small>投票中 {formatPoints(row.pending)}</small>
                     </span>
                   </button>
                 ))
@@ -1291,11 +1330,16 @@ function App() {
                           <th>試合</th>
                           <th>選択</th>
                           <th>ポイント</th>
+                          <th>結果</th>
+                          <th>リターン</th>
+                          <th>収支</th>
+                          <th>操作</th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.votes.map((vote) => {
                           const match = data.matches.find((item) => item.id === vote.matchId);
+                          const payout = getVotePayout(vote, match, data.votes);
                           return (
                             <tr key={vote.id}>
                               <td>{formatDateTime(vote.createdAt)}</td>
@@ -1303,6 +1347,23 @@ function App() {
                               <td>{match?.title ?? "削除済み"}</td>
                               <td>{optionLabel(match, vote.optionId)}</td>
                               <td>{formatPoints(vote.amount)}</td>
+                              <td>{getVoteOutcomeText(payout)}</td>
+                              <td>{payout.settled ? formatPoints(payout.gross) : "-"}</td>
+                              <td className={payout.net >= 0 ? "positive" : "negative"}>
+                                {payout.settled
+                                  ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
+                                  : "-"}
+                              </td>
+                              <td>
+                                <button
+                                  className="table-delete"
+                                  disabled={!adminToken}
+                                  onClick={() => deleteVote(vote)}
+                                  type="button"
+                                >
+                                  削除
+                                </button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -1468,10 +1529,8 @@ function PersonVoteList({
         <div className="person-vote-list">
           {votes.map((vote) => {
             const match = matches.find((item) => item.id === vote.matchId);
-            const payout = match
-              ? calculateVotePayout(vote, match, allVotes)
-              : { gross: 0, net: 0, won: false, settled: false };
-            const status = payout.settled ? (payout.won ? "的中" : "不的中") : "未確定";
+            const payout = getVotePayout(vote, match, allVotes);
+            const status = getVoteOutcomeText(payout);
 
             return (
               <article className="person-vote-card" key={vote.id}>
@@ -1753,17 +1812,40 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
       {matchVotes.length ? (
         <div className="bettor-grid">
           {matchVotes.slice(0, 8).map((vote) => (
-            <div className="bettor-chip" key={vote.id}>
-              <span>{vote.userName}</span>
-              <b>{formatPoints(vote.amount)}</b>
-              <small>
-                {optionLabel(match, vote.optionId)} / {formatDateTime(vote.createdAt)}
-              </small>
-            </div>
+            <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
           ))}
         </div>
       ) : (
         <p className="muted-line">まだ投票はありません。</p>
+      )}
+    </div>
+  );
+}
+
+function BettorChip({
+  match,
+  vote,
+  votes,
+}: {
+  match: MatchRecord;
+  vote: VoteRecord;
+  votes: VoteRecord[];
+}) {
+  const payout = getVotePayout(vote, match, votes);
+
+  return (
+    <div className="bettor-chip">
+      <span>{vote.userName}</span>
+      <b>{formatPoints(vote.amount)}</b>
+      <small>
+        {optionLabel(match, vote.optionId)} / {formatDateTime(vote.createdAt)}
+      </small>
+      {payout.settled && (
+        <small className={payout.won ? "positive" : "negative"}>
+          {getVoteOutcomeText(payout)} / リターン {formatPoints(payout.gross)} / 収支{" "}
+          {payout.net >= 0 ? "+" : ""}
+          {formatPoints(payout.net)}
+        </small>
       )}
     </div>
   );

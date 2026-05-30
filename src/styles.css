@@ -1127,7 +1127,7 @@ textarea:focus {
 }
 
 table {
-  min-width: 640px;
+  min-width: 860px;
   width: 100%;
   border-collapse: collapse;
 }
@@ -1144,6 +1144,17 @@ th {
   color: #61758a;
   font-size: 0.76rem;
   font-weight: 950;
+}
+
+.table-delete {
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--red);
+  font-size: 0.82rem;
+  font-weight: 950;
+  background: #fff7f7;
+  border: 1px solid #f4c4c9;
+  border-radius: 8px;
 }
 
 .empty-state {
