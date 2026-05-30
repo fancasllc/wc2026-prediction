@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 
-type View = "matches" | "mypage" | "admin";
+type View = "matches" | "matchDetail" | "people" | "personDetail" | "admin";
 
 type MatchOption = {
   id: string;
@@ -361,6 +361,9 @@ function parseCsvMatches(text: string) {
 function App() {
   const now = useNow();
   const [view, setView] = useState<View>("matches");
+  const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [selectedPersonName, setSelectedPersonName] = useState("");
+  const [matchSearch, setMatchSearch] = useState("");
   const [data, setData] = useState<AppData>(() => loadData());
   const [apiError, setApiError] = useState("");
   const [isSyncing, setIsSyncing] = useState(true);
@@ -372,9 +375,6 @@ function App() {
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
-  const [profileName, setProfileName] = useState(
-    () => localStorage.getItem(LAST_NAME_KEY) ?? "",
-  );
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
 
   useEffect(() => {
@@ -445,6 +445,21 @@ function App() {
     [data.matches],
   );
 
+  const filteredMatches = useMemo(() => {
+    const keyword = matchSearch.trim().toLowerCase();
+    if (!keyword) return sortedMatches;
+    return sortedMatches.filter((match) =>
+      [match.title, match.stage, match.venue, match.question]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword),
+    );
+  }, [matchSearch, sortedMatches]);
+
+  const selectedMatch = useMemo(() => {
+    return data.matches.find((match) => match.id === selectedMatchId) ?? sortedMatches[0];
+  }, [data.matches, selectedMatchId, sortedMatches]);
+
   const userRows = useMemo(() => {
     return data.knownUsers
       .map((name) => {
@@ -469,16 +484,16 @@ function App() {
           ...totals,
         };
       })
-      .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name, "ja"));
+      .sort((a, b) => a.name.localeCompare(b.name, "ja"));
   }, [data.matches, data.votes, data.knownUsers]);
 
-  const selectedUserVotes = useMemo(() => {
-    const normalized = normalizeName(profileName);
+  const selectedPersonVotes = useMemo(() => {
+    const normalized = normalizeName(selectedPersonName);
     return data.votes.filter((vote) => vote.userName === normalized);
-  }, [data.votes, profileName]);
+  }, [data.votes, selectedPersonName]);
 
-  const selectedUserSummary = useMemo(() => {
-    return selectedUserVotes.reduce(
+  const selectedPersonSummary = useMemo(() => {
+    return selectedPersonVotes.reduce(
       (acc, vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         if (!match) return acc;
@@ -491,10 +506,10 @@ function App() {
       },
       { totalStake: 0, pendingStake: 0, grossPayout: 0, net: 0 },
     );
-  }, [data.matches, data.votes, selectedUserVotes]);
+  }, [data.matches, data.votes, selectedPersonVotes]);
 
   const selectedAwardRows = useMemo(() => {
-    return selectedUserVotes
+    return selectedPersonVotes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match
@@ -503,7 +518,7 @@ function App() {
         return { vote, match, payout };
       })
       .filter((row) => row.payout.settled && row.payout.won);
-  }, [data.matches, data.votes, selectedUserVotes]);
+  }, [data.matches, data.votes, selectedPersonVotes]);
 
   function getDraft(match: MatchRecord): VoteDraft {
     return (
@@ -563,7 +578,6 @@ function App() {
         }),
       );
       localStorage.setItem(LAST_NAME_KEY, name);
-      setProfileName(name);
       updateVoteDraft(match.id, { name, amount: "1000" });
     } catch {
       window.alert("投票を保存できませんでした。時間を置いてもう一度試してください。");
@@ -651,6 +665,18 @@ function App() {
     await syncState(() => fetchAppState());
   }
 
+  function openMatchDetail(matchId: string) {
+    setSelectedMatchId(matchId);
+    setView("matchDetail");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openPersonDetail(name: string) {
+    setSelectedPersonName(name);
+    setView("personDetail");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -684,12 +710,12 @@ function App() {
           投票サイト
         </button>
         <button
-          className={view === "mypage" ? "active" : ""}
-          onClick={() => setView("mypage")}
+          className={view === "people" || view === "personDetail" ? "active" : ""}
+          onClick={() => setView("people")}
           type="button"
         >
           <UserRound size={18} aria-hidden />
-          マイページ
+          個人別
         </button>
         <button
           className={view === "admin" ? "active" : ""}
@@ -723,54 +749,28 @@ function App() {
               </div>
               <div className="live-summary">
                 <Clock3 size={18} aria-hidden />
-                {sortedMatches.filter((match) => isMatchOpen(match, now)).length}件受付中
+                {filteredMatches.filter((match) => isMatchOpen(match, now)).length}件受付中
               </div>
             </div>
 
-            <div className="match-grid">
-              {sortedMatches.map((match) => (
-                <article className="match-card" key={match.id}>
-                  <MatchHeader match={match} now={now} votes={data.votes} />
+            <label className="match-search">
+              <span>試合を探す</span>
+              <input
+                value={matchSearch}
+                onChange={(event) => setMatchSearch(event.target.value)}
+                placeholder="試合名、会場、ステージで検索"
+              />
+            </label>
 
-                  <div className="option-board" aria-label={`${match.title}の選択肢`}>
-                    {match.options.map((option) => {
-                      const total = getMatchTotal(match, data.votes);
-                      const optionTotal = getOptionTotal(match, data.votes, option.id);
-                      const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
-                      const odds = optionTotal > 0 ? total / optionTotal : 0;
-
-                      return (
-                        <div className="option-row" key={option.id}>
-                          <div>
-                            <strong>{option.label}</strong>
-                            <span>{formatPoints(optionTotal)} / {percentage}%</span>
-                          </div>
-                          <div className="meter" aria-hidden>
-                            <span style={{ width: `${percentage}%` }} />
-                          </div>
-                          <b>{odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {match.resultOptionId && (
-                    <div className="result-panel">
-                      <CheckCircle2 size={18} aria-hidden />
-                      確定結果: {optionLabel(match, match.resultOptionId)}
-                    </div>
-                  )}
-
-                  <VoteForm
-                    draft={getDraft(match)}
-                    match={match}
-                    now={now}
-                    onChange={(patch) => updateVoteDraft(match.id, patch)}
-                    onSubmit={(event) => handleVote(match, event)}
-                  />
-
-                  <BettorList match={match} votes={data.votes} />
-                </article>
+            <div className="summary-list">
+              {filteredMatches.map((match) => (
+                <MatchSummaryCard
+                  key={match.id}
+                  match={match}
+                  now={now}
+                  votes={data.votes}
+                  onOpen={() => openMatchDetail(match.id)}
+                />
               ))}
             </div>
 
@@ -778,99 +778,137 @@ function App() {
           </section>
         )}
 
-        {view === "mypage" && (
+        {view === "matchDetail" && selectedMatch && (
+          <section className="view-stack">
+            <button className="back-action" type="button" onClick={() => setView("matches")}>
+              予想テーマ一覧へ戻る
+            </button>
+            <article className="match-card detail-card">
+              <MatchHeader match={selectedMatch} now={now} votes={data.votes} />
+
+              <div className="option-board" aria-label={`${selectedMatch.title}の選択肢`}>
+                {selectedMatch.options.map((option) => {
+                  const total = getMatchTotal(selectedMatch, data.votes);
+                  const optionTotal = getOptionTotal(selectedMatch, data.votes, option.id);
+                  const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
+                  const odds = optionTotal > 0 ? total / optionTotal : 0;
+
+                  return (
+                    <div className="option-row" key={option.id}>
+                      <div>
+                        <strong>{option.label}</strong>
+                        <span>{formatPoints(optionTotal)} / {percentage}%</span>
+                      </div>
+                      <div className="meter" aria-hidden>
+                        <span style={{ width: `${percentage}%` }} />
+                      </div>
+                      <b>{odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {selectedMatch.resultOptionId && (
+                <div className="result-panel">
+                  <CheckCircle2 size={18} aria-hidden />
+                  確定結果: {optionLabel(selectedMatch, selectedMatch.resultOptionId)}
+                </div>
+              )}
+
+              <VoteForm
+                draft={getDraft(selectedMatch)}
+                match={selectedMatch}
+                now={now}
+                onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
+                onSubmit={(event) => handleVote(selectedMatch, event)}
+              />
+
+              <BettorList match={selectedMatch} votes={data.votes} />
+            </article>
+          </section>
+        )}
+
+        {view === "people" && (
           <section className="view-stack">
             <div className="section-heading">
               <div>
-                <p className="eyebrow">My page</p>
-                <h2>投票履歴とポイント収支</h2>
+                <p className="eyebrow">People</p>
+                <h2>個人別の投票状況</h2>
               </div>
-              <label className="profile-picker">
-                <span>名前</span>
-                <input
-                  list="known-users"
-                  value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
-                  placeholder="名前を入力"
-                />
-              </label>
+            </div>
+
+            <div className="people-list">
+              {userRows.length ? (
+                userRows.map((row) => (
+                  <button
+                    className="person-row"
+                    key={row.name}
+                    type="button"
+                    onClick={() => openPersonDetail(row.name)}
+                  >
+                    <span>
+                      <strong>{row.name}</strong>
+                      <small>{row.votes}件の投票</small>
+                    </span>
+                    <span>
+                      <b>{formatPoints(row.staked)}</b>
+                      <small className={row.net >= 0 ? "positive" : "negative"}>
+                        確定収支 {row.net >= 0 ? "+" : ""}
+                        {formatPoints(row.net)}
+                      </small>
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <EmptyState title="投票者はまだ登録されていません" />
+              )}
+            </div>
+          </section>
+        )}
+
+        {view === "personDetail" && (
+          <section className="view-stack">
+            <button className="back-action" type="button" onClick={() => setView("people")}>
+              個人別一覧へ戻る
+            </button>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Person detail</p>
+                <h2>{selectedPersonName || "未選択"}</h2>
+              </div>
             </div>
 
             <div className="stats-row">
               <StatCard
                 label="総投票ポイント"
-                value={formatPoints(selectedUserSummary.totalStake)}
+                value={formatPoints(selectedPersonSummary.totalStake)}
                 icon={<WalletCards size={20} aria-hidden />}
               />
               <StatCard
                 label="未確定ポイント"
-                value={formatPoints(selectedUserSummary.pendingStake)}
+                value={formatPoints(selectedPersonSummary.pendingStake)}
                 icon={<Clock3 size={20} aria-hidden />}
               />
               <StatCard
                 label="獲得ポイント"
-                value={formatPoints(selectedUserSummary.grossPayout)}
+                value={formatPoints(selectedPersonSummary.grossPayout)}
                 icon={<Trophy size={20} aria-hidden />}
               />
               <StatCard
                 label="確定収支"
-                value={`${selectedUserSummary.net >= 0 ? "+" : ""}${formatPoints(
-                  selectedUserSummary.net,
+                value={`${selectedPersonSummary.net >= 0 ? "+" : ""}${formatPoints(
+                  selectedPersonSummary.net,
                 )}`}
-                tone={selectedUserSummary.net >= 0 ? "positive" : "negative"}
+                tone={selectedPersonSummary.net >= 0 ? "positive" : "negative"}
                 icon={<History size={20} aria-hidden />}
               />
             </div>
 
-            <div className="data-panel">
-              <div className="panel-title">
-                <History size={18} aria-hidden />
-                投票履歴
-              </div>
-              {selectedUserVotes.length ? (
-                <div className="responsive-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>日時</th>
-                        <th>試合</th>
-                        <th>選択</th>
-                        <th>投票pt</th>
-                        <th>状態</th>
-                        <th>還元</th>
-                        <th>収支</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedUserVotes.map((vote) => {
-                        const match = data.matches.find((item) => item.id === vote.matchId);
-                        const payout = match
-                          ? calculateVotePayout(vote, match, data.votes)
-                          : { gross: 0, net: 0, won: false, settled: false };
-
-                        return (
-                          <tr key={vote.id}>
-                            <td>{formatDateTime(vote.createdAt)}</td>
-                            <td>{match?.title ?? "削除済み"}</td>
-                            <td>{optionLabel(match, vote.optionId)}</td>
-                            <td>{formatPoints(vote.amount)}</td>
-                            <td>{payout.settled ? (payout.won ? "的中" : "不的中") : "未確定"}</td>
-                            <td>{payout.settled ? formatPoints(payout.gross) : "-"}</td>
-                            <td className={payout.net >= 0 ? "positive" : "negative"}>
-                              {payout.settled
-                                ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
-                                : "-"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState title="履歴はまだありません" />
-              )}
-            </div>
+            <PersonVoteList
+              votes={selectedPersonVotes}
+              matches={data.matches}
+              allVotes={data.votes}
+            />
 
             <div className="data-panel">
               <div className="panel-title">
@@ -878,35 +916,7 @@ function App() {
                 ポイント獲得履歴
               </div>
               {selectedAwardRows.length ? (
-                <div className="responsive-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>確定日</th>
-                        <th>試合</th>
-                        <th>的中選択</th>
-                        <th>投票pt</th>
-                        <th>獲得pt</th>
-                        <th>収支</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedAwardRows.map(({ vote, match, payout }) => (
-                        <tr key={vote.id}>
-                          <td>{formatDateTime(match?.settledAt ?? vote.createdAt)}</td>
-                          <td>{match?.title ?? "削除済み"}</td>
-                          <td>{optionLabel(match, vote.optionId)}</td>
-                          <td>{formatPoints(vote.amount)}</td>
-                          <td>{formatPoints(payout.gross)}</td>
-                          <td className={payout.net >= 0 ? "positive" : "negative"}>
-                            {payout.net >= 0 ? "+" : ""}
-                            {formatPoints(payout.net)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PersonAwardList rows={selectedAwardRows} />
               ) : (
                 <EmptyState title="獲得履歴はまだありません" />
               )}
@@ -1206,6 +1216,84 @@ function App() {
   );
 }
 
+function getOddsHighlights(match: MatchRecord, votes: VoteRecord[]) {
+  const total = getMatchTotal(match, votes);
+  const rows = match.options
+    .map((option) => {
+      const amount = getOptionTotal(match, votes, option.id);
+      return {
+        option,
+        amount,
+        odds: amount > 0 ? total / amount : 0,
+      };
+    })
+    .filter((row) => row.amount > 0);
+
+  if (!rows.length) {
+    return {
+      popular: "未形成",
+      longshot: "未形成",
+    };
+  }
+
+  const popular = [...rows].sort((a, b) => b.amount - a.amount)[0];
+  const longshot = [...rows].sort((a, b) => b.odds - a.odds)[0];
+
+  return {
+    popular: `${popular.option.label} ${popular.odds.toFixed(2)}x`,
+    longshot: `${longshot.option.label} ${longshot.odds.toFixed(2)}x`,
+  };
+}
+
+function MatchSummaryCard({
+  match,
+  now,
+  votes,
+  onOpen,
+}: {
+  match: MatchRecord;
+  now: Date;
+  votes: VoteRecord[];
+  onOpen: () => void;
+}) {
+  const total = getMatchTotal(match, votes);
+  const odds = getOddsHighlights(match, votes);
+  const status = getStatusLabel(match, now);
+
+  return (
+    <button className="summary-card" type="button" onClick={onOpen}>
+      <div className="match-meta">
+        <span className={`status-pill ${status === "受付中" ? "open" : ""}`}>{status}</span>
+        <span>{match.stage}</span>
+        <span>{match.venue}</span>
+      </div>
+      <strong>{match.title}</strong>
+      <span className="summary-question">{match.question}</span>
+      <div className="summary-time">
+        <span>
+          <Clock3 size={16} aria-hidden />
+          {minutesRemaining(match.closesAt, now)}
+        </span>
+        <span>{formatDateTime(match.startsAt)} 開始</span>
+      </div>
+      <div className="summary-odds">
+        <span>
+          人気
+          <b>{odds.popular}</b>
+        </span>
+        <span>
+          穴
+          <b>{odds.longshot}</b>
+        </span>
+      </div>
+      <div className="summary-footer">
+        <span>総プール {formatPoints(total)}</span>
+        <b>詳細へ</b>
+      </div>
+    </button>
+  );
+}
+
 function MatchHeader({
   match,
   now,
@@ -1241,6 +1329,117 @@ function MatchHeader({
           総プール {formatPoints(total)}
         </span>
       </div>
+    </div>
+  );
+}
+
+function PersonVoteList({
+  votes,
+  matches,
+  allVotes,
+}: {
+  votes: VoteRecord[];
+  matches: MatchRecord[];
+  allVotes: VoteRecord[];
+}) {
+  return (
+    <div className="data-panel">
+      <div className="panel-title">
+        <History size={18} aria-hidden />
+        投票詳細
+      </div>
+      {votes.length ? (
+        <div className="person-vote-list">
+          {votes.map((vote) => {
+            const match = matches.find((item) => item.id === vote.matchId);
+            const payout = match
+              ? calculateVotePayout(vote, match, allVotes)
+              : { gross: 0, net: 0, won: false, settled: false };
+            const status = payout.settled ? (payout.won ? "的中" : "不的中") : "未確定";
+
+            return (
+              <article className="person-vote-card" key={vote.id}>
+                <div>
+                  <strong>{match?.title ?? "削除済み"}</strong>
+                  <span>{formatDateTime(vote.createdAt)}</span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>選択</dt>
+                    <dd>{optionLabel(match, vote.optionId)}</dd>
+                  </div>
+                  <div>
+                    <dt>投票pt</dt>
+                    <dd>{formatPoints(vote.amount)}</dd>
+                  </div>
+                  <div>
+                    <dt>結果</dt>
+                    <dd>{status}</dd>
+                  </div>
+                  <div>
+                    <dt>還元</dt>
+                    <dd>{payout.settled ? formatPoints(payout.gross) : "-"}</dd>
+                  </div>
+                  <div>
+                    <dt>収支</dt>
+                    <dd className={payout.net >= 0 ? "positive" : "negative"}>
+                      {payout.settled
+                        ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
+                        : "-"}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState title="この人の投票はまだありません" />
+      )}
+    </div>
+  );
+}
+
+function PersonAwardList({
+  rows,
+}: {
+  rows: Array<{
+    vote: VoteRecord;
+    match: MatchRecord | undefined;
+    payout: { gross: number; net: number; won: boolean; settled: boolean };
+  }>;
+}) {
+  return (
+    <div className="person-vote-list">
+      {rows.map(({ vote, match, payout }) => (
+        <article className="person-vote-card" key={vote.id}>
+          <div>
+            <strong>{match?.title ?? "削除済み"}</strong>
+            <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>的中選択</dt>
+              <dd>{optionLabel(match, vote.optionId)}</dd>
+            </div>
+            <div>
+              <dt>投票pt</dt>
+              <dd>{formatPoints(vote.amount)}</dd>
+            </div>
+            <div>
+              <dt>獲得pt</dt>
+              <dd>{formatPoints(payout.gross)}</dd>
+            </div>
+            <div>
+              <dt>収支</dt>
+              <dd className={payout.net >= 0 ? "positive" : "negative"}>
+                {payout.net >= 0 ? "+" : ""}
+                {formatPoints(payout.net)}
+              </dd>
+            </div>
+          </dl>
+        </article>
+      ))}
     </div>
   );
 }
@@ -1389,7 +1588,7 @@ function GamePerks() {
           <Gift size={26} aria-hidden />
         </div>
         <strong>ランキング上位へ</strong>
-        <span>マイページで収支を確認</span>
+        <span>個人別で収支を確認</span>
       </div>
       <div className="big-cta">
         <Sparkles size={22} aria-hidden />
