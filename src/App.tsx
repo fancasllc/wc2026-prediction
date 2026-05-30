@@ -82,6 +82,11 @@ type CsvMatchRow = {
   options?: string;
 };
 
+type ApiErrorBody = {
+  error?: string;
+  details?: Record<string, string | number | boolean | null | undefined>;
+};
+
 const STORAGE_KEY = "wc2026-prediction-pool:data:v2";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
@@ -96,8 +101,19 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? `Request failed: ${response.status}`);
+    const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+    const details = body?.details
+      ? Object.entries(body.details)
+          .filter(([, value]) => value !== undefined && value !== null && value !== "")
+          .map(([key, value]) => `${key}: ${String(value)}`)
+      : [];
+    throw new Error(
+      [
+        body?.error ?? `Request failed: ${response.status}`,
+        `HTTP ${response.status}`,
+        ...details,
+      ].join("\n"),
+    );
   }
 
   return response.json() as Promise<T>;
@@ -609,7 +625,18 @@ function App() {
       updateVoteDraft(match.id, { name, amount: "1000" });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      window.alert(`投票を保存できませんでした。\n${message}`);
+      window.alert(
+        [
+          "投票を保存できませんでした。",
+          message,
+          "",
+          "送信内容",
+          `matchId: ${match.id}`,
+          `optionId: ${draft.optionId}`,
+          `userName: ${name}`,
+          `amount: ${amount}`,
+        ].join("\n"),
+      );
     }
   }
 

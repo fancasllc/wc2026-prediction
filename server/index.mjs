@@ -589,11 +589,30 @@ app.get(/.*/, (_request, response) => {
   response.sendFile(path.join(distDir, "index.html"));
 });
 
+function getErrorDetails(error) {
+  return Object.fromEntries(
+    [
+      ["name", error.name],
+      ["code", error.code],
+      ["detail", error.detail],
+      ["hint", error.hint],
+      ["table", error.table],
+      ["column", error.column],
+      ["constraint", error.constraint],
+      ["routine", error.routine],
+      ["where", error.where],
+    ].filter(([, value]) => Boolean(value)),
+  );
+}
+
 app.use((error, _request, response, _next) => {
   const status = error.status || 500;
   console.error(error);
+  const details = getErrorDetails(error);
+
   response.status(status).json({
-    error: status >= 500 && status !== 503 ? "Internal server error" : error.message,
+    error: error.message || "Internal server error",
+    ...(Object.keys(details).length ? { details } : {}),
   });
 });
 
