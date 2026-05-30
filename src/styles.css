@@ -1157,6 +1157,18 @@ th {
   border-radius: 8px;
 }
 
+.locked-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: #60748b;
+  font-size: 0.82rem;
+  font-weight: 950;
+  background: #eef3f7;
+  border-radius: 8px;
+}
+
 .empty-state {
   display: flex;
   align-items: center;

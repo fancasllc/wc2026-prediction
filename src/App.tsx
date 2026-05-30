@@ -1355,14 +1355,18 @@ function App() {
                                   : "-"}
                               </td>
                               <td>
-                                <button
-                                  className="table-delete"
-                                  disabled={!adminToken}
-                                  onClick={() => deleteVote(vote)}
-                                  type="button"
-                                >
-                                  削除
-                                </button>
+                                {payout.settled ? (
+                                  <span className="locked-action">確定済み</span>
+                                ) : (
+                                  <button
+                                    className="table-delete"
+                                    disabled={!adminToken}
+                                    onClick={() => deleteVote(vote)}
+                                    type="button"
+                                  >
+                                    削除
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );

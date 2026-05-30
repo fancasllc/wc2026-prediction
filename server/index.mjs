@@ -640,14 +640,19 @@ app.delete("/api/votes/:id", requireAdmin, async (request, response, next) => {
     const result = await query(
       `
         delete from votes
+        using matches
         where id = $1
+          and votes.match_id = matches.id
+          and matches.result_option_id is null
         returning match_id as "matchId", user_name as "userName", amount::float as amount
       `,
       [request.params.id],
     );
 
     if (!result.rowCount) {
-      response.status(404).json({ error: "Vote not found" });
+      response.status(409).json({
+        error: "Vote cannot be deleted after the match result is settled",
+      });
       return;
     }
 
