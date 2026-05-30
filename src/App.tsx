@@ -82,7 +82,7 @@ type CsvMatchRow = {
   options?: string;
 };
 
-const STORAGE_KEY = "wc2026-prediction-pool:data:v1";
+const STORAGE_KEY = "wc2026-prediction-pool:data:v2";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 
@@ -367,6 +367,7 @@ function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [apiError, setApiError] = useState("");
   const [isSyncing, setIsSyncing] = useState(true);
+  const [hasRemoteState, setHasRemoteState] = useState(false);
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem(ADMIN_TOKEN_KEY) ?? "",
   );
@@ -384,10 +385,12 @@ function App() {
       .then((state) => {
         if (!active) return;
         setData(state);
+        setHasRemoteState(true);
         setApiError("");
       })
       .catch((error: Error) => {
         if (!active) return;
+        setHasRemoteState(false);
         setApiError(`DB同期に失敗しました: ${error.message}`);
       })
       .finally(() => {
@@ -409,6 +412,7 @@ function App() {
     try {
       const state = await action();
       setData(state);
+      setHasRemoteState(true);
       return state;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -547,6 +551,11 @@ function App() {
     const draft = getDraft(match);
     const name = normalizeName(draft.name);
     const amount = Number(draft.amount);
+
+    if (!hasRemoteState) {
+      window.alert("本番DBとの同期が終わってから投票してください。画面を更新してもう一度お試しください。");
+      return;
+    }
 
     if (!isMatchOpen(match, now)) {
       window.alert("この試合は投票締切を過ぎています。");
@@ -837,6 +846,7 @@ function App() {
 
               <VoteForm
                 draft={getDraft(selectedMatch)}
+                hasRemoteState={hasRemoteState}
                 isSaving={isSyncing}
                 match={selectedMatch}
                 now={now}
@@ -1467,6 +1477,7 @@ function PersonAwardList({
 
 function VoteForm({
   draft,
+  hasRemoteState,
   isSaving,
   match,
   now,
@@ -1474,6 +1485,7 @@ function VoteForm({
   onSubmit,
 }: {
   draft: VoteDraft;
+  hasRemoteState: boolean;
   isSaving: boolean;
   match: MatchRecord;
   now: Date;
@@ -1481,6 +1493,7 @@ function VoteForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const open = isMatchOpen(match, now);
+  const canSubmit = open && hasRemoteState && !isSaving;
 
   useEffect(() => {
     if (!draft.optionId && match.options[0]?.id) {
@@ -1499,7 +1512,7 @@ function VoteForm({
               value={option.id}
               checked={draft.optionId === option.id}
               onChange={() => onChange({ optionId: option.id })}
-              disabled={!open}
+              disabled={!open || !hasRemoteState || isSaving}
             />
             <span>{option.label}</span>
           </label>
@@ -1514,7 +1527,7 @@ function VoteForm({
             value={draft.name}
             onChange={(event) => onChange({ name: event.target.value })}
             placeholder="初回は名前を入力"
-            disabled={!open}
+            disabled={!open || !hasRemoteState || isSaving}
           />
         </label>
         <label>
@@ -1525,12 +1538,12 @@ function VoteForm({
             step="1"
             value={draft.amount}
             onChange={(event) => onChange({ amount: event.target.value })}
-            disabled={!open}
+            disabled={!open || !hasRemoteState || isSaving}
           />
         </label>
-        <button className="primary-action" type="submit" disabled={!open || isSaving}>
+        <button className="primary-action" type="submit" disabled={!canSubmit}>
           <WalletCards size={18} aria-hidden />
-          {isSaving ? "保存中" : "投票する"}
+          {isSaving ? "同期中" : "投票する"}
         </button>
       </div>
     </form>
