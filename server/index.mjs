@@ -1,4 +1,5 @@
 import express from "express";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -8,6 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT ?? 4173);
+const adminPassword = process.env.ADMIN_PASSWORD ?? "";
+const adminSessionSecret =
+  process.env.ADMIN_SESSION_SECRET ?? process.env.SESSION_SECRET ?? "";
+const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
 
 const defaultMatches = [
   {
@@ -71,7 +76,7 @@ function toIsoLike(value) {
 }
 
 function createId(prefix) {
-  return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${randomUUID()}`;
 }
 
 function normalizeName(name) {
@@ -181,6 +186,14 @@ async function initializeDatabase() {
 
     create index if not exists votes_match_id_idx on votes(match_id);
     create index if not exists votes_user_name_idx on votes(user_name);
+
+    create table if not exists admin_audit_logs (
+      id text primary key,
+      action text not null,
+      target_id text,
+      detail jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now()
+    );
   `);
 
   const countResult = await query("select count(*)::int as count from matches");
@@ -189,6 +202,73 @@ async function initializeDatabase() {
       await insertMatch(match);
     }
   }
+}
+
+function signAdminToken(expiresAt) {
+  const payload = Buffer.from(
+    JSON.stringify({ role: "admin", exp: expiresAt }),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", adminSessionSecret || "dev-only-secret")
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifyAdminToken(token) {
+  if (!requiresAdminAuth) return true;
+  if (!adminPassword || !adminSessionSecret || !token || !token.includes(".")) return false;
+
+  const [payload, signature] = token.split(".");
+  const expected = createHmac("sha256", adminSessionSecret).update(payload).digest("base64url");
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return parsed.role === "admin" && Number(parsed.exp) > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function requireAdmin(request, response, next) {
+  if (!requiresAdminAuth) {
+    next();
+    return;
+  }
+
+  if (!adminPassword || !adminSessionSecret) {
+    response.status(503).json({
+      error: "Admin auth is not configured. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET.",
+    });
+    return;
+  }
+
+  const authHeader = request.get("authorization") ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
+  if (!verifyAdminToken(token)) {
+    response.status(401).json({ error: "Admin authentication required" });
+    return;
+  }
+
+  next();
+}
+
+async function writeAuditLog(action, targetId, detail = {}) {
+  await query(
+    `
+      insert into admin_audit_logs (id, action, target_id, detail)
+      values ($1, $2, $3, $4)
+    `,
+    [createId("audit"), action, targetId ?? null, JSON.stringify(detail)],
+  );
 }
 
 async function insertMatch(input, client = pool) {
@@ -299,7 +379,12 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, database: Boolean(pool) });
+  response.json({
+    ok: true,
+    database: Boolean(pool),
+    adminAuthRequired: requiresAdminAuth,
+    adminAuthConfigured: !requiresAdminAuth || Boolean(adminPassword && adminSessionSecret),
+  });
 });
 
 app.get("/api/state", async (_request, response, next) => {
@@ -310,16 +395,52 @@ app.get("/api/state", async (_request, response, next) => {
   }
 });
 
-app.post("/api/matches", async (request, response, next) => {
+app.post("/api/admin/login", (request, response) => {
+  if (!requiresAdminAuth) {
+    response.json({
+      token: signAdminToken(Date.now() + 24 * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    return;
+  }
+
+  if (!adminPassword || !adminSessionSecret) {
+    response.status(503).json({
+      error: "Admin auth is not configured. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET.",
+    });
+    return;
+  }
+
+  const password = String(request.body.password ?? "");
+  const passwordBuffer = Buffer.from(password);
+  const expectedBuffer = Buffer.from(adminPassword);
+  const passwordMatches =
+    passwordBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(passwordBuffer, expectedBuffer);
+
+  if (!passwordMatches) {
+    response.status(401).json({ error: "Invalid admin password" });
+    return;
+  }
+
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+  response.json({
+    token: signAdminToken(expiresAt),
+    expiresAt: new Date(expiresAt).toISOString(),
+  });
+});
+
+app.post("/api/matches", requireAdmin, async (request, response, next) => {
   try {
     const match = await insertMatch(request.body);
+    await writeAuditLog("match.create", match.id, { title: match.title });
     response.status(201).json({ match, state: await getState() });
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/matches/import", async (request, response, next) => {
+app.post("/api/matches/import", requireAdmin, async (request, response, next) => {
   try {
     const matches = Array.isArray(request.body.matches) ? request.body.matches : [];
     if (!matches.length) {
@@ -332,6 +453,7 @@ app.post("/api/matches/import", async (request, response, next) => {
         await insertMatch(match, client);
       }
     });
+    await writeAuditLog("match.import", null, { count: matches.length });
 
     response.status(201).json({ imported: matches.length, state: await getState() });
   } catch (error) {
@@ -409,7 +531,7 @@ app.post("/api/votes", async (request, response, next) => {
   }
 });
 
-app.post("/api/matches/:id/settle", async (request, response, next) => {
+app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next) => {
   try {
     const matchId = request.params.id;
     const optionId = String(request.body.optionId ?? "");
@@ -431,6 +553,7 @@ app.post("/api/matches/:id/settle", async (request, response, next) => {
       response.status(404).json({ error: "Match or option not found" });
       return;
     }
+    await writeAuditLog("match.settle", matchId, { optionId });
 
     response.json({ state: await getState() });
   } catch (error) {
@@ -438,21 +561,23 @@ app.post("/api/matches/:id/settle", async (request, response, next) => {
   }
 });
 
-app.post("/api/matches/:id/reopen", async (request, response, next) => {
+app.post("/api/matches/:id/reopen", requireAdmin, async (request, response, next) => {
   try {
     await query(
       "update matches set result_option_id = null, settled_at = null where id = $1",
       [request.params.id],
     );
+    await writeAuditLog("match.reopen", request.params.id);
     response.json({ state: await getState() });
   } catch (error) {
     next(error);
   }
 });
 
-app.delete("/api/matches/:id", async (request, response, next) => {
+app.delete("/api/matches/:id", requireAdmin, async (request, response, next) => {
   try {
     await query("delete from matches where id = $1", [request.params.id]);
+    await writeAuditLog("match.delete", request.params.id);
     response.json({ state: await getState() });
   } catch (error) {
     next(error);

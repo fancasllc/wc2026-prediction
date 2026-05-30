@@ -81,6 +81,7 @@ type CsvMatchRow = {
 
 const STORAGE_KEY = "wc2026-prediction-pool:data:v1";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
+const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -103,12 +104,20 @@ async function fetchAppState() {
   return apiRequest<AppData>("/api/state");
 }
 
-async function postState(path: string, body?: unknown, method = "POST") {
+async function postState(path: string, body?: unknown, method = "POST", adminToken = "") {
   const result = await apiRequest<{ state: AppData }>(path, {
     method,
+    headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : undefined,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return result.state;
+}
+
+async function requestAdminToken(password: string) {
+  return apiRequest<{ token: string; expiresAt: string }>("/api/admin/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
 }
 
 const defaultMatches: MatchRecord[] = [
@@ -352,6 +361,11 @@ function App() {
   const [data, setData] = useState<AppData>(() => loadData());
   const [apiError, setApiError] = useState("");
   const [isSyncing, setIsSyncing] = useState(true);
+  const [adminToken, setAdminToken] = useState(
+    () => localStorage.getItem(ADMIN_TOKEN_KEY) ?? "",
+  );
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminMessage, setAdminMessage] = useState("");
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
@@ -400,6 +414,27 @@ function App() {
     } finally {
       setIsSyncing(false);
     }
+  }
+
+  async function loginAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAdminMessage("");
+    try {
+      const result = await requestAdminToken(adminPassword);
+      localStorage.setItem(ADMIN_TOKEN_KEY, result.token);
+      setAdminToken(result.token);
+      setAdminPassword("");
+      setAdminMessage(`管理者認証済み。有効期限: ${formatDateTime(result.expiresAt)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setAdminMessage(`管理者認証に失敗しました: ${message}`);
+    }
+  }
+
+  function logoutAdmin() {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAdminToken("");
+    setAdminMessage("管理者認証を解除しました。");
   }
 
   const sortedMatches = useMemo(
@@ -558,7 +593,7 @@ function App() {
     };
 
     try {
-      await syncState(() => postState("/api/matches", match));
+      await syncState(() => postState("/api/matches", match, "POST", adminToken));
       setMatchDraft(emptyMatchDraft);
     } catch {
       window.alert("試合を登録できませんでした。入力内容を確認してください。");
@@ -581,7 +616,7 @@ function App() {
     }
 
     try {
-      await syncState(() => postState("/api/matches/import", { matches }));
+      await syncState(() => postState("/api/matches/import", { matches }, "POST", adminToken));
       setImportMessage(
         `${matches.length}件を登録しました${
           errors.length ? `。CSV警告 ${errors.length}件` : ""
@@ -594,27 +629,23 @@ function App() {
 
   async function settleMatch(matchId: string, optionId: string) {
     if (!optionId) return;
-    await syncState(() => postState(`/api/matches/${matchId}/settle`, { optionId }));
+    await syncState(() =>
+      postState(`/api/matches/${matchId}/settle`, { optionId }, "POST", adminToken),
+    );
   }
 
   async function reopenMatch(matchId: string) {
-    await syncState(() => postState(`/api/matches/${matchId}/reopen`));
+    await syncState(() => postState(`/api/matches/${matchId}/reopen`, undefined, "POST", adminToken));
   }
 
   async function deleteMatch(matchId: string) {
     const ok = window.confirm("この試合と関連する投票を削除しますか？");
     if (!ok) return;
-    await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE"));
+    await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE", adminToken));
   }
 
-  function resetDemo() {
-    const ok = window.confirm("ローカル保存データを初期化しますか？");
-    if (!ok) return;
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(LAST_NAME_KEY);
-    setData({ matches: defaultMatches, votes: [], knownUsers: [] });
-    setProfileName("");
-    setVoteDrafts({});
+  async function refreshState() {
+    await syncState(() => fetchAppState());
   }
 
   return (
@@ -875,6 +906,38 @@ function App() {
 
         {view === "admin" && (
           <section className="admin-layout">
+            <div className="data-panel admin-auth-panel">
+              <div className="panel-title">
+                <ShieldCheck size={18} aria-hidden />
+                管理者認証
+              </div>
+              {adminToken ? (
+                <div className="admin-auth-row">
+                  <p className="inline-message">管理者として操作できます。</p>
+                  <button className="ghost-action" type="button" onClick={logoutAdmin}>
+                    <X size={18} aria-hidden />
+                    解除
+                  </button>
+                </div>
+              ) : (
+                <form className="admin-auth-row" onSubmit={loginAdmin}>
+                  <label>
+                    <span>管理パスワード</span>
+                    <input
+                      type="password"
+                      value={adminPassword}
+                      onChange={(event) => setAdminPassword(event.target.value)}
+                      placeholder="RenderのADMIN_PASSWORD"
+                    />
+                  </label>
+                  <button className="primary-action" type="submit">
+                    <ShieldCheck size={18} aria-hidden />
+                    認証
+                  </button>
+                </form>
+              )}
+              {adminMessage && <p className="inline-message">{adminMessage}</p>}
+            </div>
             <div className="admin-column">
               <form className="data-panel form-panel" onSubmit={addMatch}>
                 <div className="panel-title">
@@ -1120,9 +1183,9 @@ function App() {
                 ) : (
                   <EmptyState title="投票はまだありません" />
                 )}
-                <button className="ghost-action reset-action" type="button" onClick={resetDemo}>
+                <button className="ghost-action reset-action" type="button" onClick={refreshState}>
                   <RotateCcw size={18} aria-hidden />
-                  初期化
+                  DB再同期
                 </button>
               </div>
             </div>

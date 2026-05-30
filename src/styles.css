@@ -571,6 +571,21 @@ textarea:focus {
   gap: 16px;
 }
 
+.admin-auth-panel {
+  grid-column: 1 / -1;
+}
+
+.admin-auth-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.admin-auth-row p {
+  margin: 0;
+}
+
 .wide-column {
   min-width: 0;
 }
@@ -716,6 +731,7 @@ th {
   .vote-fields,
   .form-grid,
   .admin-match-row,
+  .admin-auth-row,
   .button-row {
     grid-template-columns: 1fr;
   }
