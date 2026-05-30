@@ -569,18 +569,38 @@ function App() {
     }
 
     try {
-      await syncState(() =>
-        postState("/api/votes", {
+      await syncState(async () => {
+        const latestState = await fetchAppState();
+        const latestMatch = latestState.matches.find((item) => item.id === match.id);
+        const latestOption = latestMatch?.options.find((option) => option.id === draft.optionId);
+
+        if (!latestMatch) {
+          setData(latestState);
+          throw new Error("この予想テーマは本番DB上に見つかりません。画面を更新してください。");
+        }
+
+        if (!latestOption) {
+          setData(latestState);
+          throw new Error("この選択肢は本番DB上に見つかりません。画面を更新してください。");
+        }
+
+        if (!isMatchOpen(latestMatch, new Date())) {
+          setData(latestState);
+          throw new Error("この試合は投票締切を過ぎています。");
+        }
+
+        return postState("/api/votes", {
           matchId: match.id,
           optionId: draft.optionId,
           userName: name,
           amount,
-        }),
-      );
+        });
+      });
       localStorage.setItem(LAST_NAME_KEY, name);
       updateVoteDraft(match.id, { name, amount: "1000" });
-    } catch {
-      window.alert("投票を保存できませんでした。時間を置いてもう一度試してください。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      window.alert(`投票を保存できませんでした。\n${message}`);
     }
   }
 
@@ -817,6 +837,7 @@ function App() {
 
               <VoteForm
                 draft={getDraft(selectedMatch)}
+                isSaving={isSyncing}
                 match={selectedMatch}
                 now={now}
                 onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
@@ -1446,12 +1467,14 @@ function PersonAwardList({
 
 function VoteForm({
   draft,
+  isSaving,
   match,
   now,
   onChange,
   onSubmit,
 }: {
   draft: VoteDraft;
+  isSaving: boolean;
   match: MatchRecord;
   now: Date;
   onChange: (patch: Partial<VoteDraft>) => void;
@@ -1505,9 +1528,9 @@ function VoteForm({
             disabled={!open}
           />
         </label>
-        <button className="primary-action" type="submit" disabled={!open}>
+        <button className="primary-action" type="submit" disabled={!open || isSaving}>
           <WalletCards size={18} aria-hidden />
-          投票する
+          {isSaving ? "保存中" : "投票する"}
         </button>
       </div>
     </form>
