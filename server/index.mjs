@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
 const port = Number(process.env.PORT ?? 4173);
+const appVersion = process.env.RENDER_GIT_COMMIT ?? process.env.COMMIT_SHA ?? "local";
 const adminPassword = process.env.ADMIN_PASSWORD ?? "";
 const adminSessionSecret =
   process.env.ADMIN_SESSION_SECRET ?? process.env.SESSION_SECRET ?? "";
@@ -351,14 +352,15 @@ async function getState() {
   ]);
 
   const optionsByMatch = new Map();
-  for (const option of optionsResult.rows) {
+  for (const option of optionsResult.rows.filter(Boolean)) {
+    if (!option.matchId) continue;
     const list = optionsByMatch.get(option.matchId) ?? [];
     list.push({ id: option.id, label: option.label });
     optionsByMatch.set(option.matchId, list);
   }
 
   return {
-    matches: matchesResult.rows.map((match) => ({
+    matches: matchesResult.rows.filter(Boolean).map((match) => ({
       ...match,
       startsAt: toIsoLike(match.startsAt),
       closesAt: toIsoLike(match.closesAt),
@@ -366,11 +368,11 @@ async function getState() {
       resultOptionId: match.resultOptionId ?? undefined,
       options: optionsByMatch.get(match.id) ?? [],
     })),
-    votes: votesResult.rows.map((vote) => ({
+    votes: votesResult.rows.filter(Boolean).map((vote) => ({
       ...vote,
       createdAt: new Date(vote.createdAt).toISOString(),
     })),
-    knownUsers: usersResult.rows.map((user) => user.name),
+    knownUsers: usersResult.rows.filter(Boolean).map((user) => user.name),
   };
 }
 
@@ -382,6 +384,7 @@ app.get("/api/health", (_request, response) => {
   response.json({
     ok: true,
     database: Boolean(pool),
+    version: appVersion,
     adminAuthRequired: requiresAdminAuth,
     adminAuthConfigured: !requiresAdminAuth || Boolean(adminPassword && adminSessionSecret),
   });
@@ -601,17 +604,20 @@ function getErrorDetails(error) {
       ["constraint", error.constraint],
       ["routine", error.routine],
       ["where", error.where],
+      ["stack", error.stack],
     ].filter(([, value]) => Boolean(value)),
   );
 }
 
-app.use((error, _request, response, _next) => {
+app.use((error, request, response, _next) => {
   const status = error.status || 500;
   console.error(error);
   const details = getErrorDetails(error);
 
   response.status(status).json({
     error: error.message || "Internal server error",
+    path: request.originalUrl,
+    method: request.method,
     ...(Object.keys(details).length ? { details } : {}),
   });
 });

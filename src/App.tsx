@@ -84,6 +84,8 @@ type CsvMatchRow = {
 
 type ApiErrorBody = {
   error?: string;
+  method?: string;
+  path?: string;
   details?: Record<string, string | number | boolean | null | undefined>;
 };
 
@@ -111,8 +113,9 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
       [
         body?.error ?? `Request failed: ${response.status}`,
         `HTTP ${response.status}`,
+        body?.method && body?.path ? `request: ${body.method} ${body.path}` : "",
         ...details,
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     );
   }
 
