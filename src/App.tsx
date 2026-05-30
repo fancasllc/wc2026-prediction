@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
   CalendarClock,
@@ -8,7 +8,6 @@ import {
   Database,
   Gift,
   History,
-  LayoutDashboard,
   ListPlus,
   Medal,
   RotateCcw,
@@ -21,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 
-type View = "matches" | "matchDetail" | "people" | "personDetail" | "admin";
+type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
 
 type MatchOption = {
   id: string;
@@ -299,9 +298,9 @@ function isMatchOpen(match: MatchRecord, now: Date) {
 }
 
 function getStatusLabel(match: MatchRecord, now: Date) {
-  if (match.resultOptionId) return "確定済み";
+  if (match.resultOptionId) return "結果確定";
   if (isMatchOpen(match, now)) return "受付中";
-  return "締切済み";
+  return "受付終了";
 }
 
 function getMatchVotes(match: MatchRecord, votes: VoteRecord[]) {
@@ -339,6 +338,14 @@ function calculateVotePayout(vote: VoteRecord, match: MatchRecord, allVotes: Vot
 
 function sortByDateAsc(a: MatchRecord, b: MatchRecord) {
   return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+}
+
+function sortByCloseDateAsc(a: MatchRecord, b: MatchRecord) {
+  return new Date(a.closesAt).getTime() - new Date(b.closesAt).getTime();
+}
+
+function sortByCloseDateDesc(a: MatchRecord, b: MatchRecord) {
+  return new Date(b.closesAt).getTime() - new Date(a.closesAt).getTime();
 }
 
 function parseCsvMatches(text: string) {
@@ -380,10 +387,10 @@ function parseCsvMatches(text: string) {
 
 function App() {
   const now = useNow();
-  const [view, setView] = useState<View>("matches");
+  const [view, setView] = useState<View>("open");
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedPersonName, setSelectedPersonName] = useState("");
-  const [matchSearch, setMatchSearch] = useState("");
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
   const [data, setData] = useState<AppData>(() => loadData());
   const [apiError, setApiError] = useState("");
   const [isSyncing, setIsSyncing] = useState(true);
@@ -469,16 +476,15 @@ function App() {
     [data.matches],
   );
 
-  const filteredMatches = useMemo(() => {
-    const keyword = matchSearch.trim().toLowerCase();
-    if (!keyword) return sortedMatches;
-    return sortedMatches.filter((match) =>
-      [match.title, match.stage, match.venue, match.question]
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword),
-    );
-  }, [matchSearch, sortedMatches]);
+  const openMatches = useMemo(
+    () => data.matches.filter((match) => isMatchOpen(match, now)).sort(sortByCloseDateAsc),
+    [data.matches, now],
+  );
+
+  const closedMatches = useMemo(
+    () => data.matches.filter((match) => !isMatchOpen(match, now)).sort(sortByCloseDateDesc),
+    [data.matches, now],
+  );
 
   const selectedMatch = useMemo(() => {
     return data.matches.find((match) => match.id === selectedMatchId) ?? sortedMatches[0];
@@ -737,6 +743,32 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function goBackFromDetail() {
+    if (view === "matchDetail") {
+      setView(selectedMatch && isMatchOpen(selectedMatch, now) ? "open" : "closed");
+    }
+    if (view === "personDetail") {
+      setView("people");
+    }
+  }
+
+  function handleTouchStart(event: TouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    setTouchStart({ x: touch.clientX, y: touch.clientY });
+  }
+
+  function handleTouchEnd(event: TouchEvent<HTMLElement>) {
+    if (!touchStart) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStart.x;
+    const deltaY = touch.clientY - touchStart.y;
+    setTouchStart(null);
+
+    if (Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+      goBackFromDetail();
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -762,12 +794,20 @@ function App() {
 
       <nav className="tabs" aria-label="メインナビゲーション">
         <button
-          className={view === "matches" ? "active" : ""}
-          onClick={() => setView("matches")}
+          className={view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now)) ? "active open-tab" : "open-tab"}
+          onClick={() => setView("open")}
           type="button"
         >
           <CalendarClock size={18} aria-hidden />
-          投票サイト
+          受付中
+        </button>
+        <button
+          className={view === "closed" || (view === "matchDetail" && selectedMatch && !isMatchOpen(selectedMatch, now)) ? "active closed-tab" : "closed-tab"}
+          onClick={() => setView("closed")}
+          type="button"
+        >
+          <CheckCircle2 size={18} aria-hidden />
+          受付済み
         </button>
         <button
           className={view === "people" || view === "personDetail" ? "active" : ""}
@@ -776,14 +816,6 @@ function App() {
         >
           <UserRound size={18} aria-hidden />
           個人別
-        </button>
-        <button
-          className={view === "admin" ? "active" : ""}
-          onClick={() => setView("admin")}
-          type="button"
-        >
-          <LayoutDashboard size={18} aria-hidden />
-          管理画面
         </button>
       </nav>
 
@@ -800,73 +832,69 @@ function App() {
           </div>
         )}
 
-        {view === "matches" && (
+        {view === "open" && (
           <section className="view-stack">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Open markets</p>
-                <h2>開催中の予想テーマ</h2>
-              </div>
-              <div className="live-summary">
-                <Clock3 size={18} aria-hidden />
-                {filteredMatches.filter((match) => isMatchOpen(match, now)).length}件受付中
+                <h2>受付中の予想テーマ</h2>
               </div>
             </div>
 
-            <label className="match-search">
-              <span>試合を探す</span>
-              <input
-                value={matchSearch}
-                onChange={(event) => setMatchSearch(event.target.value)}
-                placeholder="試合名、会場、ステージで検索"
-              />
-            </label>
-
             <div className="summary-list">
-              {filteredMatches.map((match) => (
-                <MatchSummaryCard
-                  key={match.id}
-                  match={match}
-                  now={now}
-                  votes={data.votes}
-                  onOpen={() => openMatchDetail(match.id)}
-                />
-              ))}
+              {openMatches.length ? (
+                openMatches.map((match) => (
+                  <MatchSummaryCard
+                    key={match.id}
+                    match={match}
+                    now={now}
+                    votes={data.votes}
+                    onOpen={() => openMatchDetail(match.id)}
+                  />
+                ))
+              ) : (
+                <EmptyState title="受付中の予想テーマはありません" />
+              )}
             </div>
 
             <GamePerks />
           </section>
         )}
 
-        {view === "matchDetail" && selectedMatch && (
+        {view === "closed" && (
           <section className="view-stack">
-            <button className="back-action" type="button" onClick={() => setView("matches")}>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Closed markets</p>
+                <h2>受付済みの予想テーマ</h2>
+              </div>
+            </div>
+
+            <div className="summary-list">
+              {closedMatches.length ? (
+                closedMatches.map((match) => (
+                  <MatchSummaryCard
+                    key={match.id}
+                    match={match}
+                    now={now}
+                    votes={data.votes}
+                    onOpen={() => openMatchDetail(match.id)}
+                  />
+                ))
+              ) : (
+                <EmptyState title="受付済みの予想テーマはありません" />
+              )}
+            </div>
+          </section>
+        )}
+
+        {view === "matchDetail" && selectedMatch && (
+          <section className="view-stack" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            <button className="back-action" type="button" onClick={goBackFromDetail}>
               予想テーマ一覧へ戻る
             </button>
             <article className="match-card detail-card">
               <MatchHeader match={selectedMatch} now={now} votes={data.votes} />
-
-              <div className="option-board" aria-label={`${selectedMatch.title}の選択肢`}>
-                {selectedMatch.options.map((option) => {
-                  const total = getMatchTotal(selectedMatch, data.votes);
-                  const optionTotal = getOptionTotal(selectedMatch, data.votes, option.id);
-                  const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
-                  const odds = optionTotal > 0 ? total / optionTotal : 0;
-
-                  return (
-                    <div className="option-row" key={option.id}>
-                      <div>
-                        <strong>{option.label}</strong>
-                        <span>{formatPoints(optionTotal)} / {percentage}%</span>
-                      </div>
-                      <div className="meter" aria-hidden>
-                        <span style={{ width: `${percentage}%` }} />
-                      </div>
-                      <b>{odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
-                    </div>
-                  );
-                })}
-              </div>
 
               {selectedMatch.resultOptionId && (
                 <div className="result-panel">
@@ -881,6 +909,7 @@ function App() {
                 isSaving={isSyncing}
                 match={selectedMatch}
                 now={now}
+                votes={data.votes}
                 onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
                 onSubmit={(event) => handleVote(selectedMatch, event)}
               />
@@ -929,8 +958,8 @@ function App() {
         )}
 
         {view === "personDetail" && (
-          <section className="view-stack">
-            <button className="back-action" type="button" onClick={() => setView("people")}>
+          <section className="view-stack" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            <button className="back-action" type="button" onClick={goBackFromDetail}>
               個人別一覧へ戻る
             </button>
             <div className="section-heading">
@@ -1274,6 +1303,11 @@ function App() {
           </section>
         )}
       </main>
+      {view !== "admin" && (
+        <button className="admin-link-bottom" type="button" onClick={() => setView("admin")}>
+          管理画面
+        </button>
+      )}
     </div>
   );
 }
@@ -1321,11 +1355,12 @@ function MatchSummaryCard({
   const total = getMatchTotal(match, votes);
   const odds = getOddsHighlights(match, votes);
   const status = getStatusLabel(match, now);
+  const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
       <div className="match-meta">
-        <span className={`status-pill ${status === "受付中" ? "open" : ""}`}>{status}</span>
+        <span className={`status-pill ${statusClass}`}>{status}</span>
         <span>{match.stage}</span>
         <span>{match.venue}</span>
       </div>
@@ -1367,11 +1402,12 @@ function MatchHeader({
 }) {
   const total = getMatchTotal(match, votes);
   const status = getStatusLabel(match, now);
+  const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
 
   return (
     <div className="match-header">
       <div className="match-meta">
-        <span className={`status-pill ${status === "受付中" ? "open" : ""}`}>{status}</span>
+        <span className={`status-pill ${statusClass}`}>{status}</span>
         <span>{match.stage}</span>
         <span>{match.venue}</span>
       </div>
@@ -1512,6 +1548,7 @@ function VoteForm({
   isSaving,
   match,
   now,
+  votes,
   onChange,
   onSubmit,
 }: {
@@ -1520,11 +1557,13 @@ function VoteForm({
   isSaving: boolean;
   match: MatchRecord;
   now: Date;
+  votes: VoteRecord[];
   onChange: (patch: Partial<VoteDraft>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const open = isMatchOpen(match, now);
   const canSubmit = open && hasRemoteState && !isSaving;
+  const total = getMatchTotal(match, votes);
 
   useEffect(() => {
     if (!draft.optionId && match.options[0]?.id) {
@@ -1534,20 +1573,34 @@ function VoteForm({
 
   return (
     <form className="vote-form" onSubmit={onSubmit}>
-      <div className="choice-list" role="radiogroup" aria-label="選択肢">
-        {match.options.map((option) => (
-          <label className={draft.optionId === option.id ? "choice selected" : "choice"} key={option.id}>
-            <input
-              type="radio"
-              name={`option-${match.id}`}
-              value={option.id}
-              checked={draft.optionId === option.id}
-              onChange={() => onChange({ optionId: option.id })}
+      <div className="option-board selectable" role="radiogroup" aria-label={`${match.title}の選択肢`}>
+        {match.options.map((option) => {
+          const optionTotal = getOptionTotal(match, votes, option.id);
+          const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
+          const odds = optionTotal > 0 ? total / optionTotal : 0;
+          const selected = draft.optionId === option.id;
+
+          return (
+            <button
+              aria-checked={selected}
+              className={selected ? "option-row selected" : "option-row"}
               disabled={!open || !hasRemoteState || isSaving}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
+              key={option.id}
+              onClick={() => onChange({ optionId: option.id })}
+              role="radio"
+              type="button"
+            >
+              <div>
+                <strong>{option.label}</strong>
+                <span>{formatPoints(optionTotal)} / {percentage}%</span>
+              </div>
+              <div className="meter" aria-hidden>
+                <span style={{ width: `${percentage}%` }} />
+              </div>
+              <b>{odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
+            </button>
+          );
+        })}
       </div>
 
       <div className="vote-fields">
@@ -1593,7 +1646,9 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
             <div className="bettor-chip" key={vote.id}>
               <span>{vote.userName}</span>
               <b>{formatPoints(vote.amount)}</b>
-              <small>{optionLabel(match, vote.optionId)}</small>
+              <small>
+                {optionLabel(match, vote.optionId)} / {formatDateTime(vote.createdAt)}
+              </small>
             </div>
           ))}
         </div>

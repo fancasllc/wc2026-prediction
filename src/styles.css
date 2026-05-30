@@ -284,6 +284,16 @@ h1 {
   box-shadow: 0 5px 12px rgba(0, 55, 126, 0.14);
 }
 
+.tabs button.open-tab.active {
+  color: #004b41;
+  background: linear-gradient(180deg, #fffefa, #c9fff2);
+}
+
+.tabs button.closed-tab.active {
+  color: #6b3c00;
+  background: linear-gradient(180deg, #fffefa, #fff0bd);
+}
+
 main {
   padding-bottom: 28px;
 }
@@ -560,6 +570,16 @@ label span {
   background: #d9fff1;
 }
 
+.status-pill.closed {
+  color: #8a5200;
+  background: #fff0c6;
+}
+
+.status-pill.settled {
+  color: #064c9a;
+  background: #e2f0ff;
+}
+
 .match-timebar {
   display: grid;
   grid-template-columns: 1fr;
@@ -596,11 +616,47 @@ label span {
 .option-row {
   display: grid;
   gap: 8px;
+  width: 100%;
   padding: 12px;
+  text-align: left;
+  background: transparent;
+  border: 0;
 }
 
 .option-row + .option-row {
   border-top: 1px solid #e2edf3;
+}
+
+.option-board.selectable .option-row {
+  position: relative;
+  padding-left: 48px;
+}
+
+.option-board.selectable .option-row::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 13px;
+  width: 26px;
+  height: 26px;
+  background: #ffffff;
+  border: 3px solid #96a3ad;
+  border-radius: 999px;
+}
+
+.option-board.selectable .option-row.selected {
+  background: linear-gradient(180deg, #ffffff, #f0fffb);
+  box-shadow: inset 0 0 0 2px var(--teal);
+}
+
+.option-board.selectable .option-row.selected::before {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 7px #ffffff;
+  background: var(--teal);
+}
+
+.option-board.selectable .option-row:disabled {
+  opacity: 0.62;
 }
 
 .option-row > div:first-child {
@@ -713,6 +769,17 @@ label span {
   box-shadow:
     inset 0 0 0 1px rgba(3, 199, 183, 0.34),
     0 8px 18px rgba(0, 132, 190, 0.14);
+}
+
+.admin-link-bottom {
+  width: 100%;
+  min-height: 48px;
+  margin: 18px 0 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 950;
+  background: rgba(0, 20, 63, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
 }
 
 .vote-fields,
