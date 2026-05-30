@@ -6,13 +6,10 @@ import {
   CheckCircle2,
   Clock3,
   Database,
-  Gift,
   History,
   ListPlus,
-  Medal,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
   Trophy,
   Upload,
   UserRound,
@@ -824,20 +821,12 @@ function App() {
         <span className="confetti-dot c2" aria-hidden />
         <span className="confetti-dot c3" aria-hidden />
         <div className="brand-block">
-          <div className="brand-mark">
-            <Trophy aria-hidden size={24} />
-          </div>
           <div>
             <p className="eyebrow">WC 2026 Prediction Pool</p>
             <h1>ワールドカップ予想プール</h1>
-            <p className="hero-lead">注目カードを選んで、無料で予想に参加しよう</p>
           </div>
         </div>
         <div className="hero-ball" aria-hidden>⚽</div>
-        <div className="compliance-strip">
-          <ShieldCheck aria-hidden size={18} />
-          <span>無料・架空ポイント / 換金不可 / 実เงินจริงなし</span>
-        </div>
       </header>
 
       <nav className="tabs" aria-label="メインナビゲーション">
@@ -904,8 +893,6 @@ function App() {
                 <EmptyState title="受付中の予想テーマはありません" />
               )}
             </div>
-
-            <GamePerks />
           </section>
         )}
 
@@ -1358,8 +1345,8 @@ function getOddsHighlights(match: MatchRecord, votes: VoteRecord[]) {
 
   if (!rows.length) {
     return {
-      popular: "未形成",
-      longshot: "未形成",
+      popular: "-",
+      longshot: "-",
     };
   }
 
@@ -1410,7 +1397,7 @@ function MatchSummaryCard({
           <b>{odds.popular}</b>
         </span>
         <span>
-          穴
+          大穴
           <b>{odds.longshot}</b>
         </span>
       </div>
@@ -1590,7 +1577,7 @@ function AdminSettleCard({
               <div className="meter" aria-hidden>
                 <span style={{ width: `${percentage}%` }} />
               </div>
-              <b>{result ? "確定結果" : odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
+              <b>{result ? "確定結果" : odds ? `${odds.toFixed(2)}x` : "-"}</b>
             </button>
           );
         })}
@@ -1720,7 +1707,7 @@ function VoteForm({
               <div className="meter" aria-hidden>
                 <span style={{ width: `${percentage}%` }} />
               </div>
-              <b>{odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
+              <b>{odds ? `${odds.toFixed(2)}x` : "-"}</b>
             </button>
           );
         })}
@@ -1808,38 +1795,6 @@ function EmptyState({ title }: { title: string }) {
       <Database size={22} aria-hidden />
       <span>{title}</span>
     </div>
-  );
-}
-
-function GamePerks() {
-  return (
-    <section className="game-perks" aria-label="予想ゲームの特徴">
-      <div className="perk-card">
-        <div className="perk-icon teal">
-          <WalletCards size={26} aria-hidden />
-        </div>
-        <strong>完全無料で参加</strong>
-        <span>架空ポイントで楽しめます</span>
-      </div>
-      <div className="perk-card">
-        <div className="perk-icon green">
-          <Medal size={26} aria-hidden />
-        </div>
-        <strong>的中でポイント獲得</strong>
-        <span>プールをみんなで分配</span>
-      </div>
-      <div className="perk-card">
-        <div className="perk-icon blue">
-          <Gift size={26} aria-hidden />
-        </div>
-        <strong>ランキング上位へ</strong>
-        <span>個人別で収支を確認</span>
-      </div>
-      <div className="big-cta">
-        <Sparkles size={22} aria-hidden />
-        まずは1試合、無料で予想してみよう
-      </div>
-    </section>
   );
 }
 
