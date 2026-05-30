@@ -404,6 +404,7 @@ function App() {
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
+  const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -461,7 +462,14 @@ function App() {
       setAdminMessage(`管理者認証済み。有効期限: ${formatDateTime(result.expiresAt)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      setAdminMessage(`管理者認証に失敗しました: ${message}`);
+      setAdminMessage(
+        [
+          "管理者認証に失敗しました。",
+          message,
+          "",
+          "RenderのEnvironmentに設定したADMIN_PASSWORDと完全一致しているか確認してください。",
+        ].join("\n"),
+      );
     }
   }
 
@@ -483,6 +491,21 @@ function App() {
 
   const closedMatches = useMemo(
     () => data.matches.filter((match) => !isMatchOpen(match, now)).sort(sortByCloseDateDesc),
+    [data.matches, now],
+  );
+
+  const settleCandidateMatches = useMemo(
+    () =>
+      data.matches
+        .filter((match) => !isMatchOpen(match, now))
+        .sort((a, b) => {
+          const aSettled = Boolean(a.resultOptionId);
+          const bSettled = Boolean(b.resultOptionId);
+          if (aSettled !== bSettled) return aSettled ? -1 : 1;
+          const aTime = new Date(a.settledAt ?? a.closesAt).getTime();
+          const bTime = new Date(b.settledAt ?? b.closesAt).getTime();
+          return bTime - aTime;
+        }),
     [data.matches, now],
   );
 
@@ -710,15 +733,40 @@ function App() {
     }
   }
 
-  async function settleMatch(matchId: string, optionId: string) {
+  async function settleMatch(match: MatchRecord, optionId: string) {
     if (!optionId) return;
-    await syncState(() =>
-      postState(`/api/matches/${matchId}/settle`, { optionId }, "POST", adminToken),
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+    if (isMatchOpen(match, now)) {
+      window.alert("受付中の予想テーマは確定できません。締切後に確定してください。");
+      return;
+    }
+    const label = optionLabel(match, optionId);
+    const ok = window.confirm(
+      `「${match.title}」の結果を「${label}」で確定します。\n\n確定後、個人別の収支と還元ポイントに反映されます。本当に確定してもいいですか？`,
     );
+    if (!ok) return;
+
+    await syncState(() =>
+      postState(`/api/matches/${match.id}/settle`, { optionId }, "POST", adminToken),
+    );
+    setResultDrafts((current) => ({ ...current, [match.id]: optionId }));
   }
 
-  async function reopenMatch(matchId: string) {
-    await syncState(() => postState(`/api/matches/${matchId}/reopen`, undefined, "POST", adminToken));
+  async function reopenMatch(match: MatchRecord) {
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+    const ok = window.confirm(
+      `「${match.title}」の確定結果を解除します。\n\n個人別の収支と還元ポイントも未確定に戻ります。本当に解除しますか？`,
+    );
+    if (!ok) return;
+
+    await syncState(() => postState(`/api/matches/${match.id}/reopen`, undefined, "POST", adminToken));
+    setResultDrafts((current) => ({ ...current, [match.id]: "" }));
   }
 
   async function deleteMatch(matchId: string) {
@@ -1170,52 +1218,35 @@ function App() {
               <div className="data-panel">
                 <div className="panel-title">
                   <Database size={18} aria-hidden />
-                  試合DB
+                  結果確定
                 </div>
-                <div className="admin-match-list">
-                  {sortedMatches.map((match) => {
-                    const selectedResult = match.resultOptionId ?? "";
-                    return (
-                      <div className="admin-match-row" key={match.id}>
-                        <div>
-                          <strong>{match.title}</strong>
-                          <span>
-                            {match.stage} / {formatDateTime(match.startsAt)} /{" "}
-                            {getStatusLabel(match, now)}
-                          </span>
-                        </div>
-                        <select
-                          aria-label={`${match.title}の結果`}
-                          value={selectedResult}
-                          onChange={(event) => settleMatch(match.id, event.target.value)}
-                        >
-                          <option value="">結果を選択</option>
-                          {match.options.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="icon-action"
-                          type="button"
-                          onClick={() => reopenMatch(match.id)}
-                          title="結果を解除"
-                        >
-                          <RotateCcw size={18} aria-hidden />
-                        </button>
-                        <button
-                          className="icon-action danger"
-                          type="button"
-                          onClick={() => deleteMatch(match.id)}
-                          title="削除"
-                        >
-                          <X size={18} aria-hidden />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <p className="admin-help">
+                  締切済みの予想テーマだけを表示しています。結果を選んでから確定してください。
+                </p>
+                {settleCandidateMatches.length ? (
+                  <div className="admin-settle-list">
+                    {settleCandidateMatches.map((match) => (
+                      <AdminSettleCard
+                        adminToken={adminToken}
+                        key={match.id}
+                        match={match}
+                        now={now}
+                        onDelete={() => deleteMatch(match.id)}
+                        onReopen={() => reopenMatch(match)}
+                        onSelect={(optionId) =>
+                          setResultDrafts((current) => ({ ...current, [match.id]: optionId }))
+                        }
+                        onSettle={() =>
+                          settleMatch(match, resultDrafts[match.id] || match.resultOptionId || "")
+                        }
+                        selectedOptionId={resultDrafts[match.id] || match.resultOptionId || ""}
+                        votes={data.votes}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="確定できる締切済みテーマはありません" />
+                )}
               </div>
 
               <div className="data-panel">
@@ -1495,6 +1526,98 @@ function PersonVoteList({
         <EmptyState title="この人の投票はまだありません" />
       )}
     </div>
+  );
+}
+
+function AdminSettleCard({
+  adminToken,
+  match,
+  now,
+  onDelete,
+  onReopen,
+  onSelect,
+  onSettle,
+  selectedOptionId,
+  votes,
+}: {
+  adminToken: string;
+  match: MatchRecord;
+  now: Date;
+  onDelete: () => void;
+  onReopen: () => void;
+  onSelect: (optionId: string) => void;
+  onSettle: () => void;
+  selectedOptionId: string;
+  votes: VoteRecord[];
+}) {
+  const total = getMatchTotal(match, votes);
+  const matchVotes = getMatchVotes(match, votes);
+  const settled = Boolean(match.resultOptionId);
+
+  return (
+    <article className="admin-settle-card">
+      <MatchHeader match={match} now={now} votes={votes} />
+      <div className="admin-settle-stats">
+        <span>{matchVotes.length}件の投票</span>
+        <span>総プール {formatPoints(total)}</span>
+      </div>
+
+      <div className="option-board selectable admin-options" role="radiogroup" aria-label={`${match.title}の確定結果`}>
+        {match.options.map((option) => {
+          const optionTotal = getOptionTotal(match, votes, option.id);
+          const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
+          const odds = optionTotal > 0 ? total / optionTotal : 0;
+          const selected = selectedOptionId === option.id;
+          const result = match.resultOptionId === option.id;
+
+          return (
+            <button
+              aria-checked={selected}
+              className={[
+                "option-row",
+                selected ? "selected" : "",
+                result ? "result" : "",
+              ].filter(Boolean).join(" ")}
+              key={option.id}
+              onClick={() => onSelect(option.id)}
+              role="radio"
+              type="button"
+            >
+              <div>
+                <strong>{option.label}</strong>
+                <span>{formatPoints(optionTotal)} / {percentage}%</span>
+              </div>
+              <div className="meter" aria-hidden>
+                <span style={{ width: `${percentage}%` }} />
+              </div>
+              <b>{result ? "確定結果" : odds ? `${odds.toFixed(2)}x` : "未形成"}</b>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="admin-settle-actions">
+        <button
+          className="primary-action"
+          disabled={!adminToken || !selectedOptionId || settled}
+          onClick={onSettle}
+          type="button"
+        >
+          <CheckCircle2 size={18} aria-hidden />
+          この結果で確定
+        </button>
+        {settled && (
+          <button className="ghost-action" disabled={!adminToken} onClick={onReopen} type="button">
+            <RotateCcw size={18} aria-hidden />
+            確定解除
+          </button>
+        )}
+        <button className="ghost-action danger" disabled={!adminToken} onClick={onDelete} type="button">
+          <X size={18} aria-hidden />
+          削除
+        </button>
+      </div>
+    </article>
   );
 }
 

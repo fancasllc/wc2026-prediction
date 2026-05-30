@@ -854,6 +854,10 @@ textarea:focus {
   box-shadow: 0 4px 10px rgba(0, 42, 103, 0.08);
 }
 
+.ghost-action.danger {
+  color: var(--red);
+}
+
 .icon-action {
   width: 52px;
   height: 52px;
@@ -1080,6 +1084,7 @@ textarea:focus {
 }
 
 .inline-message {
+  white-space: pre-line;
   margin: 0;
   padding: 10px 12px;
   color: #055c42;
@@ -1089,9 +1094,49 @@ textarea:focus {
   border-radius: 8px;
 }
 
+.admin-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.admin-settle-list,
 .admin-match-list {
   display: grid;
   gap: 10px;
+}
+
+.admin-settle-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #dce9f1;
+  border-radius: 8px;
+}
+
+.admin-settle-stats,
+.admin-settle-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-settle-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-settle-stats span {
+  padding: 8px 10px;
+  color: #52677d;
+  font-size: 0.82rem;
+  font-weight: 950;
+  background: #eef8ff;
+  border-radius: 8px;
+}
+
+.admin-options .option-row.result {
+  background: linear-gradient(180deg, #ffffff, #eef7ff);
 }
 
 .admin-match-row {

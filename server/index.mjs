@@ -254,8 +254,36 @@ function requireAdmin(request, response, next) {
 
   const authHeader = request.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
+  if (!token) {
+    response.status(401).json({
+      error: "Admin authentication required",
+      details: {
+        reason: "Authorization header is missing. Log in again from the admin screen.",
+        authConfigured: true,
+      },
+    });
+    return;
+  }
+
+  if (!token.includes(".")) {
+    response.status(401).json({
+      error: "Admin authentication required",
+      details: {
+        reason: "Admin token format is invalid. Clear the saved token and log in again.",
+        authConfigured: true,
+      },
+    });
+    return;
+  }
+
   if (!verifyAdminToken(token)) {
-    response.status(401).json({ error: "Admin authentication required" });
+    response.status(401).json({
+      error: "Admin authentication required",
+      details: {
+        reason: "Admin token is invalid or expired. Log in again.",
+        authConfigured: true,
+      },
+    });
     return;
   }
 
@@ -414,7 +442,19 @@ app.post("/api/admin/login", (request, response) => {
     return;
   }
 
-  const password = String(request.body.password ?? "");
+  const body = request.body ?? {};
+  const password = String(body.password ?? "");
+  if (!password) {
+    response.status(400).json({
+      error: "Admin password is required",
+      details: {
+        bodyParsed: Boolean(request.body),
+        receivedLength: 0,
+      },
+    });
+    return;
+  }
+
   const passwordBuffer = Buffer.from(password);
   const expectedBuffer = Buffer.from(adminPassword);
   const passwordMatches =
@@ -422,7 +462,14 @@ app.post("/api/admin/login", (request, response) => {
     timingSafeEqual(passwordBuffer, expectedBuffer);
 
   if (!passwordMatches) {
-    response.status(401).json({ error: "Invalid admin password" });
+    response.status(401).json({
+      error: "Invalid admin password",
+      details: {
+        reason: "The entered password does not match Render ADMIN_PASSWORD.",
+        receivedLength: password.length,
+        configured: true,
+      },
+    });
     return;
   }
 
