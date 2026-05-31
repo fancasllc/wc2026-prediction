@@ -434,6 +434,8 @@ function App() {
   const [adminPassword, setAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
+  const [editMatchId, setEditMatchId] = useState("");
+  const [editMatchDraft, setEditMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
@@ -541,6 +543,14 @@ function App() {
           return bTime - aTime;
         }),
     [data.matches, now],
+  );
+
+  const editableMatches = useMemo(
+    () =>
+      data.matches
+        .filter((match) => getMatchVotes(match, data.votes).length === 0)
+        .sort(sortByDateAsc),
+    [data.matches, data.votes],
   );
 
   const selectedMatch = useMemo(() => {
@@ -872,6 +882,55 @@ function App() {
     if (!ok) return;
 
     await syncState(() => postState(`/api/votes/${vote.id}`, undefined, "DELETE", adminToken));
+  }
+
+  function startEditMatch(match: MatchRecord) {
+    setEditMatchId(match.id);
+    setEditMatchDraft({
+      title: match.title,
+      startsAt: match.startsAt,
+      closesAt: match.closesAt,
+      optionsText: match.options.map((option) => option.label).join("\n"),
+    });
+  }
+
+  async function saveMatchEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editMatchId) return;
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+
+    const labels = splitOptions(editMatchDraft.optionsText);
+    if (!editMatchDraft.title.trim() || !editMatchDraft.startsAt) {
+      window.alert("タイトルと開始時刻を入力してください。");
+      return;
+    }
+    if (labels.length < 2) {
+      window.alert("選択肢は2つ以上必要です。");
+      return;
+    }
+
+    const match: MatchRecord = {
+      id: editMatchId,
+      title: editMatchDraft.title.trim(),
+      stage: "",
+      venue: "",
+      startsAt: editMatchDraft.startsAt,
+      closesAt: editMatchDraft.closesAt || editMatchDraft.startsAt,
+      question: "",
+      options: makeOptions(labels),
+    };
+
+    try {
+      await syncState(() => postState(`/api/matches/${editMatchId}`, match, "PUT", adminToken));
+      setEditMatchId("");
+      setEditMatchDraft(emptyMatchDraft);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      window.alert(`試合を更新できませんでした。\n${message}`);
+    }
   }
 
   async function refreshState() {
@@ -1416,6 +1475,101 @@ function App() {
                   DB再同期
                 </button>
               </div>
+
+              <div className="data-panel form-panel">
+                <div className="panel-title">
+                  <ListPlus size={18} aria-hidden />
+                  試合編集
+                </div>
+                <p className="admin-help">
+                  投票がまだ1件もない試合だけ編集できます。
+                </p>
+                {editableMatches.length ? (
+                  <div className="admin-match-list">
+                    {editableMatches.map((match) => (
+                      <button
+                        className={editMatchId === match.id ? "admin-match-row selected" : "admin-match-row"}
+                        key={match.id}
+                        onClick={() => startEditMatch(match)}
+                        type="button"
+                      >
+                        <div>
+                          <strong>{match.title}</strong>
+                          <span>{formatDateTime(match.startsAt)} 開始 / {match.options.length}選択肢</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState title="編集できる未投票の試合はありません" />
+                )}
+
+                {editMatchId && (
+                  <form className="edit-match-form" onSubmit={saveMatchEdit}>
+                    <label>
+                      <span>タイトル</span>
+                      <input
+                        value={editMatchDraft.title}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({ ...current, title: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>開始時刻</span>
+                      <input
+                        type="datetime-local"
+                        value={editMatchDraft.startsAt}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({
+                            ...current,
+                            startsAt: event.target.value,
+                            closesAt: current.closesAt || event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>投票締切</span>
+                      <input
+                        type="datetime-local"
+                        value={editMatchDraft.closesAt}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({ ...current, closesAt: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>選択肢</span>
+                      <textarea
+                        value={editMatchDraft.optionsText}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({
+                            ...current,
+                            optionsText: event.target.value,
+                          }))
+                        }
+                        rows={5}
+                      />
+                    </label>
+                    <div className="button-row">
+                      <button className="primary-action" disabled={!adminToken} type="submit">
+                        保存
+                      </button>
+                      <button
+                        className="ghost-action"
+                        onClick={() => {
+                          setEditMatchId("");
+                          setEditMatchDraft(emptyMatchDraft);
+                        }}
+                        type="button"
+                      >
+                        取り消す
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </div>
           </section>
         )}
@@ -1464,7 +1618,7 @@ function App() {
   );
 }
 
-function getOddsHighlights(match: MatchRecord, votes: VoteRecord[]) {
+function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
   const total = getMatchTotal(match, votes);
   const rows = match.options
     .map((option) => {
@@ -1478,19 +1632,16 @@ function getOddsHighlights(match: MatchRecord, votes: VoteRecord[]) {
     .filter((row) => row.amount > 0);
 
   if (!rows.length) {
-    return {
-      popular: "-",
-      longshot: "-",
-    };
+    return [{ id: "empty", label: "投票後にオッズ表示", oddsText: "-" }];
   }
 
-  const popular = [...rows].sort((a, b) => b.amount - a.amount)[0];
-  const longshot = [...rows].sort((a, b) => b.odds - a.odds)[0];
-
-  return {
-    popular: `${popular.option.label} ${popular.odds.toFixed(2)}x`,
-    longshot: `${longshot.option.label} ${longshot.odds.toFixed(2)}x`,
-  };
+  return rows
+    .sort((a, b) => a.odds - b.odds || b.amount - a.amount || a.option.label.localeCompare(b.option.label, "ja"))
+    .map((row) => ({
+      id: row.option.id,
+      label: row.option.label,
+      oddsText: `${row.odds.toFixed(2)}x`,
+    }));
 }
 
 function MatchSummaryCard({
@@ -1505,15 +1656,10 @@ function MatchSummaryCard({
   onOpen: () => void;
 }) {
   const total = getMatchTotal(match, votes);
-  const odds = getOddsHighlights(match, votes);
-  const status = getStatusLabel(match, now);
-  const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
+  const oddsItems = getOddsTickerItems(match, votes);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
-      <div className="match-meta">
-        <span className={`status-pill ${statusClass}`}>{status}</span>
-      </div>
       <strong>{match.title}</strong>
       <div className="summary-time">
         <span>
@@ -1522,21 +1668,33 @@ function MatchSummaryCard({
         </span>
         <span>{formatDateTime(match.startsAt)} 開始</span>
       </div>
-      <div className="summary-odds">
-        <span>
-          人気
-          <b>{odds.popular}</b>
-        </span>
-        <span>
-          大穴
-          <b>{odds.longshot}</b>
-        </span>
-      </div>
+      <OddsTicker items={oddsItems} />
       <div className="summary-footer">
         <span>総プール {formatPoints(total)}</span>
         <b>詳細へ</b>
       </div>
     </button>
+  );
+}
+
+function OddsTicker({
+  items,
+}: {
+  items: Array<{ id: string; label: string; oddsText: string }>;
+}) {
+  const tickerItems = items.length > 1 ? [...items, ...items] : items;
+
+  return (
+    <div className="summary-odds" aria-label="オッズ一覧">
+      <div className={items.length > 1 ? "odds-track animated" : "odds-track"}>
+        {tickerItems.map((item, index) => (
+          <span className="odds-chip" key={`${item.id}-${index}`}>
+            <b>{item.label}</b>
+            <strong>{item.oddsText}</strong>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -539,6 +539,42 @@ app.post("/api/matches", requireAdmin, async (request, response, next) => {
   }
 });
 
+app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
+  try {
+    const matchId = request.params.id;
+    const match = validateMatch({ ...request.body, id: matchId });
+
+    await withTransaction(async (client) => {
+      const voteResult = await client.query(
+        "select count(*)::int as count from votes where match_id = $1",
+        [matchId],
+      );
+      if (voteResult.rows[0]?.count > 0) {
+        const error = new Error("Cannot edit a match that already has votes");
+        error.status = 409;
+        throw error;
+      }
+
+      const existingResult = await client.query("select id from matches where id = $1 for update", [
+        matchId,
+      ]);
+      if (!existingResult.rowCount) {
+        const error = new Error("Match not found");
+        error.status = 404;
+        throw error;
+      }
+
+      await client.query("delete from match_options where match_id = $1", [matchId]);
+      await insertMatch(match, client);
+    });
+
+    await writeAuditLog("match.update", matchId, { title: match.title });
+    response.json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/matches/import", requireAdmin, async (request, response, next) => {
   try {
     const matches = Array.isArray(request.body.matches) ? request.body.matches : [];
