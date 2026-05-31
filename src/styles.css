@@ -384,13 +384,6 @@ label span {
   overflow-wrap: anywhere;
 }
 
-.summary-question {
-  min-width: 0;
-  color: #60748b;
-  font-weight: 850;
-  overflow-wrap: anywhere;
-}
-
 .summary-time,
 .summary-footer {
   display: flex;
@@ -736,6 +729,74 @@ label span {
   background: rgba(0, 20, 63, 0.26);
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 8px;
+}
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 18, 58, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.confirm-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 390px);
+  padding: 20px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 2px solid #d7eef9;
+  border-radius: 14px;
+  box-shadow: 0 22px 50px rgba(0, 16, 64, 0.32);
+}
+
+.confirm-dialog h2,
+.confirm-dialog p {
+  margin: 0;
+}
+
+.confirm-dialog dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  background: #f1fbff;
+  border: 1px solid #d9ebf5;
+  border-radius: 10px;
+}
+
+.confirm-dialog dl div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+}
+
+.confirm-dialog dt {
+  color: #60748b;
+  font-weight: 900;
+}
+
+.confirm-dialog dd {
+  min-width: 0;
+  margin: 0;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.confirm-note {
+  color: var(--red);
+  font-weight: 950;
+}
+
+.confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .vote-fields,

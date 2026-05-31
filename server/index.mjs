@@ -15,48 +15,71 @@ const adminSessionSecret =
   process.env.ADMIN_SESSION_SECRET ?? process.env.SESSION_SECRET ?? "";
 const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
 
-const defaultMatches = [
+const launchSeedKey = "seed:world-cup-winner-2026-06-12-v1";
+const worldCupWinnerOptions = [
+  "フランス",
+  "スペイン",
+  "アルゼンチン",
+  "イングランド",
+  "ポルトガル",
+  "ブラジル",
+  "オランダ",
+  "モロッコ",
+  "ベルギー",
+  "ドイツ",
+  "クロアチア",
+  "コロンビア",
+  "セネガル",
+  "メキシコ",
+  "アメリカ",
+  "ウルグアイ",
+  "日本",
+  "スイス",
+  "イラン",
+  "トルコ",
+  "エクアドル",
+  "オーストリア",
+  "韓国",
+  "オーストラリア",
+  "アルジェリア",
+  "エジプト",
+  "カナダ",
+  "ノルウェー",
+  "パナマ",
+  "コートジボワール",
+  "スウェーデン",
+  "パラグアイ",
+  "チェコ",
+  "スコットランド",
+  "チュニジア",
+  "コンゴ民主共和国",
+  "ウズベキスタン",
+  "カタール",
+  "イラク",
+  "南アフリカ",
+  "サウジアラビア",
+  "ヨルダン",
+  "ボスニア・ヘルツェゴビナ",
+  "カーボベルデ",
+  "ガーナ",
+  "キュラソー",
+  "ハイチ",
+  "ニュージーランド",
+];
+
+const launchMatches = [
   {
-    id: "sample-jpn-cmr",
-    title: "日本 vs カメルーン",
-    stage: "グループステージ",
-    venue: "バンクーバー",
-    startsAt: "2026-06-14T10:00",
-    closesAt: "2026-06-14T10:00",
-    question: "90分終了時の勝敗",
-    options: [
-      { id: "jpn-win", label: "日本勝利" },
-      { id: "draw", label: "引き分け" },
-      { id: "cmr-win", label: "カメルーン勝利" },
-    ],
-  },
-  {
-    id: "sample-topscorer",
-    title: "大会得点王予想",
-    stage: "大会通算",
-    venue: "全会場",
-    startsAt: "2026-06-12T09:00",
-    closesAt: "2026-06-12T09:00",
-    question: "大会終了時の得点王",
-    options: [
-      { id: "mbappe", label: "エムバペ" },
-      { id: "haaland", label: "ハーランド" },
-      { id: "other", label: "その他の選手" },
-    ],
-  },
-  {
-    id: "sample-scoreline",
-    title: "決勝スコアレンジ",
-    stage: "決勝",
-    venue: "ニューヨーク・ニュージャージー",
-    startsAt: "2026-07-20T04:00",
-    closesAt: "2026-07-20T04:00",
-    question: "決勝の合計得点数",
-    options: [
-      { id: "under-2", label: "2点以下" },
-      { id: "three-four", label: "3〜4点" },
-      { id: "over-5", label: "5点以上" },
-    ],
+    id: "world-cup-winner-2026",
+    title: "ワールドカップ優勝国",
+    stage: "",
+    venue: "",
+    startsAt: "2026-06-12T04:00",
+    closesAt: "2026-06-12T04:00",
+    question: "",
+    options: worldCupWinnerOptions.map((label, index) => ({
+      id: `winner-${String(index + 1).padStart(2, "0")}`,
+      label,
+    })),
   },
 ];
 
@@ -86,14 +109,14 @@ function normalizeName(name) {
 
 function validateMatch(input) {
   const title = String(input.title ?? "").trim();
-  const stage = String(input.stage ?? "").trim() || "未設定";
-  const venue = String(input.venue ?? "").trim() || "未設定";
+  const stage = String(input.stage ?? "").trim();
+  const venue = String(input.venue ?? "").trim();
   const startsAt = String(input.startsAt ?? "").trim();
   const closesAt = String(input.closesAt ?? startsAt).trim();
   const question = String(input.question ?? "").trim();
   const options = Array.isArray(input.options) ? input.options : [];
 
-  if (!title || !startsAt || !closesAt || !question || options.length < 2) {
+  if (!title || !startsAt || !closesAt || options.length < 2) {
     const error = new Error("Invalid match payload");
     error.status = 400;
     throw error;
@@ -195,14 +218,40 @@ async function initializeDatabase() {
       detail jsonb not null default '{}'::jsonb,
       created_at timestamptz not null default now()
     );
+
+    create table if not exists app_settings (
+      key text primary key,
+      value text not null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
   `);
 
-  const countResult = await query("select count(*)::int as count from matches");
-  if (countResult.rows[0].count === 0) {
-    for (const match of defaultMatches) {
-      await insertMatch(match);
+  await seedLaunchDataOnce();
+}
+
+async function seedLaunchDataOnce() {
+  const marker = await query("select value from app_settings where key = $1", [launchSeedKey]);
+  if (marker.rowCount) return;
+
+  await withTransaction(async (client) => {
+    await client.query("delete from votes");
+    await client.query("delete from users");
+    await client.query("delete from matches");
+
+    for (const match of launchMatches) {
+      await insertMatch(match, client);
     }
-  }
+
+    await client.query(
+      `
+        insert into app_settings (key, value, updated_at)
+        values ($1, $2, now())
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `,
+      [launchSeedKey, "done"],
+    );
+  });
 }
 
 function signAdminToken(expiresAt) {

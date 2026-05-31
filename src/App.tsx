@@ -58,23 +58,25 @@ type VoteDraft = {
   optionId: string;
 };
 
+type PendingVote = {
+  matchId: string;
+  optionId: string;
+  optionLabel: string;
+  userName: string;
+  amount: number;
+};
+
 type MatchDraft = {
   title: string;
-  stage: string;
-  venue: string;
   startsAt: string;
   closesAt: string;
-  question: string;
   optionsText: string;
 };
 
 type CsvMatchRow = {
   title?: string;
-  stage?: string;
-  venue?: string;
   startsAt?: string;
   closesAt?: string;
-  question?: string;
   options?: string;
 };
 
@@ -85,7 +87,7 @@ type ApiErrorBody = {
   details?: Record<string, string | number | boolean | null | undefined>;
 };
 
-const STORAGE_KEY = "wc2026-prediction-pool:data:v2";
+const STORAGE_KEY = "wc2026-prediction-pool:data:v3";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 
@@ -139,64 +141,82 @@ async function requestAdminToken(password: string) {
   });
 }
 
+const worldCupWinnerLabels = [
+  "フランス",
+  "スペイン",
+  "アルゼンチン",
+  "イングランド",
+  "ポルトガル",
+  "ブラジル",
+  "オランダ",
+  "モロッコ",
+  "ベルギー",
+  "ドイツ",
+  "クロアチア",
+  "コロンビア",
+  "セネガル",
+  "メキシコ",
+  "アメリカ",
+  "ウルグアイ",
+  "日本",
+  "スイス",
+  "イラン",
+  "トルコ",
+  "エクアドル",
+  "オーストリア",
+  "韓国",
+  "オーストラリア",
+  "アルジェリア",
+  "エジプト",
+  "カナダ",
+  "ノルウェー",
+  "パナマ",
+  "コートジボワール",
+  "スウェーデン",
+  "パラグアイ",
+  "チェコ",
+  "スコットランド",
+  "チュニジア",
+  "コンゴ民主共和国",
+  "ウズベキスタン",
+  "カタール",
+  "イラク",
+  "南アフリカ",
+  "サウジアラビア",
+  "ヨルダン",
+  "ボスニア・ヘルツェゴビナ",
+  "カーボベルデ",
+  "ガーナ",
+  "キュラソー",
+  "ハイチ",
+  "ニュージーランド",
+];
+
 const defaultMatches: MatchRecord[] = [
   {
-    id: "sample-jpn-cmr",
-    title: "日本 vs カメルーン",
-    stage: "グループステージ",
-    venue: "バンクーバー",
-    startsAt: "2026-06-14T10:00",
-    closesAt: "2026-06-14T10:00",
-    question: "90分終了時の勝敗",
-    options: [
-      { id: "jpn-win", label: "日本勝利" },
-      { id: "draw", label: "引き分け" },
-      { id: "cmr-win", label: "カメルーン勝利" },
-    ],
-  },
-  {
-    id: "sample-topscorer",
-    title: "大会得点王予想",
-    stage: "大会通算",
-    venue: "全会場",
-    startsAt: "2026-06-12T09:00",
-    closesAt: "2026-06-12T09:00",
-    question: "大会終了時の得点王",
-    options: [
-      { id: "mbappe", label: "エムバペ" },
-      { id: "haaland", label: "ハーランド" },
-      { id: "other", label: "その他の選手" },
-    ],
-  },
-  {
-    id: "sample-scoreline",
-    title: "決勝スコアレンジ",
-    stage: "決勝",
-    venue: "ニューヨーク・ニュージャージー",
-    startsAt: "2026-07-20T04:00",
-    closesAt: "2026-07-20T04:00",
-    question: "決勝の合計得点数",
-    options: [
-      { id: "under-2", label: "2点以下" },
-      { id: "three-four", label: "3〜4点" },
-      { id: "over-5", label: "5点以上" },
-    ],
+    id: "world-cup-winner-2026",
+    title: "ワールドカップ優勝国",
+    stage: "",
+    venue: "",
+    startsAt: "2026-06-12T04:00",
+    closesAt: "2026-06-12T04:00",
+    question: "",
+    options: worldCupWinnerLabels.map((label, index) => ({
+      id: `winner-${String(index + 1).padStart(2, "0")}`,
+      label,
+    })),
   },
 ];
 
 const emptyMatchDraft: MatchDraft = {
   title: "",
-  stage: "グループステージ",
-  venue: "",
-  startsAt: "2026-06-12T09:00",
-  closesAt: "2026-06-12T09:00",
-  question: "",
-  optionsText: "日本勝利\n引き分け\n相手勝利",
+  startsAt: "2026-06-12T04:00",
+  closesAt: "2026-06-12T04:00",
+  optionsText: worldCupWinnerLabels.join("\n"),
 };
 
-const csvTemplate = `title,stage,venue,startsAt,closesAt,question,options
-日本 vs カメルーン,グループステージ,バンクーバー,2026-06-14T10:00,2026-06-14T10:00,90分終了時の勝敗,日本勝利|引き分け|カメルーン勝利
-大会得点王予想,大会通算,全会場,2026-06-12T09:00,2026-06-12T09:00,大会終了時の得点王,エムバペ|ハーランド|その他の選手`;
+const csvTemplate = `title,startsAt,closesAt,options
+ワールドカップ優勝国,2026-06-12T04:00,2026-06-12T04:00,${worldCupWinnerLabels.join("|")}`;
 
 const pointsFormatter = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0,
@@ -371,24 +391,23 @@ function parseCsvMatches(text: string) {
     .map((row) => {
       const title = row.title?.trim() ?? "";
       const startsAt = row.startsAt?.trim() ?? "";
-      const question = row.question?.trim() ?? "";
       const labels = (row.options ?? "")
         .split("|")
         .map((label) => label.trim())
         .filter(Boolean);
 
-      if (!title || !startsAt || !question || labels.length < 2) {
+      if (!title || !startsAt || labels.length < 2) {
         return null;
       }
 
       return {
         id: createId("match"),
         title,
-        stage: row.stage?.trim() || "未設定",
-        venue: row.venue?.trim() || "未設定",
+        stage: "",
+        venue: "",
         startsAt,
         closesAt: row.closesAt?.trim() || startsAt,
-        question,
+        question: "",
         options: makeOptions(labels),
       } satisfies MatchRecord;
     })
@@ -416,6 +435,7 @@ function App() {
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
+  const [pendingVote, setPendingVote] = useState<PendingVote | null>(null);
   const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -524,6 +544,11 @@ function App() {
   const selectedMatch = useMemo(() => {
     return data.matches.find((match) => match.id === selectedMatchId) ?? sortedMatches[0];
   }, [data.matches, selectedMatchId, sortedMatches]);
+
+  const pendingMatch = useMemo(() => {
+    if (!pendingVote) return undefined;
+    return data.matches.find((match) => match.id === pendingVote.matchId);
+  }, [data.matches, pendingVote]);
 
   const userRows = useMemo(() => {
     return data.knownUsers
@@ -638,11 +663,30 @@ function App() {
       return;
     }
 
+    const selectedOption = match.options.find((option) => option.id === draft.optionId);
+    setPendingVote({
+      matchId: match.id,
+      optionId: draft.optionId,
+      optionLabel: selectedOption?.label ?? "未選択",
+      userName: name,
+      amount,
+    });
+  }
+
+  async function submitConfirmedVote() {
+    if (!pendingVote) return;
+    const match = data.matches.find((item) => item.id === pendingVote.matchId);
+    if (!match) {
+      window.alert("この予想テーマは見つかりません。画面を更新してください。");
+      setPendingVote(null);
+      return;
+    }
+
     try {
       await syncState(async () => {
         const latestState = await fetchAppState();
-        const latestMatch = latestState.matches.find((item) => item.id === match.id);
-        const latestOption = latestMatch?.options.find((option) => option.id === draft.optionId);
+        const latestMatch = latestState.matches.find((item) => item.id === pendingVote.matchId);
+        const latestOption = latestMatch?.options.find((option) => option.id === pendingVote.optionId);
 
         if (!latestMatch) {
           setData(latestState);
@@ -660,14 +704,15 @@ function App() {
         }
 
         return postState("/api/votes", {
-          matchId: match.id,
-          optionId: draft.optionId,
-          userName: name,
-          amount,
+          matchId: pendingVote.matchId,
+          optionId: pendingVote.optionId,
+          userName: pendingVote.userName,
+          amount: pendingVote.amount,
         });
       });
-      localStorage.setItem(LAST_NAME_KEY, name);
-      updateVoteDraft(match.id, { name, amount: "1000" });
+      localStorage.setItem(LAST_NAME_KEY, pendingVote.userName);
+      updateVoteDraft(pendingVote.matchId, { name: pendingVote.userName, amount: "1000" });
+      setPendingVote(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       window.alert(
@@ -676,10 +721,10 @@ function App() {
           message,
           "",
           "送信内容",
-          `matchId: ${match.id}`,
-          `optionId: ${draft.optionId}`,
-          `userName: ${name}`,
-          `amount: ${amount}`,
+          `matchId: ${pendingVote.matchId}`,
+          `optionId: ${pendingVote.optionId}`,
+          `userName: ${pendingVote.userName}`,
+          `amount: ${pendingVote.amount}`,
         ].join("\n"),
       );
     }
@@ -689,8 +734,8 @@ function App() {
     event.preventDefault();
     const labels = splitOptions(matchDraft.optionsText);
 
-    if (!matchDraft.title.trim() || !matchDraft.startsAt || !matchDraft.question.trim()) {
-      window.alert("タイトル、開始時刻、予想テーマを入力してください。");
+    if (!matchDraft.title.trim() || !matchDraft.startsAt) {
+      window.alert("タイトルと開始時刻を入力してください。");
       return;
     }
 
@@ -702,11 +747,11 @@ function App() {
     const match: MatchRecord = {
       id: createId("match"),
       title: matchDraft.title.trim(),
-      stage: matchDraft.stage.trim() || "未設定",
-      venue: matchDraft.venue.trim() || "未設定",
+      stage: "",
+      venue: "",
       startsAt: matchDraft.startsAt,
       closesAt: matchDraft.closesAt || matchDraft.startsAt,
-      question: matchDraft.question.trim(),
+      question: "",
       options: makeOptions(labels),
     };
 
@@ -1141,25 +1186,6 @@ function App() {
                     />
                   </label>
                   <label>
-                    <span>ステージ</span>
-                    <input
-                      value={matchDraft.stage}
-                      onChange={(event) =>
-                        setMatchDraft((current) => ({ ...current, stage: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>会場</span>
-                    <input
-                      value={matchDraft.venue}
-                      onChange={(event) =>
-                        setMatchDraft((current) => ({ ...current, venue: event.target.value }))
-                      }
-                      placeholder="バンクーバー"
-                    />
-                  </label>
-                  <label>
                     <span>開始時刻</span>
                     <input
                       type="datetime-local"
@@ -1181,16 +1207,6 @@ function App() {
                       onChange={(event) =>
                         setMatchDraft((current) => ({ ...current, closesAt: event.target.value }))
                       }
-                    />
-                  </label>
-                  <label className="wide">
-                    <span>予想テーマ</span>
-                    <input
-                      value={matchDraft.question}
-                      onChange={(event) =>
-                        setMatchDraft((current) => ({ ...current, question: event.target.value }))
-                      }
-                      placeholder="90分終了時の勝敗"
                     />
                   </label>
                   <label className="wide">
@@ -1391,6 +1407,42 @@ function App() {
           管理画面
         </button>
       )}
+      {pendingVote && (
+        <div className="confirm-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
+            <p className="eyebrow">Confirm vote</p>
+            <h2 id="vote-confirm-title">この内容で投票しますか？</h2>
+            <dl>
+              <div>
+                <dt>予想テーマ</dt>
+                <dd>{pendingMatch?.title ?? "選択中のテーマ"}</dd>
+              </div>
+              <div>
+                <dt>選択</dt>
+                <dd>{pendingVote.optionLabel}</dd>
+              </div>
+              <div>
+                <dt>名前</dt>
+                <dd>{pendingVote.userName}</dd>
+              </div>
+              <div>
+                <dt>投票pt</dt>
+                <dd>{formatPoints(pendingVote.amount)}</dd>
+              </div>
+            </dl>
+            <p className="confirm-note">投票後は取り消せません。</p>
+            <div className="confirm-actions">
+              <button className="ghost-action" type="button" onClick={() => setPendingVote(null)}>
+                取り消す
+              </button>
+              <button className="primary-action" type="button" onClick={submitConfirmedVote} disabled={isSyncing}>
+                <WalletCards size={18} aria-hidden />
+                投票する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1444,11 +1496,8 @@ function MatchSummaryCard({
     <button className="summary-card" type="button" onClick={onOpen}>
       <div className="match-meta">
         <span className={`status-pill ${statusClass}`}>{status}</span>
-        <span>{match.stage}</span>
-        <span>{match.venue}</span>
       </div>
       <strong>{match.title}</strong>
-      <span className="summary-question">{match.question}</span>
       <div className="summary-time">
         <span>
           <Clock3 size={16} aria-hidden />
@@ -1491,11 +1540,8 @@ function MatchHeader({
     <div className="match-header">
       <div className="match-meta">
         <span className={`status-pill ${statusClass}`}>{status}</span>
-        <span>{match.stage}</span>
-        <span>{match.venue}</span>
       </div>
       <h3>{match.title}</h3>
-      <p>{match.question}</p>
       <div className="match-timebar">
         <span>
           <CalendarClock size={16} aria-hidden />
