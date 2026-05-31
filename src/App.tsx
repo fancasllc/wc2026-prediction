@@ -855,9 +855,25 @@ function App() {
   }
 
   async function deleteMatch(matchId: string) {
-    const ok = window.confirm("この試合と関連する投票を削除しますか？");
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+    const match = data.matches.find((item) => item.id === matchId);
+    const ok = window.confirm(
+      `「${match?.title ?? "この試合"}」を削除しますか？\n\n投票が1件でもある試合は削除できません。`,
+    );
     if (!ok) return;
-    await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE", adminToken));
+    try {
+      await syncState(() => postState(`/api/matches/${matchId}`, undefined, "DELETE", adminToken));
+      if (editMatchId === matchId) {
+        setEditMatchId("");
+        setEditMatchDraft(emptyMatchDraft);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      window.alert(`試合を削除できませんでした。\n${message}`);
+    }
   }
 
   async function deleteVote(vote: VoteRecord) {
@@ -1567,6 +1583,14 @@ function App() {
                         取り消す
                       </button>
                     </div>
+                    <button
+                      className="ghost-action danger"
+                      disabled={!adminToken}
+                      onClick={() => deleteMatch(editMatchId)}
+                      type="button"
+                    >
+                      削除
+                    </button>
                   </form>
                 )}
               </div>

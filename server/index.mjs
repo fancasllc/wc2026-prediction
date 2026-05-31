@@ -712,7 +712,21 @@ app.post("/api/matches/:id/reopen", requireAdmin, async (request, response, next
 
 app.delete("/api/matches/:id", requireAdmin, async (request, response, next) => {
   try {
-    await query("delete from matches where id = $1", [request.params.id]);
+    const result = await query(
+      `
+        delete from matches
+        where id = $1
+          and not exists (select 1 from votes where match_id = $1)
+        returning id
+      `,
+      [request.params.id],
+    );
+    if (!result.rowCount) {
+      response.status(409).json({
+        error: "Match cannot be deleted after votes have been submitted",
+      });
+      return;
+    }
     await writeAuditLog("match.delete", request.params.id);
     response.json({ state: await getState() });
   } catch (error) {
