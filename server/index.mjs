@@ -568,7 +568,7 @@ app.post("/api/votes", async (request, response, next) => {
     const userName = normalizeName(body.userName);
     const amount = Number(body.amount);
 
-    if (!matchId || !optionId || !userName || !Number.isFinite(amount) || amount <= 0) {
+    if (!matchId || !optionId || !userName || !Number.isFinite(amount) || amount < 100) {
       response.status(400).json({ error: "Invalid vote payload" });
       return;
     }

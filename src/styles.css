@@ -807,6 +807,33 @@ label span {
   gap: 10px;
 }
 
+.amount-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px 48px;
+  gap: 8px;
+}
+
+.amount-control input {
+  min-width: 0;
+}
+
+.amount-control button {
+  min-height: 50px;
+  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 950;
+  background: #ffffff;
+  border: 2px solid #d9e5ec;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0, 42, 103, 0.08);
+}
+
+.amount-control button:disabled {
+  color: #a9b7c4;
+  background: #eef3f7;
+  box-shadow: none;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -1083,6 +1110,60 @@ textarea:focus {
   color: var(--ink);
   font-weight: 950;
   overflow-wrap: anywhere;
+}
+
+.balance-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.balance-history-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  width: 100%;
+  padding: 12px;
+  color: var(--ink);
+  text-align: left;
+  background: #ffffff;
+  border: 1px solid #dceaf4;
+  border-radius: 8px;
+}
+
+.balance-history-card > span {
+  color: #60748b;
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.balance-history-card > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.balance-history-card strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.balance-history-card > div:first-child span,
+.balance-history-card small {
+  color: #60748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.balance-history-card > div:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  grid-row: span 2;
+}
+
+.balance-history-card b {
+  font-size: 1.15rem;
+  font-weight: 950;
 }
 
 .form-panel {

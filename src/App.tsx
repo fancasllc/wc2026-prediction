@@ -90,6 +90,8 @@ type ApiErrorBody = {
 const STORAGE_KEY = "wc2026-prediction-pool:data:v3";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
+const MIN_VOTE_AMOUNT = 100;
+const VOTE_AMOUNT_STEP = 100;
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const { headers, ...requestOptions } = options ?? {};
@@ -598,8 +600,8 @@ function App() {
     );
   }, [data.matches, data.votes, selectedPersonVotes]);
 
-  const selectedAwardRows = useMemo(() => {
-    return selectedPersonVotes
+  const selectedBalanceRows = useMemo(() => {
+    const settledRows = selectedPersonVotes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match
@@ -607,14 +609,27 @@ function App() {
           : { gross: 0, net: 0, won: false, settled: false };
         return { vote, match, payout };
       })
-      .filter((row) => row.payout.settled && row.payout.won);
+      .filter((row) => row.payout.settled)
+      .sort((a, b) => {
+        const aTime = new Date(a.match?.settledAt ?? a.vote.createdAt).getTime();
+        const bTime = new Date(b.match?.settledAt ?? b.vote.createdAt).getTime();
+        return aTime - bTime;
+      });
+
+    let balance = 0;
+    return settledRows
+      .map((row) => {
+        balance += row.payout.net;
+        return { ...row, balance };
+      })
+      .reverse();
   }, [data.matches, data.votes, selectedPersonVotes]);
 
   function getDraft(match: MatchRecord): VoteDraft {
     return (
       voteDrafts[match.id] ?? {
         name: localStorage.getItem(LAST_NAME_KEY) ?? "",
-        amount: "1000",
+        amount: String(MIN_VOTE_AMOUNT),
         optionId: match.options[0]?.id ?? "",
       }
     );
@@ -625,7 +640,7 @@ function App() {
       ...current,
       [matchId]: {
         name: current[matchId]?.name ?? localStorage.getItem(LAST_NAME_KEY) ?? "",
-        amount: current[matchId]?.amount ?? "1000",
+        amount: current[matchId]?.amount ?? String(MIN_VOTE_AMOUNT),
         optionId: current[matchId]?.optionId ?? "",
         ...patch,
       },
@@ -658,8 +673,8 @@ function App() {
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      window.alert("投票ポイントは1以上で入力してください。");
+    if (!Number.isFinite(amount) || amount < MIN_VOTE_AMOUNT) {
+      window.alert(`投票ポイントは${MIN_VOTE_AMOUNT}ポイント以上で入力してください。`);
       return;
     }
 
@@ -711,7 +726,10 @@ function App() {
         });
       });
       localStorage.setItem(LAST_NAME_KEY, pendingVote.userName);
-      updateVoteDraft(pendingVote.matchId, { name: pendingVote.userName, amount: "1000" });
+      updateVoteDraft(pendingVote.matchId, {
+        name: pendingVote.userName,
+        amount: String(MIN_VOTE_AMOUNT),
+      });
       setPendingVote(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -1114,23 +1132,23 @@ function App() {
               />
             </div>
 
+            <div className="data-panel">
+              <div className="panel-title">
+                <History size={18} aria-hidden />
+                収支履歴
+              </div>
+              {selectedBalanceRows.length ? (
+                <PersonBalanceHistory rows={selectedBalanceRows} />
+              ) : (
+                <EmptyState title="確定済みの収支履歴はまだありません" />
+              )}
+            </div>
+
             <PersonVoteList
               votes={selectedPersonVotes}
               matches={data.matches}
               allVotes={data.votes}
             />
-
-            <div className="data-panel">
-              <div className="panel-title">
-                <Trophy size={18} aria-hidden />
-                ポイント獲得履歴
-              </div>
-              {selectedAwardRows.length ? (
-                <PersonAwardList rows={selectedAwardRows} />
-              ) : (
-                <EmptyState title="獲得履歴はまだありません" />
-              )}
-            </div>
           </section>
         )}
 
@@ -1410,8 +1428,7 @@ function App() {
       {pendingVote && (
         <div className="confirm-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
-            <p className="eyebrow">Confirm vote</p>
-            <h2 id="vote-confirm-title">この内容で投票しますか？</h2>
+            <p className="eyebrow" id="vote-confirm-title">Confirm vote</p>
             <dl>
               <div>
                 <dt>予想テーマ</dt>
@@ -1583,7 +1600,7 @@ function PersonVoteList({
             const status = getVoteOutcomeText(payout);
 
             return (
-              <article className="person-vote-card" key={vote.id}>
+              <article className="person-vote-card" id={`vote-detail-${vote.id}`} key={vote.id}>
                 <div>
                   <strong>{match?.title ?? "削除済み"}</strong>
                   <span>{formatDateTime(vote.createdAt)}</span>
@@ -1717,45 +1734,52 @@ function AdminSettleCard({
   );
 }
 
-function PersonAwardList({
+function PersonBalanceHistory({
   rows,
 }: {
   rows: Array<{
     vote: VoteRecord;
     match: MatchRecord | undefined;
     payout: { gross: number; net: number; won: boolean; settled: boolean };
+    balance: number;
   }>;
 }) {
+  function scrollToVote(voteId: string) {
+    document.getElementById(`vote-detail-${voteId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
   return (
-    <div className="person-vote-list">
-      {rows.map(({ vote, match, payout }) => (
-        <article className="person-vote-card" key={vote.id}>
+    <div className="balance-history-list">
+      {rows.map(({ vote, match, payout, balance }) => (
+        <button
+          className="balance-history-card"
+          key={vote.id}
+          onClick={() => scrollToVote(vote.id)}
+          type="button"
+        >
           <div>
             <strong>{match?.title ?? "削除済み"}</strong>
             <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
           </div>
-          <dl>
-            <div>
-              <dt>的中選択</dt>
-              <dd>{optionLabel(match, vote.optionId)}</dd>
-            </div>
-            <div>
-              <dt>投票pt</dt>
-              <dd>{formatPoints(vote.amount)}</dd>
-            </div>
-            <div>
-              <dt>獲得pt</dt>
-              <dd>{formatPoints(payout.gross)}</dd>
-            </div>
-            <div>
-              <dt>収支</dt>
-              <dd className={payout.net >= 0 ? "positive" : "negative"}>
-                {payout.net >= 0 ? "+" : ""}
-                {formatPoints(payout.net)}
-              </dd>
-            </div>
-          </dl>
-        </article>
+          <span>{optionLabel(match, vote.optionId)}</span>
+          <div>
+            <b className={payout.net >= 0 ? "positive" : "negative"}>
+              {payout.net >= 0 ? "+" : ""}
+              {formatPoints(payout.net)}
+            </b>
+            <small>
+              確定収支
+              <strong className={balance >= 0 ? "positive" : "negative"}>
+                {" "}
+                {balance >= 0 ? "+" : ""}
+                {formatPoints(balance)}
+              </strong>
+            </small>
+          </div>
+        </button>
       ))}
     </div>
   );
@@ -1783,6 +1807,12 @@ function VoteForm({
   const open = isMatchOpen(match, now);
   const canSubmit = open && hasRemoteState && !isSaving;
   const total = getMatchTotal(match, votes);
+  const currentAmount = Number(draft.amount) || MIN_VOTE_AMOUNT;
+
+  function adjustAmount(delta: number) {
+    const nextAmount = Math.max(MIN_VOTE_AMOUNT, currentAmount + delta);
+    onChange({ amount: String(nextAmount) });
+  }
 
   useEffect(() => {
     if (!draft.optionId && match.options[0]?.id) {
@@ -1834,15 +1864,33 @@ function VoteForm({
           />
         </label>
         <label>
-          <span>投票pt</span>
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={draft.amount}
-            onChange={(event) => onChange({ amount: event.target.value })}
-            disabled={!open || !hasRemoteState || isSaving}
-          />
+          <span>投票pt（最低100ポイント）</span>
+          <div className="amount-control">
+            <input
+              type="number"
+              min={MIN_VOTE_AMOUNT}
+              step={VOTE_AMOUNT_STEP}
+              value={draft.amount}
+              onChange={(event) => onChange({ amount: event.target.value })}
+              disabled={!open || !hasRemoteState || isSaving}
+            />
+            <button
+              aria-label={`${VOTE_AMOUNT_STEP}ポイント減らす`}
+              disabled={!open || !hasRemoteState || isSaving || currentAmount <= MIN_VOTE_AMOUNT}
+              onClick={() => adjustAmount(-VOTE_AMOUNT_STEP)}
+              type="button"
+            >
+              -
+            </button>
+            <button
+              aria-label={`${VOTE_AMOUNT_STEP}ポイント増やす`}
+              disabled={!open || !hasRemoteState || isSaving}
+              onClick={() => adjustAmount(VOTE_AMOUNT_STEP)}
+              type="button"
+            >
+              +
+            </button>
+          </div>
         </label>
         <button className="primary-action" type="submit" disabled={!canSubmit}>
           <WalletCards size={18} aria-hidden />
