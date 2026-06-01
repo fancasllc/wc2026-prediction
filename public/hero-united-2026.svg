@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 700" role="img" aria-labelledby="title desc">
+  <title id="title">2026 Soccer World Prediction Banner</title>
+  <desc id="desc">Mint and sky blue soccer themed banner with a trophy, ball, and large 2026 text.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#78efb8"/>
+      <stop offset="0.5" stop-color="#87e6cf"/>
+      <stop offset="1" stop-color="#82d5e5"/>
+    </linearGradient>
+    <linearGradient id="cup" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff6a8"/>
+      <stop offset="0.22" stop-color="#d99c22"/>
+      <stop offset="0.54" stop-color="#8a5a16"/>
+      <stop offset="0.8" stop-color="#f5c64c"/>
+      <stop offset="1" stop-color="#7c5115"/>
+    </linearGradient>
+    <linearGradient id="ballShade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.68" stop-color="#f0f3f7"/>
+      <stop offset="1" stop-color="#cbd3dc"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="13" flood-color="#08456d" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1140" height="700" fill="url(#bg)"/>
+  <path d="M0 560 C220 500 360 625 560 565 S910 420 1140 500 V700 H0 Z" fill="#ffffff" opacity="0.16"/>
+  <text x="28" y="52" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800">ASO World</text>
+  <text x="170" y="508" fill="#00629b" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="350" font-weight="900" opacity="0.98">2026</text>
+  <g filter="url(#shadow)" transform="translate(300 145)">
+    <path d="M95 0 C135 18 150 70 132 122 C120 158 93 173 84 205 H111 V238 H28 V205 H56 C48 174 18 157 8 120 C-7 68 15 17 54 0 C62 24 88 24 95 0 Z" fill="url(#cup)"/>
+    <path d="M52 206 H88 L102 238 H38 Z" fill="#9c6515"/>
+    <path d="M27 240 H116 V266 H27 Z" fill="#714514"/>
+    <path d="M38 250 H104" stroke="#e7c24e" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <g filter="url(#shadow)" transform="translate(615 110)">
+    <circle cx="178" cy="178" r="150" fill="url(#ballShade)"/>
+    <path d="M178 38 C247 74 286 123 302 190 C254 178 220 151 196 104 C183 80 178 58 178 38 Z" fill="#ffffff"/>
+    <path d="M109 65 C66 102 47 154 53 217 C95 204 126 169 144 115 C154 87 145 72 109 65 Z" fill="#23b559"/>
+    <path d="M260 88 C304 122 324 170 318 226 C279 215 251 180 236 129 C229 105 237 92 260 88 Z" fill="#ce1f31"/>
+    <path d="M117 256 C157 302 223 318 277 281 C232 267 194 240 159 198 C139 220 125 240 117 256 Z" fill="#224a9a"/>
+    <path d="M79 92 C128 165 185 225 290 265" fill="none" stroke="#e0e5ea" stroke-width="12" stroke-linecap="round"/>
+    <path d="M92 286 C128 228 182 163 264 76" fill="none" stroke="#dbe1e8" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="178" cy="178" r="150" fill="none" stroke="#d8e0e9" stroke-width="5"/>
+  </g>
+  <text x="640" y="545" fill="#3d4751" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="58" font-weight="900">UNITED</text>
+  <text x="890" y="545" fill="#3d4751" font-family="Arial, Helvetica, sans-serif" font-size="58">2026</text>
+</svg>

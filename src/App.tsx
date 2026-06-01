@@ -1015,16 +1015,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <span className="confetti-dot c1" aria-hidden />
-        <span className="confetti-dot c2" aria-hidden />
-        <span className="confetti-dot c3" aria-hidden />
-        <div className="brand-block">
-          <div>
-            <p className="eyebrow">WC 2026 Prediction Pool</p>
-            <h1>ワールドカップ予想プール</h1>
-          </div>
-        </div>
-        <div className="hero-ball" aria-hidden>⚽</div>
+        <img src="/hero-united-2026.svg" alt="2026 サッカーワールド予想" />
       </header>
 
       <nav className="tabs" aria-label="メインナビゲーション">
