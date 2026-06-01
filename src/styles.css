@@ -1,6 +1,6 @@
 :root {
   color: #071a39;
-  background: #57d9bc;
+  background: #07316f;
   font-family:
     Inter, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo,
     sans-serif;
@@ -28,8 +28,9 @@
 
 html {
   background:
-    radial-gradient(circle at 80% 3%, rgba(255, 255, 255, 0.32), transparent 22rem),
-    linear-gradient(160deg, #78efb8 0%, #2dbfc6 42%, #075caa 100%);
+    radial-gradient(circle at 14% 8%, rgba(36, 142, 255, 0.44), transparent 13rem),
+    radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.18), transparent 18rem),
+    linear-gradient(160deg, #061a3f 0%, #074da5 48%, #03245c 100%);
 }
 
 body {
@@ -37,8 +38,8 @@ body {
   min-width: 320px;
   font-size: 15px;
   background:
-    radial-gradient(circle at 10% 8%, rgba(255, 232, 47, 0.22), transparent 10rem),
-    radial-gradient(circle at 90% 34%, rgba(255, 255, 255, 0.24), transparent 9rem),
+    radial-gradient(circle at 10% 8%, rgba(50, 149, 255, 0.24), transparent 10rem),
+    radial-gradient(circle at 90% 34%, rgba(255, 255, 255, 0.13), transparent 9rem),
     transparent;
 }
 
@@ -48,8 +49,9 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(120deg, transparent 0 24%, rgba(255, 255, 255, 0.12) 24% 25%, transparent 25% 100%),
-    linear-gradient(150deg, transparent 0 65%, rgba(0, 255, 202, 0.14) 65% 66%, transparent 66% 100%);
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.055) 0 1px, transparent 1px 82px),
+    linear-gradient(120deg, transparent 0 24%, rgba(255, 255, 255, 0.11) 24% 25%, transparent 25% 100%),
+    linear-gradient(150deg, transparent 0 65%, rgba(56, 156, 255, 0.18) 65% 66%, transparent 66% 100%);
 }
 
 button,
@@ -86,12 +88,12 @@ p {
 
 .topbar {
   min-height: 0;
-  aspect-ratio: 1140 / 700;
+  aspect-ratio: 1774 / 887;
   overflow: hidden;
   border-radius: 8px;
   padding: 0;
-  background: #84e4cd;
-  box-shadow: 0 18px 38px rgba(0, 87, 108, 0.24);
+  background: #061a3f;
+  box-shadow: 0 18px 38px rgba(0, 20, 62, 0.36);
 }
 
 .topbar img {
@@ -289,9 +291,9 @@ label span {
 }
 
 .summary-time {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   min-width: 0;
   color: #52677d;
@@ -314,18 +316,24 @@ label span {
 
 .summary-side b {
   color: #52677d;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .summary-side small {
   color: #60748b;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 950;
+  line-height: 1.05;
+  white-space: nowrap;
 }
 
 .summary-time span:first-child {
+  min-width: 0;
   color: var(--red);
   font-weight: 950;
+  white-space: nowrap;
 }
 
 .summary-odds {

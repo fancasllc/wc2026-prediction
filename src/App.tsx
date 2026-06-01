@@ -1015,7 +1015,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <img src="/hero-united-2026.svg" alt="2026 サッカーワールド予想" />
+        <img src="/hero-japan-2026.png" alt="2026 日本代表サッカー予想" />
       </header>
 
       <nav className="tabs" aria-label="メインナビゲーション">
