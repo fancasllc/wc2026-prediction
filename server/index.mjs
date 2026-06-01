@@ -545,16 +545,6 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
     const match = validateMatch({ ...request.body, id: matchId });
 
     await withTransaction(async (client) => {
-      const voteResult = await client.query(
-        "select count(*)::int as count from votes where match_id = $1",
-        [matchId],
-      );
-      if (voteResult.rows[0]?.count > 0) {
-        const error = new Error("Cannot edit a match that already has votes");
-        error.status = 409;
-        throw error;
-      }
-
       const existingResult = await client.query("select id from matches where id = $1 for update", [
         matchId,
       ]);
@@ -564,8 +554,79 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
         throw error;
       }
 
-      await client.query("delete from match_options where match_id = $1", [matchId]);
-      await insertMatch(match, client);
+      const optionResult = await client.query(
+        `
+          select
+            match_options.id,
+            match_options.label,
+            count(votes.id)::int as "voteCount"
+          from match_options
+          left join votes on votes.option_id = match_options.id
+          where match_options.match_id = $1
+          group by match_options.id, match_options.label, match_options.sort_order
+          order by match_options.sort_order asc
+        `,
+        [matchId],
+      );
+      const existingOptions = optionResult.rows;
+      const votedOptions = existingOptions.filter((option) => option.voteCount > 0);
+
+      for (const option of votedOptions) {
+        const nextOption = match.options.find((item) => item.id === option.id);
+        if (!nextOption || nextOption.label !== option.label) {
+          const error = new Error(
+            `Cannot remove or rename option with votes: ${option.label}`,
+          );
+          error.status = 409;
+          throw error;
+        }
+      }
+
+      await client.query(
+        `
+          update matches
+          set title = $2,
+              stage = $3,
+              venue = $4,
+              starts_at = $5,
+              closes_at = $6,
+              question = $7
+          where id = $1
+        `,
+        [
+          match.id,
+          match.title,
+          match.stage,
+          match.venue,
+          match.startsAt,
+          match.closesAt,
+          match.question,
+        ],
+      );
+
+      for (const [index, option] of match.options.entries()) {
+        await client.query(
+          `
+            insert into match_options (id, match_id, label, sort_order)
+            values ($1, $2, $3, $4)
+            on conflict (id) do update set
+              label = excluded.label,
+              sort_order = excluded.sort_order
+          `,
+          [option.id, match.id, option.label, index],
+        );
+      }
+
+      const nextOptionIds = match.options.map((option) => option.id);
+      await client.query(
+        `
+          delete from match_options
+          where match_id = $1
+            and not (id = any($2::text[]))
+            and not exists (select 1 from votes where option_id = match_options.id)
+        `,
+        [matchId, nextOptionIds],
+      );
     });
 
     await writeAuditLog("match.update", matchId, { title: match.title });

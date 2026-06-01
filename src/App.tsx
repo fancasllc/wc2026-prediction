@@ -546,11 +546,8 @@ function App() {
   );
 
   const editableMatches = useMemo(
-    () =>
-      data.matches
-        .filter((match) => getMatchVotes(match, data.votes).length === 0)
-        .sort(sortByDateAsc),
-    [data.matches, data.votes],
+    () => [...data.matches].sort(sortByDateAsc),
+    [data.matches],
   );
 
   const selectedMatch = useMemo(() => {
@@ -928,6 +925,7 @@ function App() {
       return;
     }
 
+    const existingMatch = data.matches.find((item) => item.id === editMatchId);
     const match: MatchRecord = {
       id: editMatchId,
       title: editMatchDraft.title.trim(),
@@ -936,7 +934,13 @@ function App() {
       startsAt: editMatchDraft.startsAt,
       closesAt: editMatchDraft.closesAt || editMatchDraft.startsAt,
       question: "",
-      options: makeOptions(labels),
+      options: labels.map((label, index) => {
+        const existingOption = existingMatch?.options.find((option) => option.label === label);
+        return {
+          id: existingOption?.id ?? createId(`option-${index + 1}`),
+          label,
+        };
+      }),
     };
 
     try {
@@ -1498,7 +1502,7 @@ function App() {
                   試合編集
                 </div>
                 <p className="admin-help">
-                  投票がまだ1件もない試合だけ編集できます。
+                  投票済みでもタイトル・開始時刻・締切時刻は編集できます。投票済みの選択肢は削除や名称変更ができません。
                 </p>
                 {editableMatches.length ? (
                   <div className="admin-match-list">
@@ -1517,7 +1521,7 @@ function App() {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState title="編集できる未投票の試合はありません" />
+                  <EmptyState title="編集できる試合はありません" />
                 )}
 
                 {editMatchId && (
