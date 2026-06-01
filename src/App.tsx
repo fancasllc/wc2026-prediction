@@ -1728,14 +1728,14 @@ function MatchSummaryCard({
     <button className="summary-card" type="button" onClick={onOpen}>
       <strong>{match.title}</strong>
       <div className="summary-time">
-        <span>
+        <span className="summary-countdown">
           <Clock3 size={16} aria-hidden />
           {minutesRemaining(match.closesAt, now)}
         </span>
-        <span className="summary-side">
-          <b>{formatDateTime(match.startsAt)} 開始</b>
-          <small>総プール {formatPoints(total)}</small>
-        </span>
+        <div className="summary-side" aria-label="開始時刻と総プール">
+          <span>{formatDateTime(match.startsAt)} 開始</span>
+          <span>総プール {formatPoints(total)}</span>
+        </div>
       </div>
       <OddsTicker items={oddsItems} />
     </button>

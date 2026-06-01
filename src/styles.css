@@ -301,39 +301,37 @@ label span {
   font-weight: 900;
 }
 
-.summary-time span {
+.summary-countdown {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-}
-
-.summary-side {
-  display: grid;
-  justify-items: end;
-  gap: 2px;
-  text-align: right;
-}
-
-.summary-side b {
-  color: #52677d;
-  font-size: 0.78rem;
-  line-height: 1.05;
-  white-space: nowrap;
-}
-
-.summary-side small {
-  color: #60748b;
-  font-size: 0.72rem;
-  font-weight: 950;
-  line-height: 1.05;
-  white-space: nowrap;
-}
-
-.summary-time span:first-child {
   min-width: 0;
   color: var(--red);
   font-weight: 950;
   white-space: nowrap;
+}
+
+.summary-side {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+  min-width: max-content;
+}
+
+.summary-side span {
+  color: #52677d;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.summary-side span + span {
+  color: #60748b;
+  font-size: 0.72rem;
+  line-height: 1.05;
 }
 
 .summary-odds {
