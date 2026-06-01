@@ -476,11 +476,11 @@ function securityHeaders(_request, response, next) {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com",
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self'",
-    "connect-src 'self'",
+    "script-src 'self' https://www.googletagmanager.com",
+    "connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://analytics.google.com",
     isProduction ? "upgrade-insecure-requests" : "",
   ].filter(Boolean).join("; ");
 
