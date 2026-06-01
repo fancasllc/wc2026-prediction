@@ -14,6 +14,9 @@ const adminPassword = process.env.ADMIN_PASSWORD ?? "";
 const adminSessionSecret =
   process.env.ADMIN_SESSION_SECRET ?? process.env.SESSION_SECRET ?? "";
 const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
+const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
+const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
+const rateLimitStore = new Map();
 
 const launchSeedKey = "seed:world-cup-winner-2026-06-12-v1";
 const publicLaunchClearKey = "reset:public-launch-clear-2026-06-01-v1";
@@ -104,20 +107,24 @@ function createId(prefix) {
   return `${prefix}-${randomUUID()}`;
 }
 
+function clampText(value, maxLength) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, maxLength);
+}
+
 function normalizeName(name) {
-  return String(name ?? "").trim().replace(/\s+/g, " ");
+  return clampText(name, 40);
 }
 
 function validateMatch(input) {
-  const title = String(input.title ?? "").trim();
-  const stage = String(input.stage ?? "").trim();
-  const venue = String(input.venue ?? "").trim();
+  const title = clampText(input.title, 120);
+  const stage = clampText(input.stage, 80);
+  const venue = clampText(input.venue, 80);
   const startsAt = String(input.startsAt ?? "").trim();
   const closesAt = String(input.closesAt ?? startsAt).trim();
-  const question = String(input.question ?? "").trim();
+  const question = clampText(input.question, 180);
   const options = Array.isArray(input.options) ? input.options : [];
 
-  if (!title || !startsAt || !closesAt || options.length < 2) {
+  if (!title || !startsAt || !closesAt || options.length < 2 || options.length > 80) {
     const error = new Error("Invalid match payload");
     error.status = 400;
     throw error;
@@ -133,7 +140,7 @@ function validateMatch(input) {
     question,
     options: options.map((option, index) => ({
       id: String(option.id ?? createId(`option-${index + 1}`)),
-      label: String(option.label ?? "").trim(),
+      label: clampText(option.label, 80),
     })).filter((option) => option.label),
   };
 }
@@ -317,7 +324,7 @@ function requireAdmin(request, response, next) {
 
   if (!adminPassword || !adminSessionSecret) {
     response.status(503).json({
-      error: "Admin auth is not configured. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET.",
+      error: "Admin authentication is not configured.",
     });
     return;
   }
@@ -327,10 +334,6 @@ function requireAdmin(request, response, next) {
   if (!token) {
     response.status(401).json({
       error: "Admin authentication required",
-      details: {
-        reason: "Authorization header is missing. Log in again from the admin screen.",
-        authConfigured: true,
-      },
     });
     return;
   }
@@ -338,10 +341,6 @@ function requireAdmin(request, response, next) {
   if (!token.includes(".")) {
     response.status(401).json({
       error: "Admin authentication required",
-      details: {
-        reason: "Admin token format is invalid. Clear the saved token and log in again.",
-        authConfigured: true,
-      },
     });
     return;
   }
@@ -349,10 +348,6 @@ function requireAdmin(request, response, next) {
   if (!verifyAdminToken(token)) {
     response.status(401).json({
       error: "Admin authentication required",
-      details: {
-        reason: "Admin token is invalid or expired. Log in again.",
-        authConfigured: true,
-      },
     });
     return;
   }
@@ -474,17 +469,115 @@ async function getState() {
   };
 }
 
+function securityHeaders(_request, response, next) {
+  const csp = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self'",
+    "connect-src 'self'",
+    isProduction ? "upgrade-insecure-requests" : "",
+  ].filter(Boolean).join("; ");
+
+  response.setHeader("Content-Security-Policy", csp);
+  response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+  response.setHeader("Origin-Agent-Cluster", "?1");
+  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-DNS-Prefetch-Control", "off");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  response.setHeader(
+    "Permissions-Policy",
+    "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+  );
+
+  if (isProduction) {
+    response.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
+
+  next();
+}
+
+function noStoreApi(_request, response, next) {
+  response.setHeader("Cache-Control", "no-store");
+  next();
+}
+
+function getClientKey(request) {
+  const forwardedFor = request.get("x-forwarded-for") ?? "";
+  return forwardedFor.split(",")[0]?.trim() || request.ip || request.socket.remoteAddress || "unknown";
+}
+
+function createRateLimiter({ keyPrefix, windowMs, max, message }) {
+  return (request, response, next) => {
+    const now = Date.now();
+    const clientKey = getClientKey(request);
+    const key = `${keyPrefix}:${clientKey}`;
+    const current = rateLimitStore.get(key);
+    const record = current && current.resetAt > now
+      ? current
+      : { count: 0, resetAt: now + windowMs };
+
+    record.count += 1;
+    rateLimitStore.set(key, record);
+
+    if (rateLimitStore.size > 5000 || Math.random() < 0.01) {
+      for (const [storeKey, value] of rateLimitStore.entries()) {
+        if (value.resetAt <= now) rateLimitStore.delete(storeKey);
+      }
+    }
+
+    response.setHeader("RateLimit-Limit", String(max));
+    response.setHeader("RateLimit-Remaining", String(Math.max(0, max - record.count)));
+    response.setHeader("RateLimit-Reset", String(Math.ceil(record.resetAt / 1000)));
+
+    if (record.count > max) {
+      response.status(429).json({ error: message });
+      return;
+    }
+
+    next();
+  };
+}
+
+const apiRateLimit = createRateLimiter({
+  keyPrefix: "api",
+  windowMs: 60 * 1000,
+  max: 240,
+  message: "アクセスが集中しています。少し時間を置いてから再度お試しください。",
+});
+
+const adminLoginRateLimit = createRateLimiter({
+  keyPrefix: "admin-login",
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: "認証の試行回数が多すぎます。しばらく待ってから再度お試しください。",
+});
+
+const voteRateLimit = createRateLimiter({
+  keyPrefix: "vote",
+  windowMs: 60 * 1000,
+  max: 30,
+  message: "投票の送信回数が多すぎます。少し時間を置いてから再度お試しください。",
+});
+
 const app = express();
+app.set("trust proxy", 1);
 app.disable("x-powered-by");
+app.use(securityHeaders);
 app.use(express.json({ limit: "1mb" }));
+app.use("/api", noStoreApi, apiRateLimit);
 
 app.get("/api/health", (_request, response) => {
   response.json({
     ok: true,
-    database: Boolean(pool),
-    version: appVersion,
-    adminAuthRequired: requiresAdminAuth,
-    adminAuthConfigured: !requiresAdminAuth || Boolean(adminPassword && adminSessionSecret),
   });
 });
 
@@ -496,7 +589,7 @@ app.get("/api/state", async (_request, response, next) => {
   }
 });
 
-app.post("/api/admin/login", (request, response) => {
+app.post("/api/admin/login", adminLoginRateLimit, (request, response) => {
   if (!requiresAdminAuth) {
     response.json({
       token: signAdminToken(Date.now() + 24 * 60 * 60 * 1000),
@@ -507,7 +600,7 @@ app.post("/api/admin/login", (request, response) => {
 
   if (!adminPassword || !adminSessionSecret) {
     response.status(503).json({
-      error: "Admin auth is not configured. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET.",
+      error: "Admin authentication is not configured.",
     });
     return;
   }
@@ -517,10 +610,6 @@ app.post("/api/admin/login", (request, response) => {
   if (!password) {
     response.status(400).json({
       error: "Admin password is required",
-      details: {
-        bodyParsed: Boolean(request.body),
-        receivedLength: 0,
-      },
     });
     return;
   }
@@ -534,11 +623,6 @@ app.post("/api/admin/login", (request, response) => {
   if (!passwordMatches) {
     response.status(401).json({
       error: "Invalid admin password",
-      details: {
-        reason: "The entered password does not match Render ADMIN_PASSWORD.",
-        receivedLength: password.length,
-        configured: true,
-      },
     });
     return;
   }
@@ -678,7 +762,7 @@ app.post("/api/matches/import", requireAdmin, async (request, response, next) =>
   }
 });
 
-app.post("/api/votes", async (request, response, next) => {
+app.post("/api/votes", voteRateLimit, async (request, response, next) => {
   try {
     const body = request.body ?? {};
     const matchId = String(body.matchId ?? "");
@@ -686,7 +770,14 @@ app.post("/api/votes", async (request, response, next) => {
     const userName = normalizeName(body.userName);
     const amount = Number(body.amount);
 
-    if (!matchId || !optionId || !userName || !Number.isFinite(amount) || amount < 100) {
+    if (
+      !matchId ||
+      !optionId ||
+      !userName ||
+      !Number.isInteger(amount) ||
+      amount < 100 ||
+      amount > 1_000_000_000
+    ) {
       response.status(400).json({ error: "Invalid vote payload" });
       return;
     }
@@ -850,6 +941,8 @@ app.get(/.*/, (_request, response) => {
 });
 
 function getErrorDetails(error) {
+  if (!exposeErrorDetails) return {};
+
   return Object.fromEntries(
     [
       ["name", error.name],
@@ -870,11 +963,13 @@ app.use((error, request, response, _next) => {
   const status = error.status || 500;
   console.error(error);
   const details = getErrorDetails(error);
+  const publicMessage = status >= 500 && !exposeErrorDetails
+    ? "Internal server error"
+    : error.message || "Internal server error";
 
   response.status(status).json({
-    error: error.message || "Internal server error",
-    path: request.originalUrl,
-    method: request.method,
+    error: publicMessage,
+    ...(exposeErrorDetails ? { path: request.originalUrl, method: request.method } : {}),
     ...(Object.keys(details).length ? { details } : {}),
   });
 });

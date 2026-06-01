@@ -93,6 +93,12 @@ const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
 
+function getStoredAdminToken() {
+  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  return token;
+}
+
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const { headers, ...requestOptions } = options ?? {};
   const response = await fetch(path, {
@@ -429,7 +435,7 @@ function App() {
   const [isSyncing, setIsSyncing] = useState(true);
   const [hasRemoteState, setHasRemoteState] = useState(false);
   const [adminToken, setAdminToken] = useState(
-    () => localStorage.getItem(ADMIN_TOKEN_KEY) ?? "",
+    () => getStoredAdminToken(),
   );
   const [adminPassword, setAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
@@ -499,7 +505,7 @@ function App() {
     setAdminMessage("");
     try {
       const result = await requestAdminToken(adminPassword);
-      localStorage.setItem(ADMIN_TOKEN_KEY, result.token);
+      sessionStorage.setItem(ADMIN_TOKEN_KEY, result.token);
       setAdminToken(result.token);
       setAdminPassword("");
       setAdminMessage(`管理者認証済み。有効期限: ${formatDateTime(result.expiresAt)}`);
@@ -510,13 +516,14 @@ function App() {
           "管理者認証に失敗しました。",
           message,
           "",
-          "RenderのEnvironmentに設定したADMIN_PASSWORDと完全一致しているか確認してください。",
+          "設定済みの管理パスワードと完全一致しているか確認してください。",
         ].join("\n"),
       );
     }
   }
 
   function logoutAdmin() {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken("");
     setAdminMessage("管理者認証を解除しました。");
@@ -1269,7 +1276,8 @@ function App() {
                       type="password"
                       value={adminPassword}
                       onChange={(event) => setAdminPassword(event.target.value)}
-                      placeholder="RenderのADMIN_PASSWORD"
+                      placeholder="管理パスワードを入力"
+                      autoComplete="current-password"
                     />
                   </label>
                   <button className="primary-action" type="submit">
