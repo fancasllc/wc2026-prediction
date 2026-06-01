@@ -1079,6 +1079,11 @@ textarea:focus {
   font-size: 1rem;
 }
 
+.person-row span:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
 .person-row small {
   color: #60748b;
   font-size: 0.78rem;
@@ -1232,6 +1237,43 @@ textarea:focus {
 .admin-match-list {
   display: grid;
   gap: 10px;
+}
+
+.settled-summary-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settled-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: #eef5fb;
+  border: 1px solid #d5e5ef;
+  border-radius: 8px;
+}
+
+.settled-summary-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settled-summary-row strong,
+.settled-summary-row b {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.settled-summary-row small {
+  color: #60748b;
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .admin-settle-card {

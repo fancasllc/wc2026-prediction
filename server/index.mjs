@@ -801,7 +801,7 @@ app.delete("/api/votes/:id", requireAdmin, async (request, response, next) => {
       `
         delete from votes
         using matches
-        where id = $1
+        where votes.id = $1
           and votes.match_id = matches.id
           and matches.result_option_id is null
         returning match_id as "matchId", user_name as "userName", amount::float as amount

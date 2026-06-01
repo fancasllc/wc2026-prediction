@@ -533,16 +533,25 @@ function App() {
   const settleCandidateMatches = useMemo(
     () =>
       data.matches
-        .filter((match) => !isMatchOpen(match, now))
+        .filter((match) => !isMatchOpen(match, now) && !match.resultOptionId)
         .sort((a, b) => {
-          const aSettled = Boolean(a.resultOptionId);
-          const bSettled = Boolean(b.resultOptionId);
-          if (aSettled !== bSettled) return aSettled ? -1 : 1;
+          const aTime = new Date(a.closesAt).getTime();
+          const bTime = new Date(b.closesAt).getTime();
+          return bTime - aTime;
+        }),
+    [data.matches, now],
+  );
+
+  const settledMatches = useMemo(
+    () =>
+      data.matches
+        .filter((match) => Boolean(match.resultOptionId))
+        .sort((a, b) => {
           const aTime = new Date(a.settledAt ?? a.closesAt).getTime();
           const bTime = new Date(b.settledAt ?? b.closesAt).getTime();
           return bTime - aTime;
         }),
-    [data.matches, now],
+    [data.matches],
   );
 
   const editableMatches = useMemo(
@@ -1025,7 +1034,7 @@ function App() {
           type="button"
         >
           <CheckCircle2 size={18} aria-hidden />
-          受付済み
+          締切済み
         </button>
         <button
           className={view === "people" || view === "personDetail" ? "active" : ""}
@@ -1082,7 +1091,7 @@ function App() {
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Closed markets</p>
-                <h2>受付済みの予想テーマ</h2>
+                <h2>締切済みの予想テーマ</h2>
               </div>
             </div>
 
@@ -1098,7 +1107,7 @@ function App() {
                   />
                 ))
               ) : (
-                <EmptyState title="受付済みの予想テーマはありません" />
+                <EmptyState title="締切済みの予想テーマはありません" />
               )}
             </div>
           </section>
@@ -1265,6 +1274,8 @@ function App() {
               )}
               {adminMessage && <p className="inline-message">{adminMessage}</p>}
             </div>
+            {adminToken && (
+              <>
             <div className="admin-column">
               <form className="data-panel form-panel" onSubmit={addMatch}>
                 <div className="panel-title">
@@ -1385,6 +1396,20 @@ function App() {
                   </div>
                 ) : (
                   <EmptyState title="確定できる締切済みテーマはありません" />
+                )}
+                {settledMatches.length > 0 && (
+                  <div className="settled-summary-list">
+                    <div className="small-heading">確定済み</div>
+                    {settledMatches.map((match) => (
+                      <div className="settled-summary-row" key={match.id}>
+                        <span>
+                          <strong>{match.title}</strong>
+                          <small>{formatDateTime(match.settledAt ?? match.closesAt)}</small>
+                        </span>
+                        <b>{optionLabel(match, match.resultOptionId ?? "")}</b>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
 
@@ -1599,6 +1624,8 @@ function App() {
                 )}
               </div>
             </div>
+              </>
+            )}
           </section>
         )}
       </main>
