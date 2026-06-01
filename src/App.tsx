@@ -440,6 +440,7 @@ function App() {
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
   const [pendingVote, setPendingVote] = useState<PendingVote | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
   const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -469,6 +470,12 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = window.setTimeout(() => setToastMessage(""), 1800);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
 
   async function syncState(action: () => Promise<AppData>) {
     setIsSyncing(true);
@@ -747,6 +754,7 @@ function App() {
         amount: String(MIN_VOTE_AMOUNT),
       });
       setPendingVote(null);
+      setToastMessage("投票しました。投票状況をご覧ください。");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       window.alert(
@@ -1634,6 +1642,11 @@ function App() {
           管理画面
         </button>
       )}
+      {toastMessage && (
+        <div className="toast-message" role="status">
+          {toastMessage}
+        </div>
+      )}
       {pendingVote && (
         <div className="confirm-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
@@ -1721,13 +1734,12 @@ function MatchSummaryCard({
           <Clock3 size={16} aria-hidden />
           {minutesRemaining(match.closesAt, now)}
         </span>
-        <span>{formatDateTime(match.startsAt)} 開始</span>
+        <span className="summary-side">
+          <b>{formatDateTime(match.startsAt)} 開始</b>
+          <small>総プール {formatPoints(total)}</small>
+        </span>
       </div>
       <OddsTicker items={oddsItems} />
-      <div className="summary-footer">
-        <span>総プール {formatPoints(total)}</span>
-        <b>詳細へ</b>
-      </div>
     </button>
   );
 }
@@ -2082,7 +2094,7 @@ function VoteForm({
             <input
               type="number"
               min={MIN_VOTE_AMOUNT}
-              step={VOTE_AMOUNT_STEP}
+              step="1"
               value={draft.amount}
               onChange={(event) => onChange({ amount: event.target.value })}
               disabled={!open || !hasRemoteState || isSaving}

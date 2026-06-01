@@ -35,6 +35,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
+  font-size: 15px;
   background:
     radial-gradient(circle at 10% 8%, rgba(255, 232, 47, 0.22), transparent 10rem),
     radial-gradient(circle at 90% 34%, rgba(255, 255, 255, 0.24), transparent 9rem),
@@ -378,21 +379,20 @@ label span {
 
 .summary-card > strong {
   min-width: 0;
-  font-size: 1.35rem;
+  font-size: 1.22rem;
   font-weight: 950;
   line-height: 1.12;
   overflow-wrap: anywhere;
 }
 
-.summary-time,
-.summary-footer {
+.summary-time {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
   color: #52677d;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 900;
 }
 
@@ -400,6 +400,24 @@ label span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.summary-side {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.summary-side b {
+  color: #52677d;
+  font-size: 0.82rem;
+}
+
+.summary-side small {
+  color: #60748b;
+  font-size: 0.76rem;
+  font-weight: 950;
 }
 
 .summary-time span:first-child {
@@ -459,19 +477,6 @@ label span {
   to {
     transform: translateX(-50%);
   }
-}
-
-.summary-footer {
-  padding-top: 2px;
-}
-
-.summary-footer b {
-  flex: 0 0 auto;
-  color: #362700;
-  padding: 7px 12px;
-  background: linear-gradient(180deg, #fff63d, #ffc400);
-  border-radius: 999px;
-  box-shadow: inset 0 -3px 0 rgba(213, 139, 0, 0.42);
 }
 
 .back-action {
@@ -861,6 +866,23 @@ label span {
   color: #a9b7c4;
   background: #eef3f7;
   box-shadow: none;
+}
+
+.toast-message {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 60;
+  width: min(calc(100% - 32px), 390px);
+  padding: 13px 14px;
+  color: #063a2b;
+  font-weight: 950;
+  text-align: center;
+  background: #e8fff5;
+  border: 2px solid #7be0bc;
+  border-radius: 12px;
+  box-shadow: 0 16px 34px rgba(0, 18, 58, 0.26);
+  transform: translateX(-50%);
 }
 
 label {

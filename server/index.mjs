@@ -16,6 +16,7 @@ const adminSessionSecret =
 const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
 
 const launchSeedKey = "seed:world-cup-winner-2026-06-12-v1";
+const publicLaunchClearKey = "reset:public-launch-clear-2026-06-01-v1";
 const worldCupWinnerOptions = [
   "フランス",
   "スペイン",
@@ -228,6 +229,26 @@ async function initializeDatabase() {
   `);
 
   await seedLaunchDataOnce();
+  await clearLaunchDataOnce();
+}
+
+async function clearLaunchDataOnce() {
+  const marker = await query("select value from app_settings where key = $1", [publicLaunchClearKey]);
+  if (marker.rowCount) return;
+
+  await withTransaction(async (client) => {
+    await client.query("delete from votes");
+    await client.query("delete from users");
+    await client.query("delete from matches");
+    await client.query(
+      `
+        insert into app_settings (key, value, updated_at)
+        values ($1, $2, now())
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `,
+      [publicLaunchClearKey, "done"],
+    );
+  });
 }
 
 async function seedLaunchDataOnce() {
