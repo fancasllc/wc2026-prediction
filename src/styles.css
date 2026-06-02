@@ -551,6 +551,16 @@ label span {
   opacity: 0.62;
 }
 
+.vote-options .option-row,
+.option-board.selectable.vote-options .option-row {
+  padding: 10px 12px;
+  gap: 6px;
+}
+
+.option-board.selectable.vote-options .option-row::before {
+  content: none;
+}
+
 .option-row > div:first-child {
   display: flex;
   align-items: baseline;
@@ -582,6 +592,28 @@ label span {
   font-size: 0.82rem;
   background: #eef7ff;
   border-radius: 999px;
+}
+
+.vote-options .option-row > div:first-child {
+  align-items: center;
+}
+
+.vote-options .option-row b {
+  flex: 0 0 auto;
+  padding: 0;
+  color: #063f9f;
+  font-size: 1.08rem;
+  line-height: 1.1;
+  background: transparent;
+  border-radius: 0;
+}
+
+.option-subtle {
+  justify-self: end;
+  color: #7b8d9f;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .meter {

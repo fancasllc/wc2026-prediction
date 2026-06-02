@@ -1074,13 +1074,6 @@ function App() {
 
         {view === "open" && (
           <section className="view-stack">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Open markets</p>
-                <h2>受付中の予想テーマ</h2>
-              </div>
-            </div>
-
             <div className="summary-list">
               {openMatches.length ? (
                 openMatches.map((match) => (
@@ -1101,13 +1094,6 @@ function App() {
 
         {view === "closed" && (
           <section className="view-stack">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Closed markets</p>
-                <h2>締切済みの予想テーマ</h2>
-              </div>
-            </div>
-
             <div className="summary-list">
               {closedMatches.length ? (
                 closedMatches.map((match) => (
@@ -1159,13 +1145,6 @@ function App() {
 
         {view === "people" && (
           <section className="view-stack">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">People</p>
-                <h2>個人別の投票状況</h2>
-              </div>
-            </div>
-
             <div className="people-list">
               {userRows.length ? (
                 userRows.map((row) => (
@@ -2053,7 +2032,7 @@ function VoteForm({
 
   return (
     <form className="vote-form" onSubmit={onSubmit}>
-      <div className="option-board selectable" role="radiogroup" aria-label={`${match.title}の選択肢`}>
+      <div className="option-board selectable vote-options" role="radiogroup" aria-label={`${match.title}の選択肢`}>
         {match.options.map((option) => {
           const optionTotal = getOptionTotal(match, votes, option.id);
           const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
@@ -2072,12 +2051,12 @@ function VoteForm({
             >
               <div>
                 <strong>{option.label}</strong>
-                <span>{formatPoints(optionTotal)} / {percentage}%</span>
+                <b>{odds ? `${odds.toFixed(2)}x` : "-"}</b>
               </div>
               <div className="meter" aria-hidden>
                 <span style={{ width: `${percentage}%` }} />
               </div>
-              <b>{odds ? `${odds.toFixed(2)}x` : "-"}</b>
+              <span className="option-subtle">{formatPoints(optionTotal)} / {percentage}%</span>
             </button>
           );
         })}
