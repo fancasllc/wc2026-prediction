@@ -353,6 +353,8 @@ label span {
 
 .odds-track.animated {
   animation: odds-scroll 22s linear infinite;
+  animation-delay: 1.4s;
+  animation-fill-mode: both;
 }
 
 .odds-chip {
