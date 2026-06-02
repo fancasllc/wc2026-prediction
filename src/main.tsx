@@ -19,11 +19,6 @@ function initializeGoogleAnalytics() {
   };
   window.gtag("js", new Date());
   window.gtag("config", googleAnalyticsId);
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsId}`;
-  document.head.appendChild(script);
 }
 
 initializeGoogleAnalytics();
