@@ -160,6 +160,22 @@ main {
   padding-bottom: 28px;
 }
 
+.sync-loader {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+
+.sync-loader span {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(255, 255, 255, 0.34);
+  border-top-color: #ffffff;
+  border-radius: 999px;
+  animation: loader-spin 0.85s linear infinite;
+}
+
 .sync-banner {
   display: flex;
   align-items: center;
@@ -178,6 +194,12 @@ main {
   color: #9b1f2c;
   background: #fff2f2;
   border-color: #f4bec5;
+}
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .view-stack,

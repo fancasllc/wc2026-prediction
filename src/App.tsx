@@ -1066,9 +1066,10 @@ function App() {
       </datalist>
 
       <main>
-        {(apiError || isSyncing) && (
-          <div className={apiError ? "sync-banner error" : "sync-banner"}>
-            {apiError || "DBと同期中..."}
+        {apiError && <div className="sync-banner error">{apiError}</div>}
+        {!apiError && isSyncing && (
+          <div className="sync-loader" aria-label="データ更新中" role="status">
+            <span aria-hidden />
           </div>
         )}
 
