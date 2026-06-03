@@ -1640,23 +1640,23 @@ function App() {
         <div className="reference-links" aria-label="予想の参考リンク">
           <a
             className="reference-link"
-            href={FIFA_RANKING_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="FIFAランキングを開く"
-          >
-            <ExternalLink size={16} aria-hidden />
-            FIFAランキング
-          </a>
-          <a
-            className="reference-link"
             href={REFERENCE_ODDS_URL}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="海外の参考オッズを開く"
           >
+            <span>参考オッズ</span>
             <ExternalLink size={16} aria-hidden />
-            参考オッズ
+          </a>
+          <a
+            className="reference-link"
+            href={FIFA_RANKING_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="FIFAランキングを開く"
+          >
+            <span>FIFAランキング</span>
+            <ExternalLink size={16} aria-hidden />
           </a>
         </div>
       )}
