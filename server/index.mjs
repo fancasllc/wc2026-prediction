@@ -476,11 +476,11 @@ function securityHeaders(_request, response, next) {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com https://*.g.doubleclick.net",
+    "img-src 'self' data:",
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' https://*.googletagmanager.com",
-    "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.g.doubleclick.net",
+    "script-src 'self'",
+    "connect-src 'self'",
     isProduction ? "upgrade-insecure-requests" : "",
   ].filter(Boolean).join("; ");
 
