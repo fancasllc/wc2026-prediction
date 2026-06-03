@@ -730,6 +730,33 @@ label span {
   border-radius: 8px;
 }
 
+.reference-odds-link {
+  position: fixed;
+  right: max(16px, calc((100vw - 430px) / 2 + 16px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 42px;
+  padding: 0 13px;
+  color: #ffffff;
+  font-size: 0.84rem;
+  font-weight: 950;
+  text-decoration: none;
+  background: linear-gradient(180deg, #1486ff, #0052bd);
+  border: 1px solid rgba(255, 255, 255, 0.44);
+  border-radius: 999px;
+  box-shadow:
+    0 12px 24px rgba(0, 19, 64, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.reference-odds-link:active {
+  transform: translateY(1px);
+}
+
 .confirm-backdrop {
   position: fixed;
   inset: 0;

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock3,
   Database,
+  ExternalLink,
   History,
   ListPlus,
   RotateCcw,
@@ -18,6 +19,8 @@ import {
 } from "lucide-react";
 
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
+
+const REFERENCE_ODDS_URL = "https://www.365scores.com/football/league/fifa-world-cup-5930";
 
 type MatchOption = {
   id: string;
@@ -1019,6 +1022,9 @@ function App() {
     }
   }
 
+  const showReferenceOdds =
+    view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now));
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1627,6 +1633,19 @@ function App() {
         <button className="admin-link-bottom" type="button" onClick={() => setView("admin")}>
           管理画面
         </button>
+      )}
+
+      {showReferenceOdds && (
+        <a
+          className="reference-odds-link"
+          href={REFERENCE_ODDS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="海外の参考オッズを開く"
+        >
+          <ExternalLink size={16} aria-hidden />
+          参考オッズ
+        </a>
       )}
       {toastMessage && (
         <div className="toast-message" role="status">
