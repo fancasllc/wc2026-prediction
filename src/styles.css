@@ -730,11 +730,17 @@ label span {
   border-radius: 8px;
 }
 
-.reference-odds-link {
+.reference-links {
   position: fixed;
   right: max(16px, calc((100vw - 430px) / 2 + 16px));
   bottom: calc(env(safe-area-inset-bottom, 0px) + 86px);
   z-index: 30;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.reference-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -753,7 +759,7 @@ label span {
     inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
-.reference-odds-link:active {
+.reference-link:active {
   transform: translateY(1px);
 }
 

@@ -21,6 +21,7 @@ import {
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
 
 const REFERENCE_ODDS_URL = "https://www.365scores.com/football/league/fifa-world-cup-5930";
+const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
 
 type MatchOption = {
   id: string;
@@ -1636,16 +1637,28 @@ function App() {
       )}
 
       {showReferenceOdds && (
-        <a
-          className="reference-odds-link"
-          href={REFERENCE_ODDS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="海外の参考オッズを開く"
-        >
-          <ExternalLink size={16} aria-hidden />
-          参考オッズ
-        </a>
+        <div className="reference-links" aria-label="予想の参考リンク">
+          <a
+            className="reference-link"
+            href={FIFA_RANKING_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="FIFAランキングを開く"
+          >
+            <ExternalLink size={16} aria-hidden />
+            FIFAランキング
+          </a>
+          <a
+            className="reference-link"
+            href={REFERENCE_ODDS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="海外の参考オッズを開く"
+          >
+            <ExternalLink size={16} aria-hidden />
+            参考オッズ
+          </a>
+        </div>
       )}
       {toastMessage && (
         <div className="toast-message" role="status">
