@@ -77,6 +77,15 @@ type MatchDraft = {
   optionsText: string;
 };
 
+type MotivationItem = {
+  id: string;
+  badge: string;
+  name: string;
+  value: string;
+  meta: string;
+  tone: "positive" | "neutral";
+};
+
 type CsvMatchRow = {
   title?: string;
   startsAt?: string;
@@ -613,6 +622,71 @@ function App() {
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
   }, [data.matches, data.votes, data.knownUsers]);
 
+  const motivationItems = useMemo<MotivationItem[]>(() => {
+    const settledVoteRows = data.votes
+      .map((vote) => {
+        const match = data.matches.find((item) => item.id === vote.matchId);
+        const payout = match ? calculateVotePayout(vote, match, data.votes) : undefined;
+        return { vote, match, payout };
+      })
+      .filter(
+        (
+          row,
+        ): row is {
+          vote: VoteRecord;
+          match: MatchRecord;
+          payout: ReturnType<typeof calculateVotePayout>;
+        } => Boolean(row.match && row.payout?.settled),
+      );
+
+    if (!settledVoteRows.length) return [];
+
+    const byUser = new Map<string, { net: number; votes: number }>();
+    settledVoteRows.forEach(({ vote, payout }) => {
+      const current = byUser.get(vote.userName) ?? { net: 0, votes: 0 };
+      current.net += payout.net;
+      current.votes += 1;
+      byUser.set(vote.userName, current);
+    });
+
+    const topNet = [...byUser.entries()]
+      .map(([name, row]) => ({ name, ...row }))
+      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"))[0];
+
+    const recentGain = settledVoteRows
+      .filter(({ payout }) => payout.net > 0)
+      .sort((a, b) => {
+        const aTime = new Date(a.match.settledAt ?? a.vote.createdAt).getTime();
+        const bTime = new Date(b.match.settledAt ?? b.vote.createdAt).getTime();
+        return bTime - aTime || b.payout.net - a.payout.net || a.vote.userName.localeCompare(b.vote.userName, "ja");
+      })[0];
+
+    const items: MotivationItem[] = [];
+    if (topNet) {
+      items.push({
+        id: "top-net",
+        badge: "確定収支 1位",
+        name: topNet.name,
+        value: `${topNet.net >= 0 ? "+" : ""}${formatPoints(topNet.net)}`,
+        meta: `${topNet.votes}件の確定投票`,
+        tone: topNet.net >= 0 ? "positive" : "neutral",
+      });
+    }
+
+    if (recentGain) {
+      items.push({
+        id: "recent-gain",
+        badge: "直近ビッグ収支",
+        name: recentGain.vote.userName,
+        value: `+${formatPoints(recentGain.payout.net)}`,
+        meta: recentGain.match.title,
+        tone: "positive",
+      });
+    }
+
+    return items;
+  }, [data.matches, data.votes]);
+
   const selectedPersonVotes = useMemo(() => {
     const normalized = normalizeName(selectedPersonName);
     return data.votes.filter((vote) => vote.userName === normalized);
@@ -1071,6 +1145,10 @@ function App() {
           <option key={name} value={name} />
         ))}
       </datalist>
+
+      {view !== "admin" && motivationItems.length > 0 && (
+        <MotivationTicker items={motivationItems} />
+      )}
 
       <main>
         {apiError && <div className="sync-banner error">{apiError}</div>}
@@ -1701,6 +1779,27 @@ function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function MotivationTicker({ items }: { items: MotivationItem[] }) {
+  const tickerItems = items.length > 1 ? [...items, ...items, ...items] : items;
+
+  return (
+    <aside className="motivation-strip" aria-label="確定後の速報ランキング">
+      <div className={items.length > 1 ? "motivation-track animated" : "motivation-track"}>
+        {tickerItems.map((item, index) => (
+          <span className={`motivation-chip ${item.tone}`} key={`${item.id}-${index}`}>
+            <span>
+              <small>{item.badge}</small>
+              <b>{item.name}</b>
+            </span>
+            <strong>{item.value}</strong>
+            <em>{item.meta}</em>
+          </span>
+        ))}
+      </div>
+    </aside>
   );
 }
 
