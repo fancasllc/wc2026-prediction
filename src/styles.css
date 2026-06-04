@@ -378,6 +378,22 @@ label span {
   box-shadow: 0 10px 22px rgba(0, 42, 103, 0.16);
 }
 
+.admin-preview-block {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-preview-block > p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.admin-preview-block .motivation-strip {
+  margin: 0 0 2px;
+}
+
 .motivation-track {
   display: flex;
   align-items: stretch;

@@ -86,6 +86,33 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
+const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
+  {
+    id: "test-top-net",
+    badge: "確定収支 1位",
+    name: "サッカー太郎",
+    value: "+12,500 pt",
+    meta: "5件の確定投票",
+    tone: "positive",
+  },
+  {
+    id: "test-recent-gain",
+    badge: "直近ビッグ収支",
+    name: "予想マスター",
+    value: "+8,200 pt",
+    meta: "日本の最終順位",
+    tone: "positive",
+  },
+  {
+    id: "test-chaser",
+    badge: "追い上げ中",
+    name: "大穴ハンター",
+    value: "+4,600 pt",
+    meta: "ワールドカップ優勝国",
+    tone: "positive",
+  },
+];
+
 type CsvMatchRow = {
   title?: string;
   startsAt?: string;
@@ -1320,6 +1347,11 @@ function App() {
 
         {view === "admin" && (
           <section className="admin-layout">
+            <div className="admin-preview-block">
+              <p>表示テスト用プレビュー</p>
+              <MotivationTicker items={TEST_MOTIVATION_ITEMS} />
+            </div>
+
             <div className="data-panel admin-auth-panel">
               <div className="panel-title">
                 <ShieldCheck size={18} aria-hidden />
