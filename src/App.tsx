@@ -86,89 +86,6 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
-const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
-  {
-    id: "test-rank-1",
-    badge: "1位",
-    name: "サッカー太郎",
-    value: "+12,500 pt",
-    meta: "投票中ポイント 2,000 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-2",
-    badge: "2位",
-    name: "予想マスター",
-    value: "+8,200 pt",
-    meta: "投票中ポイント 5,500 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-3",
-    badge: "3位",
-    name: "大穴ハンター",
-    value: "+4,600 pt",
-    meta: "投票中ポイント 1,000 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-4",
-    badge: "4位",
-    name: "ゴール職人",
-    value: "+2,900 pt",
-    meta: "投票中ポイント 7,800 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-5",
-    badge: "5位",
-    name: "青い予想屋",
-    value: "+1,400 pt",
-    meta: "投票中ポイント 0 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-6",
-    badge: "6位",
-    name: "堅実派",
-    value: "+600 pt",
-    meta: "投票中ポイント 1,200 pt",
-    tone: "positive",
-  },
-  {
-    id: "test-rank-7",
-    badge: "7位",
-    name: "慎重な人",
-    value: "-400 pt",
-    meta: "投票中ポイント 900 pt",
-    tone: "neutral",
-  },
-  {
-    id: "test-rank-8",
-    badge: "8位",
-    name: "初参加",
-    value: "-1,100 pt",
-    meta: "投票中ポイント 3,000 pt",
-    tone: "neutral",
-  },
-  {
-    id: "test-rank-9",
-    badge: "9位",
-    name: "逆転待ち",
-    value: "-2,300 pt",
-    meta: "投票中ポイント 4,500 pt",
-    tone: "neutral",
-  },
-  {
-    id: "test-rank-10",
-    badge: "10位",
-    name: "超長い名前の予想参加者",
-    value: "-3,800 pt",
-    meta: "投票中ポイント 6,600 pt",
-    tone: "neutral",
-  },
-];
-
 type CsvMatchRow = {
   title?: string;
   startsAt?: string;
@@ -750,7 +667,7 @@ function App() {
         badge: `${index + 1}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
-        meta: `投票中ポイント ${formatPoints(row.pending)}`,
+        meta: `投票中 ${formatPoints(row.pending)}`,
         tone: row.net >= 0 ? "positive" : "neutral",
       };
     });
@@ -1389,10 +1306,6 @@ function App() {
 
         {view === "admin" && (
           <section className="admin-layout">
-            <div className="admin-preview-block">
-              <MotivationTicker items={TEST_MOTIVATION_ITEMS} />
-            </div>
-
             <div className="data-panel admin-auth-panel">
               <div className="panel-title">
                 <ShieldCheck size={18} aria-hidden />
