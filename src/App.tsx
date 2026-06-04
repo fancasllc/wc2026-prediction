@@ -88,6 +88,14 @@ type MotivationItem = {
 
 const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
   {
+    id: "test-rank-10",
+    badge: "確定収支 10位",
+    name: "超長い名前の予想参加者",
+    value: "-3,800 pt",
+    meta: "4件の確定投票",
+    tone: "neutral",
+  },
+  {
     id: "test-rank-1",
     badge: "確定収支 1位",
     name: "サッカー太郎",
@@ -134,6 +142,30 @@ const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
     value: "+600 pt",
     meta: "1件の確定投票",
     tone: "positive",
+  },
+  {
+    id: "test-rank-7",
+    badge: "確定収支 7位",
+    name: "慎重な人",
+    value: "-400 pt",
+    meta: "2件の確定投票",
+    tone: "neutral",
+  },
+  {
+    id: "test-rank-8",
+    badge: "確定収支 8位",
+    name: "初参加",
+    value: "-1,100 pt",
+    meta: "3件の確定投票",
+    tone: "neutral",
+  },
+  {
+    id: "test-rank-9",
+    badge: "確定収支 9位",
+    name: "逆転待ち",
+    value: "-2,300 pt",
+    meta: "3件の確定投票",
+    tone: "neutral",
   },
 ];
 
@@ -700,18 +732,24 @@ function App() {
       byUser.set(vote.userName, current);
     });
 
-    return [...byUser.entries()]
+    const rankedRows = [...byUser.entries()]
       .map(([name, row]) => ({ name, ...row }))
-      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"))
-      .slice(0, 6)
-      .map((row, index) => ({
-        id: `net-rank-${row.name}-${index}`,
-        badge: `確定収支 ${index + 1}位`,
+      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"));
+
+    const rowsForTicker =
+      rankedRows.length > 1 ? [rankedRows[rankedRows.length - 1], ...rankedRows.slice(0, -1)] : rankedRows;
+
+    return rowsForTicker.map((row) => {
+      const rank = rankedRows.findIndex((item) => item.name === row.name) + 1;
+      return {
+        id: `net-rank-${row.name}-${rank}`,
+        badge: `確定収支 ${rank}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
         meta: `${row.votes}件の確定投票`,
         tone: row.net >= 0 ? "positive" : "neutral",
-      }));
+      };
+    });
   }, [data.matches, data.votes]);
 
   const selectedPersonVotes = useMemo(() => {
