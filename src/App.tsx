@@ -88,83 +88,83 @@ type MotivationItem = {
 
 const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
   {
-    id: "test-rank-10",
-    badge: "確定収支 10位",
-    name: "超長い名前の予想参加者",
-    value: "-3,800 pt",
-    meta: "4件の確定投票",
-    tone: "neutral",
-  },
-  {
     id: "test-rank-1",
-    badge: "確定収支 1位",
+    badge: "1位",
     name: "サッカー太郎",
     value: "+12,500 pt",
-    meta: "5件の確定投票",
+    meta: "投票中ポイント 2,000 pt",
     tone: "positive",
   },
   {
     id: "test-rank-2",
-    badge: "確定収支 2位",
+    badge: "2位",
     name: "予想マスター",
     value: "+8,200 pt",
-    meta: "4件の確定投票",
+    meta: "投票中ポイント 5,500 pt",
     tone: "positive",
   },
   {
     id: "test-rank-3",
-    badge: "確定収支 3位",
+    badge: "3位",
     name: "大穴ハンター",
     value: "+4,600 pt",
-    meta: "3件の確定投票",
+    meta: "投票中ポイント 1,000 pt",
     tone: "positive",
   },
   {
     id: "test-rank-4",
-    badge: "確定収支 4位",
+    badge: "4位",
     name: "ゴール職人",
     value: "+2,900 pt",
-    meta: "2件の確定投票",
+    meta: "投票中ポイント 7,800 pt",
     tone: "positive",
   },
   {
     id: "test-rank-5",
-    badge: "確定収支 5位",
+    badge: "5位",
     name: "青い予想屋",
     value: "+1,400 pt",
-    meta: "2件の確定投票",
+    meta: "投票中ポイント 0 pt",
     tone: "positive",
   },
   {
     id: "test-rank-6",
-    badge: "確定収支 6位",
+    badge: "6位",
     name: "堅実派",
     value: "+600 pt",
-    meta: "1件の確定投票",
+    meta: "投票中ポイント 1,200 pt",
     tone: "positive",
   },
   {
     id: "test-rank-7",
-    badge: "確定収支 7位",
+    badge: "7位",
     name: "慎重な人",
     value: "-400 pt",
-    meta: "2件の確定投票",
+    meta: "投票中ポイント 900 pt",
     tone: "neutral",
   },
   {
     id: "test-rank-8",
-    badge: "確定収支 8位",
+    badge: "8位",
     name: "初参加",
     value: "-1,100 pt",
-    meta: "3件の確定投票",
+    meta: "投票中ポイント 3,000 pt",
     tone: "neutral",
   },
   {
     id: "test-rank-9",
-    badge: "確定収支 9位",
+    badge: "9位",
     name: "逆転待ち",
     value: "-2,300 pt",
-    meta: "3件の確定投票",
+    meta: "投票中ポイント 4,500 pt",
+    tone: "neutral",
+  },
+  {
+    id: "test-rank-10",
+    badge: "10位",
+    name: "超長い名前の予想参加者",
+    value: "-3,800 pt",
+    meta: "投票中ポイント 6,600 pt",
     tone: "neutral",
   },
 ];
@@ -724,29 +724,33 @@ function App() {
 
     if (!settledVoteRows.length) return [];
 
-    const byUser = new Map<string, { net: number; votes: number }>();
-    settledVoteRows.forEach(({ vote, payout }) => {
-      const current = byUser.get(vote.userName) ?? { net: 0, votes: 0 };
-      current.net += payout.net;
-      current.votes += 1;
+    const settledUserNames = new Set(settledVoteRows.map(({ vote }) => vote.userName));
+    const byUser = new Map<string, { net: number; pending: number }>();
+    data.votes.forEach((vote) => {
+      const match = data.matches.find((item) => item.id === vote.matchId);
+      if (!match) return;
+      const payout = calculateVotePayout(vote, match, data.votes);
+      const current = byUser.get(vote.userName) ?? { net: 0, pending: 0 };
+      if (payout.settled) {
+        current.net += payout.net;
+      } else {
+        current.pending += vote.amount;
+      }
       byUser.set(vote.userName, current);
     });
 
     const rankedRows = [...byUser.entries()]
       .map(([name, row]) => ({ name, ...row }))
-      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"));
+      .filter((row) => settledUserNames.has(row.name))
+      .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
 
-    const rowsForTicker =
-      rankedRows.length > 1 ? [rankedRows[rankedRows.length - 1], ...rankedRows.slice(0, -1)] : rankedRows;
-
-    return rowsForTicker.map((row) => {
-      const rank = rankedRows.findIndex((item) => item.name === row.name) + 1;
+    return rankedRows.map((row, index) => {
       return {
-        id: `net-rank-${row.name}-${rank}`,
-        badge: `確定収支 ${rank}位`,
+        id: `net-rank-${row.name}-${index + 1}`,
+        badge: `${index + 1}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
-        meta: `${row.votes}件の確定投票`,
+        meta: `投票中ポイント ${formatPoints(row.pending)}`,
         tone: row.net >= 0 ? "positive" : "neutral",
       };
     });
