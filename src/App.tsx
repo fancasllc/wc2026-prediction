@@ -88,7 +88,7 @@ type MotivationItem = {
 
 const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
   {
-    id: "test-top-net",
+    id: "test-rank-1",
     badge: "確定収支 1位",
     name: "サッカー太郎",
     value: "+12,500 pt",
@@ -96,19 +96,43 @@ const TEST_MOTIVATION_ITEMS: MotivationItem[] = [
     tone: "positive",
   },
   {
-    id: "test-recent-gain",
-    badge: "直近ビッグ収支",
+    id: "test-rank-2",
+    badge: "確定収支 2位",
     name: "予想マスター",
     value: "+8,200 pt",
-    meta: "日本の最終順位",
+    meta: "4件の確定投票",
     tone: "positive",
   },
   {
-    id: "test-chaser",
-    badge: "追い上げ中",
+    id: "test-rank-3",
+    badge: "確定収支 3位",
     name: "大穴ハンター",
     value: "+4,600 pt",
-    meta: "ワールドカップ優勝国",
+    meta: "3件の確定投票",
+    tone: "positive",
+  },
+  {
+    id: "test-rank-4",
+    badge: "確定収支 4位",
+    name: "ゴール職人",
+    value: "+2,900 pt",
+    meta: "2件の確定投票",
+    tone: "positive",
+  },
+  {
+    id: "test-rank-5",
+    badge: "確定収支 5位",
+    name: "青い予想屋",
+    value: "+1,400 pt",
+    meta: "2件の確定投票",
+    tone: "positive",
+  },
+  {
+    id: "test-rank-6",
+    badge: "確定収支 6位",
+    name: "堅実派",
+    value: "+600 pt",
+    meta: "1件の確定投票",
     tone: "positive",
   },
 ];
@@ -676,42 +700,18 @@ function App() {
       byUser.set(vote.userName, current);
     });
 
-    const topNet = [...byUser.entries()]
+    return [...byUser.entries()]
       .map(([name, row]) => ({ name, ...row }))
-      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"))[0];
-
-    const recentGain = settledVoteRows
-      .filter(({ payout }) => payout.net > 0)
-      .sort((a, b) => {
-        const aTime = new Date(a.match.settledAt ?? a.vote.createdAt).getTime();
-        const bTime = new Date(b.match.settledAt ?? b.vote.createdAt).getTime();
-        return bTime - aTime || b.payout.net - a.payout.net || a.vote.userName.localeCompare(b.vote.userName, "ja");
-      })[0];
-
-    const items: MotivationItem[] = [];
-    if (topNet) {
-      items.push({
-        id: "top-net",
-        badge: "確定収支 1位",
-        name: topNet.name,
-        value: `${topNet.net >= 0 ? "+" : ""}${formatPoints(topNet.net)}`,
-        meta: `${topNet.votes}件の確定投票`,
-        tone: topNet.net >= 0 ? "positive" : "neutral",
-      });
-    }
-
-    if (recentGain) {
-      items.push({
-        id: "recent-gain",
-        badge: "直近ビッグ収支",
-        name: recentGain.vote.userName,
-        value: `+${formatPoints(recentGain.payout.net)}`,
-        meta: recentGain.match.title,
-        tone: "positive",
-      });
-    }
-
-    return items;
+      .sort((a, b) => b.net - a.net || b.votes - a.votes || a.name.localeCompare(b.name, "ja"))
+      .slice(0, 6)
+      .map((row, index) => ({
+        id: `net-rank-${row.name}-${index}`,
+        badge: `確定収支 ${index + 1}位`,
+        name: row.name,
+        value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
+        meta: `${row.votes}件の確定投票`,
+        tone: row.net >= 0 ? "positive" : "neutral",
+      }));
   }, [data.matches, data.votes]);
 
   const selectedPersonVotes = useMemo(() => {
@@ -1348,7 +1348,6 @@ function App() {
         {view === "admin" && (
           <section className="admin-layout">
             <div className="admin-preview-block">
-              <p>表示テスト用プレビュー</p>
               <MotivationTicker items={TEST_MOTIVATION_ITEMS} />
             </div>
 

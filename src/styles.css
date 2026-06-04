@@ -371,23 +371,18 @@ label span {
   padding: 8px 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.96), rgba(232, 247, 255, 0.96)),
-    #ffffff;
-  border: 1px solid rgba(216, 237, 248, 0.96);
+    radial-gradient(circle at 12% 20%, rgba(255, 207, 25, 0.36), transparent 8rem),
+    linear-gradient(100deg, #061a3b 0%, #073d8d 48%, #006fe8 100%);
+  border: 1px solid rgba(255, 232, 130, 0.72);
   border-radius: 8px;
-  box-shadow: 0 10px 22px rgba(0, 42, 103, 0.16);
+  box-shadow:
+    0 12px 26px rgba(0, 18, 58, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .admin-preview-block {
   display: grid;
   gap: 6px;
-}
-
-.admin-preview-block > p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.76rem;
-  font-weight: 950;
 }
 
 .admin-preview-block .motivation-strip {
@@ -420,10 +415,13 @@ label span {
   min-width: 255px;
   max-width: 300px;
   padding: 10px 12px;
-  color: var(--ink);
-  background: #ffffff;
-  border: 1px solid #d8edf8;
+  color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
+    rgba(3, 28, 77, 0.7);
+  border: 1px solid rgba(255, 232, 130, 0.72);
   border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .motivation-chip span {
@@ -433,7 +431,7 @@ label span {
 }
 
 .motivation-chip small {
-  color: #0a67c4;
+  color: #ffdf58;
   font-size: 0.68rem;
   font-style: normal;
   font-weight: 950;
@@ -443,7 +441,7 @@ label span {
 .motivation-chip b {
   min-width: 0;
   overflow: hidden;
-  color: var(--ink);
+  color: #ffffff;
   font-size: 0.98rem;
   font-weight: 950;
   line-height: 1.18;
@@ -453,21 +451,21 @@ label span {
 
 .motivation-chip strong {
   grid-area: value;
-  color: #0b7c4f;
+  color: #ffdf58;
   font-size: 0.94rem;
   font-weight: 950;
   white-space: nowrap;
 }
 
 .motivation-chip.neutral strong {
-  color: #52677d;
+  color: #d7e7ff;
 }
 
 .motivation-chip em {
   grid-area: meta;
   min-width: 0;
   overflow: hidden;
-  color: #60748b;
+  color: #b9d5ff;
   font-size: 0.72rem;
   font-style: normal;
   font-weight: 900;
