@@ -500,6 +500,9 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedPersonName, setSelectedPersonName] = useState("");
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
+  const [pullStart, setPullStart] = useState<{ x: number; y: number } | null>(null);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
   const [data, setData] = useState<AppData>(() => loadData());
   const [apiError, setApiError] = useState("");
   const [isSyncing, setIsSyncing] = useState(true);
@@ -1102,6 +1105,42 @@ function App() {
     await syncState(() => fetchAppState());
   }
 
+  function handlePullStart(event: TouchEvent<HTMLDivElement>) {
+    if (window.scrollY > 0 || isSyncing) return;
+    const touch = event.touches[0];
+    setPullStart({ x: touch.clientX, y: touch.clientY });
+  }
+
+  function handlePullMove(event: TouchEvent<HTMLDivElement>) {
+    if (!pullStart || window.scrollY > 0 || isSyncing) return;
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - pullStart.x;
+    const deltaY = touch.clientY - pullStart.y;
+    if (deltaY <= 0 || Math.abs(deltaX) > deltaY) return;
+    setPullDistance(Math.min(72, deltaY * 0.45));
+  }
+
+  async function handlePullEnd() {
+    if (!pullStart) return;
+    const shouldRefresh = pullDistance >= 48;
+    setPullStart(null);
+
+    if (!shouldRefresh) {
+      setPullDistance(0);
+      return;
+    }
+
+    setIsPullRefreshing(true);
+    try {
+      await refreshState();
+    } finally {
+      window.setTimeout(() => {
+        setIsPullRefreshing(false);
+        setPullDistance(0);
+      }, 260);
+    }
+  }
+
   function openMatchDetail(matchId: string) {
     setSelectedMatchId(matchId);
     setView("matchDetail");
@@ -1144,7 +1183,22 @@ function App() {
     view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now));
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      onTouchStart={handlePullStart}
+      onTouchMove={handlePullMove}
+      onTouchEnd={handlePullEnd}
+    >
+      {(pullDistance > 8 || isPullRefreshing) && (
+        <div
+          className={`pull-refresh-indicator ${isPullRefreshing ? "spinning" : ""}`}
+          style={{ transform: `translate(-50%, ${Math.max(0, pullDistance - 24)}px)` }}
+          aria-label="更新中"
+          role="status"
+        >
+          <span aria-hidden />
+        </div>
+      )}
       <header className="topbar">
         <img
           src="/hero-japan-2026.jpg"
