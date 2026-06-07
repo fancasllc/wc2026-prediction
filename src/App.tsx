@@ -2012,7 +2012,7 @@ function StageNoticeCard({
         </span>
       </div>
       <div className="stage-notice-side">
-        <span>日本時間 {formatTokyoDateTime(notice.startsAt)} 開始予定</span>
+        <span>{formatTokyoDateTime(notice.startsAt)} 開催予定</span>
       </div>
       <div className="stage-notice-wait">
         <CalendarClock size={15} aria-hidden />
