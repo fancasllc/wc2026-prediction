@@ -23,6 +23,34 @@ type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "adm
 const REFERENCE_ODDS_URL = "https://www.365scores.com/football/league/fifa-world-cup-5930";
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
 
+const STAGE_NOTICE_CARDS = [
+  {
+    id: "round-of-32",
+    title: "ラウンド・オブ・32",
+    startsAt: "2026-06-29T04:00:00+09:00",
+  },
+  {
+    id: "round-of-16",
+    title: "ラウンド・オブ・16",
+    startsAt: "2026-07-05T02:00:00+09:00",
+  },
+  {
+    id: "quarter-finals",
+    title: "準々決勝",
+    startsAt: "2026-07-10T05:00:00+09:00",
+  },
+  {
+    id: "third-place",
+    title: "3位決定戦",
+    startsAt: "2026-07-19T06:00:00+09:00",
+  },
+  {
+    id: "final",
+    title: "決勝",
+    startsAt: "2026-07-20T04:00:00+09:00",
+  },
+];
+
 type MatchOption = {
   id: string;
   label: string;
@@ -290,6 +318,35 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function formatTokyoDateTime(value: string) {
+  if (!value) return "未設定";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatStartsIn(value: string, now: Date) {
+  const startsAt = new Date(value).getTime();
+  if (Number.isNaN(startsAt)) return "開始予定";
+
+  const diffMinutes = Math.max(0, Math.ceil((startsAt - now.getTime()) / 60_000));
+  if (diffMinutes <= 0) return "開始予定日を迎えました";
+
+  const days = Math.floor(diffMinutes / 1440);
+  const hours = Math.floor((diffMinutes % 1440) / 60);
+  const minutes = diffMinutes % 60;
+
+  if (days > 0) return `開始まで ${days}日 ${hours}時間`;
+  if (hours > 0) return `開始まで ${hours}時間 ${minutes}分`;
+  return `開始まで ${minutes}分`;
 }
 
 function formatPoints(value: number) {
@@ -1148,17 +1205,23 @@ function App() {
           <section className="view-stack">
             <div className="summary-list">
               {openMatches.length ? (
-                openMatches.map((match) => (
-                  <MatchSummaryCard
-                    key={match.id}
-                    match={match}
-                    now={now}
-                    votes={data.votes}
-                    onOpen={() => openMatchDetail(match.id)}
-                  />
-                ))
+                <>
+                  {openMatches.map((match) => (
+                    <MatchSummaryCard
+                      key={match.id}
+                      match={match}
+                      now={now}
+                      votes={data.votes}
+                      onOpen={() => openMatchDetail(match.id)}
+                    />
+                  ))}
+                  <StageNoticeList now={now} />
+                </>
               ) : (
-                <EmptyState title="受付中の予想テーマはありません" />
+                <>
+                  <EmptyState title="受付中の予想テーマはありません" />
+                  <StageNoticeList now={now} />
+                </>
               )}
             </div>
           </section>
@@ -1868,6 +1931,45 @@ function OddsTicker({
   );
 }
 
+function StageNoticeList({ now }: { now: Date }) {
+  return (
+    <div className="stage-notice-list" aria-label="今後の予想テーマ予定">
+      {STAGE_NOTICE_CARDS.map((notice) => (
+        <StageNoticeCard key={notice.id} notice={notice} now={now} />
+      ))}
+    </div>
+  );
+}
+
+function StageNoticeCard({
+  notice,
+  now,
+}: {
+  notice: (typeof STAGE_NOTICE_CARDS)[number];
+  now: Date;
+}) {
+  return (
+    <article className="stage-notice-card">
+      <div className="stage-notice-main">
+        <span className="stage-notice-pill">開催予定</span>
+        <strong>{notice.title}</strong>
+        <span className="stage-notice-countdown">
+          <Clock3 size={15} aria-hidden />
+          {formatStartsIn(notice.startsAt, now)}
+        </span>
+      </div>
+      <div className="stage-notice-side">
+        <span>日本時間 {formatTokyoDateTime(notice.startsAt)} 開始予定</span>
+        <small>投票スケジュールは別途ご案内します</small>
+      </div>
+      <div className="stage-notice-wait">
+        <CalendarClock size={15} aria-hidden />
+        お待ちください
+      </div>
+    </article>
+  );
+}
+
 function MatchHeader({
   match,
   now,
@@ -2237,7 +2339,7 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
       <div className="small-heading">投票状況</div>
       {matchVotes.length ? (
         <div className="bettor-grid">
-          {matchVotes.slice(0, 8).map((vote) => (
+          {matchVotes.map((vote) => (
             <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
           ))}
         </div>
