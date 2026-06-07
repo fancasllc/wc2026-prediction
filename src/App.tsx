@@ -2005,7 +2005,6 @@ function StageNoticeCard({
   return (
     <article className="stage-notice-card">
       <div className="stage-notice-main">
-        <span className="stage-notice-pill">開催予定</span>
         <strong>{notice.title}</strong>
         <span className="stage-notice-countdown">
           <Clock3 size={15} aria-hidden />
@@ -2014,11 +2013,10 @@ function StageNoticeCard({
       </div>
       <div className="stage-notice-side">
         <span>日本時間 {formatTokyoDateTime(notice.startsAt)} 開始予定</span>
-        <small>投票スケジュールは別途ご案内します</small>
       </div>
       <div className="stage-notice-wait">
         <CalendarClock size={15} aria-hidden />
-        お待ちください
+        組み合わせ待ち
       </div>
     </article>
   );

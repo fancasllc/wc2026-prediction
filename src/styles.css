@@ -407,22 +407,20 @@ label span {
   min-width: 0;
   padding: 13px 14px;
   overflow: hidden;
-  color: #102742;
-  background:
-    linear-gradient(180deg, rgba(248, 251, 254, 0.98) 0%, rgba(231, 240, 247, 0.98) 100%),
-    radial-gradient(circle at 92% 12%, rgba(255, 207, 25, 0.22), transparent 5rem);
-  border: 1px dashed rgba(130, 156, 181, 0.92);
+  color: #20252c;
+  background: linear-gradient(180deg, #f7f7f7 0%, #eeeeee 100%);
+  border: 1px dashed rgba(144, 144, 144, 0.86);
   border-radius: 8px;
-  box-shadow: 0 8px 18px rgba(0, 22, 63, 0.13);
+  box-shadow: 0 7px 16px rgba(0, 0, 0, 0.1);
 }
 
 .stage-notice-card::before {
   content: "COMING SOON";
   position: absolute;
-  right: -8px;
-  bottom: 7px;
-  color: rgba(8, 45, 91, 0.07);
-  font-size: 1.78rem;
+  right: -10px;
+  bottom: 31px;
+  color: rgba(0, 0, 0, 0.04);
+  font-size: 1.58rem;
   font-weight: 950;
   letter-spacing: 0.04em;
   pointer-events: none;
@@ -434,17 +432,6 @@ label span {
   display: grid;
   gap: 6px;
   min-width: 0;
-}
-
-.stage-notice-pill {
-  justify-self: start;
-  padding: 5px 9px;
-  color: #50657b;
-  font-size: 0.72rem;
-  font-weight: 950;
-  background: #edf3f7;
-  border: 1px solid #dbe8ef;
-  border-radius: 999px;
 }
 
 .stage-notice-main strong {
@@ -459,7 +446,7 @@ label span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #c93443;
+  color: #b3343e;
   font-size: 0.82rem;
   font-weight: 950;
   white-space: nowrap;
@@ -477,17 +464,10 @@ label span {
 }
 
 .stage-notice-side span {
-  color: #4f657b;
+  color: #52575e;
   font-size: 0.74rem;
   font-weight: 950;
   line-height: 1.18;
-}
-
-.stage-notice-side small {
-  color: #6b7f92;
-  font-size: 0.68rem;
-  font-weight: 850;
-  line-height: 1.25;
 }
 
 .stage-notice-wait {
@@ -499,11 +479,11 @@ label span {
   justify-content: center;
   gap: 5px;
   min-height: 34px;
-  color: #496984;
+  color: #4f4f4f;
   font-size: 0.84rem;
   font-weight: 950;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(185, 208, 226, 0.96);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(190, 190, 190, 0.95);
   border-radius: 999px;
 }
 
