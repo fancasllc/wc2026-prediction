@@ -520,16 +520,13 @@ label span {
 }
 
 .motivation-chip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "name value"
-    "name meta";
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 2px 10px;
   flex: 0 0 calc((100% - 26px) / 2);
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 58px;
+  padding: 8px 10px 8px 18px;
   color: #ffffff;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
@@ -541,37 +538,47 @@ label span {
 }
 
 .motivation-chip span {
-  grid-area: name;
   display: grid;
+  gap: 1px;
   min-width: 0;
+  width: 100%;
 }
 
 .motivation-chip small {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
   color: #ffdf58;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-style: normal;
   font-weight: 950;
-  line-height: 1.1;
+  line-height: 1;
+  background: rgba(8, 55, 127, 0.92);
+  border: 1px solid #ffdf58;
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .motivation-chip b {
   min-width: 0;
-  overflow: hidden;
   color: #ffffff;
-  font-size: 0.96rem;
+  font-size: 0.72rem;
   font-weight: 950;
-  line-height: 1.18;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .motivation-chip strong {
-  grid-area: value;
   color: #ffdf58;
-  font-size: 1.08rem;
+  font-size: 1.22rem;
   font-weight: 950;
-  line-height: 1.05;
-  text-align: right;
+  line-height: 1;
+  text-align: left;
   white-space: nowrap;
 }
 
@@ -580,15 +587,13 @@ label span {
 }
 
 .motivation-chip em {
-  grid-area: meta;
-  max-width: 142px;
   overflow: hidden;
   color: #b9d5ff;
-  font-size: 0.66rem;
+  font-size: 0.61rem;
   font-style: normal;
   font-weight: 900;
   line-height: 1.15;
-  text-align: right;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

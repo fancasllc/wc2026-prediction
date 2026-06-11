@@ -2134,12 +2134,12 @@ function MotivationTicker({ items }: { items: MotivationItem[] }) {
       <div className="motivation-track">
         {items.map((item) => (
           <span className={`motivation-chip ${item.tone}`} key={item.id}>
+            <small>{item.badge.replace("位", "")}</small>
             <span>
-              <small>{item.badge}</small>
               <b>{item.name}</b>
+              <strong>{item.value}</strong>
+              <em>{item.meta}</em>
             </span>
-            <strong>{item.value}</strong>
-            <em>{item.meta}</em>
           </span>
         ))}
       </div>
