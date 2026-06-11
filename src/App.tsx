@@ -92,6 +92,20 @@ type BackupRecord = {
   voteCount: number;
   userCount: number;
   byteSize: number;
+  externalStatus?: "not_configured" | "uploaded" | "failed" | string;
+  externalProvider?: string | null;
+  externalBucket?: string | null;
+  externalObjectKey?: string | null;
+  externalUrl?: string | null;
+  externalError?: string | null;
+  externalUploadedAt?: string | null;
+};
+
+type BackupStorageStatus = {
+  configured: boolean;
+  provider: string;
+  bucket: string | null;
+  prefix: string;
 };
 
 type VoteDraft = {
@@ -204,6 +218,7 @@ async function requestBackups(adminToken: string) {
   return apiRequest<{
     backups: BackupRecord[];
     schedule: { timezone: string; hour: number };
+    externalStorage: BackupStorageStatus;
   }>("/api/admin/backups", {
     headers: { Authorization: `Bearer ${adminToken}` },
   });
@@ -211,6 +226,16 @@ async function requestBackups(adminToken: string) {
 
 async function createBackup(adminToken: string) {
   return apiRequest<{ backup: BackupRecord; backups: BackupRecord[] }>("/api/admin/backups", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+}
+
+async function syncBackupExternally(adminToken: string, backupId: string) {
+  return apiRequest<{
+    externalResult: { status: string; error?: string };
+    backups: BackupRecord[];
+  }>(`/api/admin/backups/${backupId}/external-sync`, {
     method: "POST",
     headers: { Authorization: `Bearer ${adminToken}` },
   });
@@ -385,6 +410,16 @@ function formatBytes(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function formatExternalBackupStatus(backup: BackupRecord) {
+  if (backup.externalStatus === "uploaded") {
+    return backup.externalUploadedAt
+      ? `外部保存済み ${formatDateTime(backup.externalUploadedAt)}`
+      : "外部保存済み";
+  }
+  if (backup.externalStatus === "failed") return "外部保存失敗";
+  return "外部保存未設定";
+}
+
 function minutesRemaining(closesAt: string, now: Date) {
   const diff = new Date(closesAt).getTime() - now.getTime();
   if (diff <= 0) return "締切済み";
@@ -545,6 +580,7 @@ function App() {
   const [adminPassword, setAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
   const [backups, setBackups] = useState<BackupRecord[]>([]);
+  const [backupStorage, setBackupStorage] = useState<BackupStorageStatus | null>(null);
   const [backupMessage, setBackupMessage] = useState("");
   const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
@@ -644,6 +680,7 @@ function App() {
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken("");
     setBackups([]);
+    setBackupStorage(null);
     setAdminMessage("管理者認証を解除しました。");
   }
 
@@ -654,6 +691,7 @@ function App() {
     try {
       const result = await requestBackups(token);
       setBackups(result.backups);
+      setBackupStorage(result.externalStorage);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setBackupMessage(`バックアップ一覧を取得できませんでした: ${message}`);
@@ -673,6 +711,26 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setBackupMessage(`バックアップを作成できませんでした: ${message}`);
+    } finally {
+      setIsBackupLoading(false);
+    }
+  }
+
+  async function syncExternalBackup(backup: BackupRecord) {
+    if (!adminToken) return;
+    setIsBackupLoading(true);
+    setBackupMessage("");
+    try {
+      const result = await syncBackupExternally(adminToken, backup.id);
+      setBackups(result.backups);
+      setBackupMessage(
+        result.externalResult.status === "uploaded"
+          ? "外部ストレージへ保存しました。"
+          : `外部保存を完了できませんでした: ${result.externalResult.error ?? result.externalResult.status}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setBackupMessage(`外部保存を再試行できませんでした: ${message}`);
     } finally {
       setIsBackupLoading(false);
     }
@@ -1569,6 +1627,14 @@ function App() {
                 毎日04:00以降に1回、試合・選択肢・投票・ユーザー別収支をCSVで保存します。
                 手動作成もできます。既存の投票データは変更しません。
               </p>
+              <div className="backup-storage-status">
+                <strong>外部CSV保存</strong>
+                <span>
+                  {backupStorage?.configured
+                    ? `有効: ${backupStorage.bucket ?? "設定済み"}`
+                    : "未設定: Render環境変数を追加するとCloudflare R2/S3へ保存します"}
+                </span>
+              </div>
               <div className="button-row">
                 <button
                   className="primary-action"
@@ -1600,15 +1666,33 @@ function App() {
                           {backup.reason === "daily" ? "自動" : "手動"} / 試合 {backup.matchCount}件 /
                           投票 {backup.voteCount}件 / ユーザー {backup.userCount}件 / {formatBytes(backup.byteSize)}
                         </small>
+                        <small
+                          className={backup.externalStatus === "failed" ? "backup-external-error" : ""}
+                        >
+                          {formatExternalBackupStatus(backup)}
+                          {backup.externalError ? `: ${backup.externalError}` : ""}
+                        </small>
                       </span>
-                      <button
-                        className="ghost-action"
-                        disabled={isBackupLoading}
-                        onClick={() => downloadBackup(backup)}
-                        type="button"
-                      >
-                        CSV
-                      </button>
+                      <div className="backup-actions">
+                        {backupStorage?.configured && backup.externalStatus !== "uploaded" && (
+                          <button
+                            className="ghost-action"
+                            disabled={isBackupLoading}
+                            onClick={() => syncExternalBackup(backup)}
+                            type="button"
+                          >
+                            外部保存
+                          </button>
+                        )}
+                        <button
+                          className="ghost-action"
+                          disabled={isBackupLoading}
+                          onClick={() => downloadBackup(backup)}
+                          type="button"
+                        >
+                          CSV
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

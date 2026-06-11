@@ -1519,6 +1519,33 @@ textarea:focus {
   font-weight: 850;
 }
 
+.backup-storage-status {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #eef8ff;
+  border: 1px solid #cde7f7;
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.backup-storage-status span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.backup-external-error {
+  color: #b4232f !important;
+}
+
+.backup-actions {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
 .backup-row .ghost-action {
   min-height: 38px;
   padding: 7px 12px;

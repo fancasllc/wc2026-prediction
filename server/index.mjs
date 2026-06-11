@@ -2,6 +2,7 @@ import express from "express";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -19,8 +20,25 @@ const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
 const rateLimitStore = new Map();
 const backupCheckIntervalMs = 15 * 60 * 1000;
 const backupHourJst = Number(process.env.DB_BACKUP_HOUR_JST ?? 4);
+const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
+const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
+  .replace(/^\/+|\/+$/g, "");
+const backupStorageEndpoint = process.env.DB_BACKUP_S3_ENDPOINT ?? "";
+const backupStorageRegion = process.env.DB_BACKUP_S3_REGION ?? "auto";
+const backupStorageAccessKeyId =
+  process.env.DB_BACKUP_S3_ACCESS_KEY_ID ?? process.env.AWS_ACCESS_KEY_ID ?? "";
+const backupStorageSecretAccessKey =
+  process.env.DB_BACKUP_S3_SECRET_ACCESS_KEY ?? process.env.AWS_SECRET_ACCESS_KEY ?? "";
+const backupStoragePublicBaseUrl = (process.env.DB_BACKUP_S3_PUBLIC_BASE_URL ?? "").replace(
+  /\/+$/g,
+  "",
+);
+const isExternalBackupStorageConfigured = Boolean(
+  backupStorageBucket && backupStorageAccessKeyId && backupStorageSecretAccessKey,
+);
 let backupTimer = null;
 let backupInProgress = false;
+let backupStorageClient = null;
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
@@ -30,6 +48,22 @@ const pool = process.env.DATABASE_URL
         : { rejectUnauthorized: false },
     })
   : null;
+
+function getBackupStorageClient() {
+  if (!isExternalBackupStorageConfigured) return null;
+  if (!backupStorageClient) {
+    backupStorageClient = new S3Client({
+      region: backupStorageRegion,
+      endpoint: backupStorageEndpoint || undefined,
+      credentials: {
+        accessKeyId: backupStorageAccessKeyId,
+        secretAccessKey: backupStorageSecretAccessKey,
+      },
+      forcePathStyle: Boolean(backupStorageEndpoint),
+    });
+  }
+  return backupStorageClient;
+}
 
 function toIsoLike(value) {
   if (!value) return "";
@@ -178,6 +212,15 @@ async function initializeDatabase() {
       user_count integer not null default 0,
       created_at timestamptz not null default now()
     );
+
+    alter table database_backups
+      add column if not exists external_status text not null default 'not_configured',
+      add column if not exists external_provider text,
+      add column if not exists external_bucket text,
+      add column if not exists external_object_key text,
+      add column if not exists external_url text,
+      add column if not exists external_error text,
+      add column if not exists external_uploaded_at timestamptz;
   `);
 
   await ensureDailyBackup();
@@ -522,6 +565,110 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
   };
 }
 
+function createBackupObjectKey(backup) {
+  const createdAt = new Date(backup.created_at ?? backup.createdAt ?? Date.now());
+  const year = createdAt.getUTCFullYear();
+  const month = String(createdAt.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(createdAt.getUTCDate()).padStart(2, "0");
+  const stamp = createdAt.toISOString().replace(/[:.]/g, "-");
+  const filename = `wc2026-prediction-backup-${stamp}-${backup.id}.csv`;
+  return [backupStoragePrefix, String(year), month, day, filename].filter(Boolean).join("/");
+}
+
+function createExternalBackupUrl(objectKey) {
+  if (backupStoragePublicBaseUrl) {
+    return `${backupStoragePublicBaseUrl}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  return `s3://${backupStorageBucket}/${objectKey}`;
+}
+
+async function markExternalBackupStatus(id, fields) {
+  await query(
+    `
+      update database_backups
+      set
+        external_status = $2,
+        external_provider = $3,
+        external_bucket = $4,
+        external_object_key = $5,
+        external_url = $6,
+        external_error = $7,
+        external_uploaded_at = $8
+      where id = $1
+    `,
+    [
+      id,
+      fields.status,
+      fields.provider ?? null,
+      fields.bucket ?? null,
+      fields.objectKey ?? null,
+      fields.url ?? null,
+      fields.error ?? null,
+      fields.uploadedAt ?? null,
+    ],
+  );
+}
+
+async function syncBackupToExternalStorage(backupId) {
+  if (!isExternalBackupStorageConfigured) {
+    return { status: "not_configured" };
+  }
+
+  const client = getBackupStorageClient();
+  const result = await query(
+    `
+      select id, csv_content, created_at
+      from database_backups
+      where id = $1
+    `,
+    [backupId],
+  );
+  const backup = result.rows[0];
+  if (!backup || !client) {
+    return { status: "not_found" };
+  }
+
+  const objectKey = createBackupObjectKey(backup);
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: backupStorageBucket,
+        Key: objectKey,
+        Body: Buffer.from(`\uFEFF${backup.csv_content}`, "utf8"),
+        ContentType: "text/csv; charset=utf-8",
+        Metadata: {
+          "backup-id": backup.id,
+          "created-by": "wc2026-prediction",
+        },
+      }),
+    );
+
+    const uploadedAt = new Date().toISOString();
+    const url = createExternalBackupUrl(objectKey);
+    await markExternalBackupStatus(backup.id, {
+      status: "uploaded",
+      provider: backupStorageEndpoint ? "s3-compatible" : "s3",
+      bucket: backupStorageBucket,
+      objectKey,
+      url,
+      uploadedAt,
+    });
+    return { status: "uploaded", objectKey, url, uploadedAt };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markExternalBackupStatus(backup.id, {
+      status: "failed",
+      provider: backupStorageEndpoint ? "s3-compatible" : "s3",
+      bucket: backupStorageBucket,
+      objectKey,
+      url: createExternalBackupUrl(objectKey),
+      error: message.slice(0, 500),
+    });
+    console.error(`Failed to upload database backup ${backup.id} to external storage`, error);
+    return { status: "failed", error: message };
+  }
+}
+
 async function listDatabaseBackups() {
   const result = await query(`
     select
@@ -531,7 +678,14 @@ async function listDatabaseBackups() {
       vote_count as "voteCount",
       user_count as "userCount",
       octet_length(csv_content) as "byteSize",
-      created_at as "createdAt"
+      created_at as "createdAt",
+      external_status as "externalStatus",
+      external_provider as "externalProvider",
+      external_bucket as "externalBucket",
+      external_object_key as "externalObjectKey",
+      external_url as "externalUrl",
+      external_error as "externalError",
+      external_uploaded_at as "externalUploadedAt"
     from database_backups
     order by created_at desc
     limit 90
@@ -540,6 +694,9 @@ async function listDatabaseBackups() {
   return result.rows.map((row) => ({
     ...row,
     createdAt: new Date(row.createdAt).toISOString(),
+    externalUploadedAt: row.externalUploadedAt
+      ? new Date(row.externalUploadedAt).toISOString()
+      : null,
     byteSize: Number(row.byteSize),
   }));
 }
@@ -551,6 +708,7 @@ async function ensureDailyBackup() {
   if (hour < backupHourJst) return;
 
   backupInProgress = true;
+  let createdBackup = null;
   try {
     await withTransaction(async (client) => {
       const marker = await client.query(
@@ -559,7 +717,7 @@ async function ensureDailyBackup() {
       );
       if (marker.rows[0]?.value === dateKey) return;
 
-      const backup = await createDatabaseBackup("daily", client);
+      createdBackup = await createDatabaseBackup("daily", client);
       await client.query(
         `
           insert into app_settings (key, value, updated_at)
@@ -568,8 +726,11 @@ async function ensureDailyBackup() {
         `,
         ["last-daily-db-backup-jst", dateKey],
       );
-      console.log(`Created daily database backup ${backup.id} for ${dateKey}`);
+      console.log(`Created daily database backup ${createdBackup.id} for ${dateKey}`);
     });
+    if (createdBackup) {
+      await syncBackupToExternalStorage(createdBackup.id);
+    }
   } catch (error) {
     console.error("Failed to create daily database backup", error);
   } finally {
@@ -1162,6 +1323,12 @@ app.get("/api/admin/backups", requireAdmin, async (_request, response, next) => 
         timezone: "Asia/Tokyo",
         hour: backupHourJst,
       },
+      externalStorage: {
+        configured: isExternalBackupStorageConfigured,
+        provider: backupStorageEndpoint ? "s3-compatible" : "s3",
+        bucket: backupStorageBucket || null,
+        prefix: backupStoragePrefix,
+      },
     });
   } catch (error) {
     next(error);
@@ -1171,6 +1338,7 @@ app.get("/api/admin/backups", requireAdmin, async (_request, response, next) => 
 app.post("/api/admin/backups", requireAdmin, async (_request, response, next) => {
   try {
     const backup = await createDatabaseBackup("manual");
+    await syncBackupToExternalStorage(backup.id);
     await writeAuditLog("backup.create", backup.id, {
       reason: backup.reason,
       matchCount: backup.matchCount,
@@ -1179,6 +1347,19 @@ app.post("/api/admin/backups", requireAdmin, async (_request, response, next) =>
     });
     response.status(201).json({
       backup,
+      backups: await listDatabaseBackups(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/backups/:id/external-sync", requireAdmin, async (request, response, next) => {
+  try {
+    const externalResult = await syncBackupToExternalStorage(request.params.id);
+    await writeAuditLog("backup.external-sync", request.params.id, externalResult);
+    response.json({
+      externalResult,
       backups: await listDatabaseBackups(),
     });
   } catch (error) {
