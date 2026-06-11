@@ -84,6 +84,16 @@ type AppData = {
   knownUsers: string[];
 };
 
+type BackupRecord = {
+  id: string;
+  reason: string;
+  createdAt: string;
+  matchCount: number;
+  voteCount: number;
+  userCount: number;
+  byteSize: number;
+};
+
 type VoteDraft = {
   name: string;
   amount: string;
@@ -187,6 +197,22 @@ async function requestAdminToken(password: string) {
   return apiRequest<{ token: string; expiresAt: string }>("/api/admin/login", {
     method: "POST",
     body: JSON.stringify({ password }),
+  });
+}
+
+async function requestBackups(adminToken: string) {
+  return apiRequest<{
+    backups: BackupRecord[];
+    schedule: { timezone: string; hour: number };
+  }>("/api/admin/backups", {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+}
+
+async function createBackup(adminToken: string) {
+  return apiRequest<{ backup: BackupRecord; backups: BackupRecord[] }>("/api/admin/backups", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${adminToken}` },
   });
 }
 
@@ -353,6 +379,12 @@ function formatPoints(value: number) {
   return `${pointsFormatter.format(Math.round(value))} pt`;
 }
 
+function formatBytes(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function minutesRemaining(closesAt: string, now: Date) {
   const diff = new Date(closesAt).getTime() - now.getTime();
   if (diff <= 0) return "締切済み";
@@ -512,6 +544,9 @@ function App() {
   );
   const [adminPassword, setAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
+  const [backups, setBackups] = useState<BackupRecord[]>([]);
+  const [backupMessage, setBackupMessage] = useState("");
+  const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [editMatchId, setEditMatchId] = useState("");
   const [editMatchDraft, setEditMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
@@ -556,6 +591,15 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (!adminToken) {
+      setBackups([]);
+      return;
+    }
+
+    refreshBackups(adminToken);
+  }, [adminToken]);
+
   async function syncState(action: () => Promise<AppData>) {
     setIsSyncing(true);
     setApiError("");
@@ -599,7 +643,65 @@ function App() {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken("");
+    setBackups([]);
     setAdminMessage("管理者認証を解除しました。");
+  }
+
+  async function refreshBackups(token = adminToken) {
+    if (!token) return;
+    setIsBackupLoading(true);
+    setBackupMessage("");
+    try {
+      const result = await requestBackups(token);
+      setBackups(result.backups);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setBackupMessage(`バックアップ一覧を取得できませんでした: ${message}`);
+    } finally {
+      setIsBackupLoading(false);
+    }
+  }
+
+  async function createManualBackup() {
+    if (!adminToken) return;
+    setIsBackupLoading(true);
+    setBackupMessage("");
+    try {
+      const result = await createBackup(adminToken);
+      setBackups(result.backups);
+      setBackupMessage(`バックアップを作成しました: ${formatDateTime(result.backup.createdAt)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setBackupMessage(`バックアップを作成できませんでした: ${message}`);
+    } finally {
+      setIsBackupLoading(false);
+    }
+  }
+
+  async function downloadBackup(backup: BackupRecord) {
+    if (!adminToken) return;
+    setBackupMessage("");
+    try {
+      const response = await fetch(`/api/admin/backups/${backup.id}/download`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
+        throw new Error(body?.error ?? `HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `wc2026-prediction-backup-${backup.createdAt.slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setBackupMessage(`バックアップをダウンロードできませんでした: ${message}`);
+    }
   }
 
   const sortedMatches = useMemo(
@@ -1458,6 +1560,63 @@ function App() {
             </div>
             {adminToken && (
               <>
+            <div className="data-panel admin-backup-panel">
+              <div className="panel-title">
+                <Database size={18} aria-hidden />
+                DBバックアップ
+              </div>
+              <p className="admin-help">
+                毎日04:00以降に1回、試合・選択肢・投票・ユーザー別収支をCSVで保存します。
+                手動作成もできます。既存の投票データは変更しません。
+              </p>
+              <div className="button-row">
+                <button
+                  className="primary-action"
+                  disabled={isBackupLoading}
+                  onClick={createManualBackup}
+                  type="button"
+                >
+                  <Database size={18} aria-hidden />
+                  今すぐ作成
+                </button>
+                <button
+                  className="ghost-action"
+                  disabled={isBackupLoading}
+                  onClick={() => refreshBackups()}
+                  type="button"
+                >
+                  <RotateCcw size={18} aria-hidden />
+                  一覧更新
+                </button>
+              </div>
+              {backupMessage && <p className="inline-message">{backupMessage}</p>}
+              {backups.length ? (
+                <div className="backup-list">
+                  {backups.map((backup) => (
+                    <div className="backup-row" key={backup.id}>
+                      <span>
+                        <strong>{formatDateTime(backup.createdAt)}</strong>
+                        <small>
+                          {backup.reason === "daily" ? "自動" : "手動"} / 試合 {backup.matchCount}件 /
+                          投票 {backup.voteCount}件 / ユーザー {backup.userCount}件 / {formatBytes(backup.byteSize)}
+                        </small>
+                      </span>
+                      <button
+                        className="ghost-action"
+                        disabled={isBackupLoading}
+                        onClick={() => downloadBackup(backup)}
+                        type="button"
+                      >
+                        CSV
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title={isBackupLoading ? "バックアップを確認中です" : "バックアップはまだありません"} />
+              )}
+            </div>
+
             <div className="admin-column">
               <form className="data-panel form-panel" onSubmit={addMatch}>
                 <div className="panel-title">

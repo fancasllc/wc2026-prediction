@@ -17,75 +17,10 @@ const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
 const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
 const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
 const rateLimitStore = new Map();
-
-const launchSeedKey = "seed:world-cup-winner-2026-06-12-v1";
-const publicLaunchClearKey = "reset:public-launch-clear-2026-06-01-v1";
-const worldCupWinnerOptions = [
-  "フランス",
-  "スペイン",
-  "アルゼンチン",
-  "イングランド",
-  "ポルトガル",
-  "ブラジル",
-  "オランダ",
-  "モロッコ",
-  "ベルギー",
-  "ドイツ",
-  "クロアチア",
-  "コロンビア",
-  "セネガル",
-  "メキシコ",
-  "アメリカ",
-  "ウルグアイ",
-  "日本",
-  "スイス",
-  "イラン",
-  "トルコ",
-  "エクアドル",
-  "オーストリア",
-  "韓国",
-  "オーストラリア",
-  "アルジェリア",
-  "エジプト",
-  "カナダ",
-  "ノルウェー",
-  "パナマ",
-  "コートジボワール",
-  "スウェーデン",
-  "パラグアイ",
-  "チェコ",
-  "スコットランド",
-  "チュニジア",
-  "コンゴ民主共和国",
-  "ウズベキスタン",
-  "カタール",
-  "イラク",
-  "南アフリカ",
-  "サウジアラビア",
-  "ヨルダン",
-  "ボスニア・ヘルツェゴビナ",
-  "カーボベルデ",
-  "ガーナ",
-  "キュラソー",
-  "ハイチ",
-  "ニュージーランド",
-];
-
-const launchMatches = [
-  {
-    id: "world-cup-winner-2026",
-    title: "ワールドカップ優勝国",
-    stage: "",
-    venue: "",
-    startsAt: "2026-06-12T04:00",
-    closesAt: "2026-06-12T04:00",
-    question: "",
-    options: worldCupWinnerOptions.map((label, index) => ({
-      id: `winner-${String(index + 1).padStart(2, "0")}`,
-      label,
-    })),
-  },
-];
+const backupCheckIntervalMs = 15 * 60 * 1000;
+const backupHourJst = Number(process.env.DB_BACKUP_HOUR_JST ?? 4);
+let backupTimer = null;
+let backupInProgress = false;
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
@@ -233,53 +168,20 @@ async function initializeDatabase() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+
+    create table if not exists database_backups (
+      id text primary key,
+      reason text not null,
+      csv_content text not null,
+      match_count integer not null default 0,
+      vote_count integer not null default 0,
+      user_count integer not null default 0,
+      created_at timestamptz not null default now()
+    );
   `);
 
-  await seedLaunchDataOnce();
-  await clearLaunchDataOnce();
-}
-
-async function clearLaunchDataOnce() {
-  const marker = await query("select value from app_settings where key = $1", [publicLaunchClearKey]);
-  if (marker.rowCount) return;
-
-  await withTransaction(async (client) => {
-    await client.query("delete from votes");
-    await client.query("delete from users");
-    await client.query("delete from matches");
-    await client.query(
-      `
-        insert into app_settings (key, value, updated_at)
-        values ($1, $2, now())
-        on conflict (key) do update set value = excluded.value, updated_at = now()
-      `,
-      [publicLaunchClearKey, "done"],
-    );
-  });
-}
-
-async function seedLaunchDataOnce() {
-  const marker = await query("select value from app_settings where key = $1", [launchSeedKey]);
-  if (marker.rowCount) return;
-
-  await withTransaction(async (client) => {
-    await client.query("delete from votes");
-    await client.query("delete from users");
-    await client.query("delete from matches");
-
-    for (const match of launchMatches) {
-      await insertMatch(match, client);
-    }
-
-    await client.query(
-      `
-        insert into app_settings (key, value, updated_at)
-        values ($1, $2, now())
-        on conflict (key) do update set value = excluded.value, updated_at = now()
-      `,
-      [launchSeedKey, "done"],
-    );
-  });
+  await ensureDailyBackup();
+  startBackupScheduler();
 }
 
 function signAdminToken(expiresAt) {
@@ -363,6 +265,323 @@ async function writeAuditLog(action, targetId, detail = {}) {
     `,
     [createId("audit"), action, targetId ?? null, JSON.stringify(detail)],
   );
+}
+
+function getTokyoDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    hour: Number(values.hour),
+  };
+}
+
+function csvEscape(value) {
+  if (value === undefined || value === null) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function buildCsv(rows) {
+  const headers = [
+    "section",
+    "backup_id",
+    "backup_created_at",
+    "id",
+    "match_id",
+    "match_title",
+    "stage",
+    "venue",
+    "starts_at",
+    "closes_at",
+    "result_option_id",
+    "result_option_label",
+    "settled_at",
+    "option_id",
+    "option_label",
+    "option_sort_order",
+    "vote_id",
+    "user_name",
+    "amount",
+    "vote_created_at",
+    "vote_result",
+    "return_points",
+    "net_points",
+    "total_pool",
+    "winning_pool",
+    "user_vote_count",
+    "user_total_staked",
+    "user_pending_points",
+    "user_gross_return",
+    "user_settled_net",
+  ];
+
+  return [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")),
+  ].join("\n");
+}
+
+function calculateBackupPayout(vote, match, votes) {
+  if (!match?.result_option_id) {
+    return { settled: false, won: false, gross: 0, net: 0, totalPool: 0, winningPool: 0 };
+  }
+
+  const matchVotes = votes.filter((item) => item.match_id === match.id);
+  const totalPool = matchVotes.reduce((sum, item) => sum + Number(item.amount), 0);
+  const winningPool = matchVotes
+    .filter((item) => item.option_id === match.result_option_id)
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+  const won = vote.option_id === match.result_option_id;
+  const gross = won && winningPool > 0 ? (totalPool * Number(vote.amount)) / winningPool : 0;
+
+  return {
+    settled: true,
+    won,
+    gross,
+    net: gross - Number(vote.amount),
+    totalPool,
+    winningPool,
+  };
+}
+
+async function createDatabaseBackup(reason = "manual", db = pool) {
+  const backupId = createId("backup");
+  const backupCreatedAt = new Date().toISOString();
+  const run = (text, params = []) => db.query(text, params);
+
+  const [matchesResult, optionsResult, usersResult, votesResult] = await Promise.all([
+    run(`
+      select
+        id,
+        title,
+        stage,
+        venue,
+        starts_at,
+        closes_at,
+        question,
+        result_option_id,
+        settled_at,
+        created_at
+      from matches
+      order by starts_at asc, created_at asc
+    `),
+    run(`
+      select id, match_id, label, sort_order
+      from match_options
+      order by match_id asc, sort_order asc, label asc
+    `),
+    run(`
+      select name, created_at, updated_at
+      from users
+      order by name asc
+    `),
+    run(`
+      select id, match_id, option_id, user_name, amount::float as amount, created_at
+      from votes
+      order by created_at asc
+    `),
+  ]);
+
+  const matches = matchesResult.rows;
+  const options = optionsResult.rows;
+  const users = usersResult.rows;
+  const votes = votesResult.rows;
+  const matchById = new Map(matches.map((match) => [match.id, match]));
+  const optionById = new Map(options.map((option) => [option.id, option]));
+
+  const rows = [];
+  rows.push({
+    section: "backup_meta",
+    backup_id: backupId,
+    backup_created_at: backupCreatedAt,
+    match_id: "",
+    match_title: "WC2026 prediction database backup",
+    user_vote_count: votes.length,
+    user_total_staked: votes.reduce((sum, vote) => sum + Number(vote.amount), 0),
+  });
+
+  for (const match of matches) {
+    const resultOption = match.result_option_id ? optionById.get(match.result_option_id) : null;
+    rows.push({
+      section: "matches",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: match.id,
+      match_id: match.id,
+      match_title: match.title,
+      stage: match.stage,
+      venue: match.venue,
+      starts_at: match.starts_at?.toISOString?.() ?? match.starts_at,
+      closes_at: match.closes_at?.toISOString?.() ?? match.closes_at,
+      result_option_id: match.result_option_id,
+      result_option_label: resultOption?.label ?? "",
+      settled_at: match.settled_at?.toISOString?.() ?? "",
+    });
+  }
+
+  for (const option of options) {
+    const match = matchById.get(option.match_id);
+    rows.push({
+      section: "match_options",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: option.id,
+      match_id: option.match_id,
+      match_title: match?.title ?? "",
+      option_id: option.id,
+      option_label: option.label,
+      option_sort_order: option.sort_order,
+    });
+  }
+
+  for (const vote of votes) {
+    const match = matchById.get(vote.match_id);
+    const option = optionById.get(vote.option_id);
+    const resultOption = match?.result_option_id ? optionById.get(match.result_option_id) : null;
+    const payout = calculateBackupPayout(vote, match, votes);
+
+    rows.push({
+      section: "votes",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: vote.id,
+      vote_id: vote.id,
+      match_id: vote.match_id,
+      match_title: match?.title ?? "",
+      result_option_id: match?.result_option_id ?? "",
+      result_option_label: resultOption?.label ?? "",
+      option_id: vote.option_id,
+      option_label: option?.label ?? "",
+      user_name: vote.user_name,
+      amount: vote.amount,
+      vote_created_at: vote.created_at?.toISOString?.() ?? vote.created_at,
+      vote_result: payout.settled ? (payout.won ? "win" : "lose") : "pending",
+      return_points: payout.settled ? Math.round(payout.gross) : "",
+      net_points: payout.settled ? Math.round(payout.net) : "",
+      total_pool: payout.settled ? Math.round(payout.totalPool) : "",
+      winning_pool: payout.settled ? Math.round(payout.winningPool) : "",
+    });
+  }
+
+  for (const user of users) {
+    const userVotes = votes.filter((vote) => vote.user_name === user.name);
+    const summary = userVotes.reduce(
+      (acc, vote) => {
+        const match = matchById.get(vote.match_id);
+        const payout = calculateBackupPayout(vote, match, votes);
+        acc.voteCount += 1;
+        acc.totalStaked += Number(vote.amount);
+        acc.pendingPoints += payout.settled ? 0 : Number(vote.amount);
+        acc.grossReturn += payout.settled ? payout.gross : 0;
+        acc.settledNet += payout.settled ? payout.net : 0;
+        return acc;
+      },
+      { voteCount: 0, totalStaked: 0, pendingPoints: 0, grossReturn: 0, settledNet: 0 },
+    );
+
+    rows.push({
+      section: "users_summary",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: user.name,
+      user_name: user.name,
+      user_vote_count: summary.voteCount,
+      user_total_staked: Math.round(summary.totalStaked),
+      user_pending_points: Math.round(summary.pendingPoints),
+      user_gross_return: Math.round(summary.grossReturn),
+      user_settled_net: Math.round(summary.settledNet),
+    });
+  }
+
+  const csvContent = buildCsv(rows);
+  await run(
+    `
+      insert into database_backups (
+        id, reason, csv_content, match_count, vote_count, user_count
+      ) values ($1, $2, $3, $4, $5, $6)
+    `,
+    [backupId, reason, csvContent, matches.length, votes.length, users.length],
+  );
+
+  return {
+    id: backupId,
+    reason,
+    createdAt: backupCreatedAt,
+    matchCount: matches.length,
+    voteCount: votes.length,
+    userCount: users.length,
+    byteSize: Buffer.byteLength(csvContent, "utf8"),
+  };
+}
+
+async function listDatabaseBackups() {
+  const result = await query(`
+    select
+      id,
+      reason,
+      match_count as "matchCount",
+      vote_count as "voteCount",
+      user_count as "userCount",
+      octet_length(csv_content) as "byteSize",
+      created_at as "createdAt"
+    from database_backups
+    order by created_at desc
+    limit 90
+  `);
+
+  return result.rows.map((row) => ({
+    ...row,
+    createdAt: new Date(row.createdAt).toISOString(),
+    byteSize: Number(row.byteSize),
+  }));
+}
+
+async function ensureDailyBackup() {
+  if (!pool || backupInProgress) return;
+
+  const { dateKey, hour } = getTokyoDateParts();
+  if (hour < backupHourJst) return;
+
+  backupInProgress = true;
+  try {
+    await withTransaction(async (client) => {
+      const marker = await client.query(
+        "select value from app_settings where key = $1 for update",
+        ["last-daily-db-backup-jst"],
+      );
+      if (marker.rows[0]?.value === dateKey) return;
+
+      const backup = await createDatabaseBackup("daily", client);
+      await client.query(
+        `
+          insert into app_settings (key, value, updated_at)
+          values ($1, $2, now())
+          on conflict (key) do update set value = excluded.value, updated_at = now()
+        `,
+        ["last-daily-db-backup-jst", dateKey],
+      );
+      console.log(`Created daily database backup ${backup.id} for ${dateKey}`);
+    });
+  } catch (error) {
+    console.error("Failed to create daily database backup", error);
+  } finally {
+    backupInProgress = false;
+  }
+}
+
+function startBackupScheduler() {
+  if (!pool || backupTimer) return;
+  backupTimer = setInterval(() => {
+    ensureDailyBackup();
+  }, backupCheckIntervalMs);
 }
 
 async function insertMatch(input, client = pool) {
@@ -930,6 +1149,66 @@ app.delete("/api/votes/:id", requireAdmin, async (request, response, next) => {
 
     await writeAuditLog("vote.delete", request.params.id, result.rows[0]);
     response.json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/backups", requireAdmin, async (_request, response, next) => {
+  try {
+    response.json({
+      backups: await listDatabaseBackups(),
+      schedule: {
+        timezone: "Asia/Tokyo",
+        hour: backupHourJst,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/backups", requireAdmin, async (_request, response, next) => {
+  try {
+    const backup = await createDatabaseBackup("manual");
+    await writeAuditLog("backup.create", backup.id, {
+      reason: backup.reason,
+      matchCount: backup.matchCount,
+      voteCount: backup.voteCount,
+      userCount: backup.userCount,
+    });
+    response.status(201).json({
+      backup,
+      backups: await listDatabaseBackups(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/backups/:id/download", requireAdmin, async (request, response, next) => {
+  try {
+    const result = await query(
+      `
+        select id, csv_content, created_at
+        from database_backups
+        where id = $1
+      `,
+      [request.params.id],
+    );
+    const backup = result.rows[0];
+    if (!backup) {
+      response.status(404).json({ error: "Backup not found" });
+      return;
+    }
+
+    const createdAt = new Date(backup.created_at).toISOString().replace(/[:.]/g, "-");
+    response.setHeader("Content-Type", "text/csv; charset=utf-8");
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="wc2026-prediction-backup-${createdAt}.csv"`,
+    );
+    response.send(`\uFEFF${backup.csv_content}`);
   } catch (error) {
     next(error);
   }
