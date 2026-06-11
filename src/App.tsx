@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
@@ -2129,11 +2129,40 @@ function App() {
 }
 
 function MotivationTicker({ items }: { items: MotivationItem[] }) {
+  const stripRef = useRef<HTMLElement | null>(null);
+  const visibleItems = items.length > 1 ? [...items, ...items, ...items] : items;
+
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || items.length <= 1) return;
+
+    const segmentWidth = strip.scrollWidth / 3;
+    strip.scrollLeft = segmentWidth;
+  }, [items]);
+
+  function keepRankingLoop() {
+    const strip = stripRef.current;
+    if (!strip || items.length <= 1) return;
+
+    const segmentWidth = strip.scrollWidth / 3;
+    if (segmentWidth <= 0) return;
+    if (strip.scrollLeft < segmentWidth * 0.35) {
+      strip.scrollLeft += segmentWidth;
+    } else if (strip.scrollLeft > segmentWidth * 1.65) {
+      strip.scrollLeft -= segmentWidth;
+    }
+  }
+
   return (
-    <aside className="motivation-strip" aria-label="確定後の速報ランキング">
+    <aside
+      className="motivation-strip"
+      onScroll={keepRankingLoop}
+      ref={stripRef}
+      aria-label="確定後の速報ランキング"
+    >
       <div className="motivation-track">
-        {items.map((item) => (
-          <span className={`motivation-chip ${item.tone}`} key={item.id}>
+        {visibleItems.map((item, index) => (
+          <span className={`motivation-chip ${item.tone}`} key={`${item.id}-${index}`}>
             <small>{item.badge.replace("位", "")}</small>
             <span>
               <b>{item.name}</b>
