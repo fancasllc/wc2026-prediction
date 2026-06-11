@@ -217,7 +217,7 @@ async function requestAdminToken(password: string) {
 async function requestBackups(adminToken: string) {
   return apiRequest<{
     backups: BackupRecord[];
-    schedule: { timezone: string; hour: number };
+    schedule: { timezone: string; hour: number; afterSettlementDelaySeconds: number };
     externalStorage: BackupStorageStatus;
   }>("/api/admin/backups", {
     headers: { Authorization: `Bearer ${adminToken}` },
@@ -1625,7 +1625,7 @@ function App() {
               </div>
               <p className="admin-help">
                 毎日04:00以降に1回、試合・選択肢・投票・ユーザー別収支をCSVで保存します。
-                手動作成もできます。既存の投票データは変更しません。
+                結果確定後にも少し時間を置いて自動保存します。既存の投票データは変更しません。
               </p>
               <div className="backup-storage-status">
                 <strong>外部CSV保存</strong>

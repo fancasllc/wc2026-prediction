@@ -20,6 +20,10 @@ const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
 const rateLimitStore = new Map();
 const backupCheckIntervalMs = 15 * 60 * 1000;
 const backupHourJst = Number(process.env.DB_BACKUP_HOUR_JST ?? 4);
+const settlementBackupDelayMs = Math.max(
+  0,
+  Number(process.env.DB_BACKUP_AFTER_SETTLEMENT_DELAY_SECONDS ?? 300) * 1000,
+);
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -39,6 +43,7 @@ const isExternalBackupStorageConfigured = Boolean(
 let backupTimer = null;
 let backupInProgress = false;
 let backupStorageClient = null;
+const settlementBackupTimers = new Map();
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
@@ -669,6 +674,37 @@ async function syncBackupToExternalStorage(backupId) {
   }
 }
 
+function scheduleSettlementBackup(matchId) {
+  if (!pool) return;
+  const existingTimer = settlementBackupTimers.get(matchId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(async () => {
+    settlementBackupTimers.delete(matchId);
+    try {
+      const backup = await createDatabaseBackup(`settlement:${matchId}`);
+      const externalResult = await syncBackupToExternalStorage(backup.id);
+      await writeAuditLog("backup.settlement-auto", backup.id, {
+        matchId,
+        matchCount: backup.matchCount,
+        voteCount: backup.voteCount,
+        userCount: backup.userCount,
+        externalStatus: externalResult.status,
+      });
+      console.log(`Created settlement database backup ${backup.id} for ${matchId}`);
+    } catch (error) {
+      console.error(`Failed to create settlement database backup for ${matchId}`, error);
+    }
+  }, settlementBackupDelayMs);
+
+  if (typeof timer.unref === "function") {
+    timer.unref();
+  }
+  settlementBackupTimers.set(matchId, timer);
+}
+
 async function listDatabaseBackups() {
   const result = await query(`
     select
@@ -1243,6 +1279,7 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
       return;
     }
     await writeAuditLog("match.settle", matchId, { optionId });
+    scheduleSettlementBackup(matchId);
 
     response.json({ state: await getState() });
   } catch (error) {
@@ -1322,6 +1359,7 @@ app.get("/api/admin/backups", requireAdmin, async (_request, response, next) => 
       schedule: {
         timezone: "Asia/Tokyo",
         hour: backupHourJst,
+        afterSettlementDelaySeconds: Math.round(settlementBackupDelayMs / 1000),
       },
       externalStorage: {
         configured: isExternalBackupStorageConfigured,
