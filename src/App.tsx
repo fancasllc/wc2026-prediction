@@ -2129,13 +2129,11 @@ function App() {
 }
 
 function MotivationTicker({ items }: { items: MotivationItem[] }) {
-  const tickerItems = items.length > 1 ? [...items, ...items, ...items] : items;
-
   return (
     <aside className="motivation-strip" aria-label="確定後の速報ランキング">
-      <div className={items.length > 1 ? "motivation-track animated" : "motivation-track"}>
-        {tickerItems.map((item, index) => (
-          <span className={`motivation-chip ${item.tone}`} key={`${item.id}-${index}`}>
+      <div className="motivation-track">
+        {items.map((item) => (
+          <span className={`motivation-chip ${item.tone}`} key={item.id}>
             <span>
               <small>{item.badge}</small>
               <b>{item.name}</b>
