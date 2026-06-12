@@ -119,6 +119,154 @@ function validateMatch(input) {
   };
 }
 
+const scheduledGroupMatches = [
+  { id: "wc26-mexico-south-africa", title: "メキシコ VS 南アフリカ", startsAt: "2026-06-12T04:00", options: ["メキシコ", "南アフリカ", "引き分け"] },
+  { id: "wc26-south-korea-czechia", title: "韓国 VS チェコ", startsAt: "2026-06-12T11:00", options: ["韓国", "チェコ", "引き分け"] },
+  { id: "wc26-canada-bosnia", title: "カナダ VS ボスニア", startsAt: "2026-06-13T04:00", options: ["カナダ", "ボスニア", "引き分け"] },
+  { id: "wc26-usa-paraguay", title: "アメリカ VS パラグアイ", startsAt: "2026-06-13T10:00", options: ["アメリカ", "パラグアイ", "引き分け"] },
+  { id: "wc26-qatar-switzerland", title: "カタール VS スイス", startsAt: "2026-06-14T04:00", options: ["カタール", "スイス", "引き分け"] },
+  { id: "wc26-brazil-morocco", title: "ブラジル VS モロッコ", startsAt: "2026-06-14T07:00", options: ["ブラジル", "モロッコ", "引き分け"] },
+  { id: "wc26-haiti-scotland", title: "ハイチ VS スコットランド", startsAt: "2026-06-14T10:00", options: ["ハイチ", "スコットランド", "引き分け"] },
+  { id: "wc26-australia-turkiye", title: "オーストラリア VS トルコ", startsAt: "2026-06-14T13:00", options: ["オーストラリア", "トルコ", "引き分け"] },
+  { id: "wc26-germany-curacao", title: "ドイツ VS キュラソー", startsAt: "2026-06-15T02:00", options: ["ドイツ", "キュラソー", "引き分け"] },
+  { id: "wc26-netherlands-japan", title: "オランダ VS 日本", startsAt: "2026-06-15T05:00", options: ["オランダ", "日本", "引き分け"] },
+  { id: "wc26-ivory-coast-ecuador", title: "コートジボワール VS エクアドル", startsAt: "2026-06-15T08:00", options: ["コートジボワール", "エクアドル", "引き分け"] },
+  { id: "wc26-sweden-tunisia", title: "スウェーデン VS チュニジア", startsAt: "2026-06-15T11:00", options: ["スウェーデン", "チュニジア", "引き分け"] },
+  { id: "wc26-spain-cape-verde", title: "スペイン VS カーボベルデ", startsAt: "2026-06-16T01:00", options: ["スペイン", "カーボベルデ", "引き分け"] },
+  { id: "wc26-belgium-egypt", title: "ベルギー VS エジプト", startsAt: "2026-06-16T04:00", options: ["ベルギー", "エジプト", "引き分け"] },
+  { id: "wc26-saudi-arabia-uruguay", title: "サウジアラビア VS ウルグアイ", startsAt: "2026-06-16T07:00", options: ["サウジアラビア", "ウルグアイ", "引き分け"] },
+  { id: "wc26-iran-new-zealand", title: "イラン VS ニュージーランド", startsAt: "2026-06-16T10:00", options: ["イラン", "ニュージーランド", "引き分け"] },
+  { id: "wc26-france-senegal", title: "フランス VS セネガル", startsAt: "2026-06-17T04:00", options: ["フランス", "セネガル", "引き分け"] },
+  { id: "wc26-iraq-norway", title: "イラク VS ノルウェー", startsAt: "2026-06-17T07:00", options: ["イラク", "ノルウェー", "引き分け"] },
+  { id: "wc26-argentina-algeria", title: "アルゼンチン VS アルジェリア", startsAt: "2026-06-17T10:00", options: ["アルゼンチン", "アルジェリア", "引き分け"] },
+  { id: "wc26-austria-jordan", title: "オーストリア VS ヨルダン", startsAt: "2026-06-17T13:00", options: ["オーストリア", "ヨルダン", "引き分け"] },
+  { id: "wc26-portugal-drc", title: "ポルトガル VS コンゴ民主共和国", startsAt: "2026-06-18T02:00", options: ["ポルトガル", "コンゴ民主共和国", "引き分け"] },
+  { id: "wc26-england-croatia", title: "イングランド VS クロアチア", startsAt: "2026-06-18T05:00", options: ["イングランド", "クロアチア", "引き分け"] },
+  { id: "wc26-ghana-panama", title: "ガーナ VS パナマ", startsAt: "2026-06-18T08:00", options: ["ガーナ", "パナマ", "引き分け"] },
+  { id: "wc26-uzbekistan-colombia", title: "ウズベキスタン VS コロンビア", startsAt: "2026-06-18T11:00", options: ["ウズベキスタン", "コロンビア", "引き分け"] },
+  { id: "wc26-czechia-south-africa", title: "チェコ VS 南アフリカ", startsAt: "2026-06-19T01:00", options: ["チェコ", "南アフリカ", "引き分け"] },
+  { id: "wc26-switzerland-bosnia", title: "スイス VS ボスニア", startsAt: "2026-06-19T04:00", options: ["スイス", "ボスニア", "引き分け"] },
+  { id: "wc26-canada-qatar", title: "カナダ VS カタール", startsAt: "2026-06-19T07:00", options: ["カナダ", "カタール", "引き分け"] },
+  { id: "wc26-mexico-south-korea", title: "メキシコ VS 韓国", startsAt: "2026-06-19T10:00", options: ["メキシコ", "韓国", "引き分け"] },
+  { id: "wc26-usa-australia", title: "アメリカ VS オーストラリア", startsAt: "2026-06-20T04:00", options: ["アメリカ", "オーストラリア", "引き分け"] },
+  { id: "wc26-scotland-morocco", title: "スコットランド VS モロッコ", startsAt: "2026-06-20T07:00", options: ["スコットランド", "モロッコ", "引き分け"] },
+  { id: "wc26-brazil-haiti", title: "ブラジル VS ハイチ", startsAt: "2026-06-20T09:30", options: ["ブラジル", "ハイチ", "引き分け"] },
+  { id: "wc26-turkiye-paraguay", title: "トルコ VS パラグアイ", startsAt: "2026-06-20T12:00", options: ["トルコ", "パラグアイ", "引き分け"] },
+  { id: "wc26-netherlands-sweden", title: "オランダ VS スウェーデン", startsAt: "2026-06-21T02:00", options: ["オランダ", "スウェーデン", "引き分け"] },
+  { id: "wc26-germany-ivory-coast", title: "ドイツ VS コートジボワール", startsAt: "2026-06-21T05:00", options: ["ドイツ", "コートジボワール", "引き分け"] },
+  { id: "wc26-ecuador-curacao", title: "エクアドル VS キュラソー", startsAt: "2026-06-21T12:00", options: ["エクアドル", "キュラソー", "引き分け"] },
+  { id: "wc26-tunisia-japan", title: "チュニジア VS 日本", startsAt: "2026-06-21T13:00", options: ["チュニジア", "日本", "引き分け"] },
+  { id: "wc26-spain-saudi-arabia", title: "スペイン VS サウジアラビア", startsAt: "2026-06-22T01:00", options: ["スペイン", "サウジアラビア", "引き分け"] },
+  { id: "wc26-belgium-iran", title: "ベルギー VS イラン", startsAt: "2026-06-22T04:00", options: ["ベルギー", "イラン", "引き分け"] },
+  { id: "wc26-uruguay-cape-verde", title: "ウルグアイ VS カーボベルデ", startsAt: "2026-06-22T07:00", options: ["ウルグアイ", "カーボベルデ", "引き分け"] },
+  { id: "wc26-new-zealand-egypt", title: "ニュージーランド VS エジプト", startsAt: "2026-06-22T10:00", options: ["ニュージーランド", "エジプト", "引き分け"] },
+  { id: "wc26-argentina-austria", title: "アルゼンチン VS オーストリア", startsAt: "2026-06-23T02:00", options: ["アルゼンチン", "オーストリア", "引き分け"] },
+  { id: "wc26-france-iraq", title: "フランス VS イラク", startsAt: "2026-06-23T06:00", options: ["フランス", "イラク", "引き分け"] },
+  { id: "wc26-norway-senegal", title: "ノルウェー VS セネガル", startsAt: "2026-06-23T09:00", options: ["ノルウェー", "セネガル", "引き分け"] },
+  { id: "wc26-jordan-algeria", title: "ヨルダン VS アルジェリア", startsAt: "2026-06-23T12:00", options: ["ヨルダン", "アルジェリア", "引き分け"] },
+  { id: "wc26-portugal-uzbekistan", title: "ポルトガル VS ウズベキスタン", startsAt: "2026-06-24T02:00", options: ["ポルトガル", "ウズベキスタン", "引き分け"] },
+  { id: "wc26-england-ghana", title: "イングランド VS ガーナ", startsAt: "2026-06-24T05:00", options: ["イングランド", "ガーナ", "引き分け"] },
+  { id: "wc26-panama-croatia", title: "パナマ VS クロアチア", startsAt: "2026-06-24T08:00", options: ["パナマ", "クロアチア", "引き分け"] },
+  { id: "wc26-colombia-drc", title: "コロンビア VS コンゴ民主共和国", startsAt: "2026-06-24T11:00", options: ["コロンビア", "コンゴ民主共和国", "引き分け"] },
+  { id: "wc26-switzerland-canada", title: "スイス VS カナダ", startsAt: "2026-06-25T04:00", options: ["スイス", "カナダ", "引き分け"] },
+  { id: "wc26-bosnia-qatar", title: "ボスニア VS カタール", startsAt: "2026-06-25T04:00", options: ["ボスニア", "カタール", "引き分け"] },
+  { id: "wc26-scotland-brazil", title: "スコットランド VS ブラジル", startsAt: "2026-06-25T07:00", options: ["スコットランド", "ブラジル", "引き分け"] },
+  { id: "wc26-morocco-haiti", title: "モロッコ VS ハイチ", startsAt: "2026-06-25T07:00", options: ["モロッコ", "ハイチ", "引き分け"] },
+  { id: "wc26-czechia-mexico", title: "チェコ VS メキシコ", startsAt: "2026-06-25T10:00", options: ["チェコ", "メキシコ", "引き分け"] },
+  { id: "wc26-south-africa-south-korea", title: "南アフリカ VS 韓国", startsAt: "2026-06-25T10:00", options: ["南アフリカ", "韓国", "引き分け"] },
+  { id: "wc26-ecuador-germany", title: "エクアドル VS ドイツ", startsAt: "2026-06-26T05:00", options: ["エクアドル", "ドイツ", "引き分け"] },
+  { id: "wc26-curacao-ivory-coast", title: "キュラソー VS コートジボワール", startsAt: "2026-06-26T05:00", options: ["キュラソー", "コートジボワール", "引き分け"] },
+  { id: "wc26-japan-sweden", title: "日本 VS スウェーデン", startsAt: "2026-06-26T08:00", options: ["日本", "スウェーデン", "引き分け"] },
+  { id: "wc26-tunisia-netherlands", title: "チュニジア VS オランダ", startsAt: "2026-06-26T08:00", options: ["チュニジア", "オランダ", "引き分け"] },
+  { id: "wc26-turkiye-usa", title: "トルコ VS アメリカ", startsAt: "2026-06-26T11:00", options: ["トルコ", "アメリカ", "引き分け"] },
+  { id: "wc26-paraguay-australia", title: "パラグアイ VS オーストラリア", startsAt: "2026-06-26T11:00", options: ["パラグアイ", "オーストラリア", "引き分け"] },
+  { id: "wc26-norway-france", title: "ノルウェー VS フランス", startsAt: "2026-06-27T04:00", options: ["ノルウェー", "フランス", "引き分け"] },
+  { id: "wc26-senegal-iraq", title: "セネガル VS イラク", startsAt: "2026-06-27T04:00", options: ["セネガル", "イラク", "引き分け"] },
+  { id: "wc26-cape-verde-saudi-arabia", title: "カーボベルデ VS サウジアラビア", startsAt: "2026-06-27T09:00", options: ["カーボベルデ", "サウジアラビア", "引き分け"] },
+  { id: "wc26-uruguay-spain", title: "ウルグアイ VS スペイン", startsAt: "2026-06-27T09:00", options: ["ウルグアイ", "スペイン", "引き分け"] },
+  { id: "wc26-egypt-iran", title: "エジプト VS イラン", startsAt: "2026-06-27T12:00", options: ["エジプト", "イラン", "引き分け"] },
+  { id: "wc26-new-zealand-belgium", title: "ニュージーランド VS ベルギー", startsAt: "2026-06-27T12:00", options: ["ニュージーランド", "ベルギー", "引き分け"] },
+  { id: "wc26-panama-england", title: "パナマ VS イングランド", startsAt: "2026-06-28T06:00", options: ["パナマ", "イングランド", "引き分け"] },
+  { id: "wc26-croatia-ghana", title: "クロアチア VS ガーナ", startsAt: "2026-06-28T06:00", options: ["クロアチア", "ガーナ", "引き分け"] },
+  { id: "wc26-colombia-portugal", title: "コロンビア VS ポルトガル", startsAt: "2026-06-28T08:30", options: ["コロンビア", "ポルトガル", "引き分け"] },
+  { id: "wc26-drc-uzbekistan", title: "コンゴ民主共和国 VS ウズベキスタン", startsAt: "2026-06-28T08:30", options: ["コンゴ民主共和国", "ウズベキスタン", "引き分け"] },
+  { id: "wc26-algeria-austria", title: "アルジェリア VS オーストリア", startsAt: "2026-06-28T11:00", options: ["アルジェリア", "オーストリア", "引き分け"] },
+  { id: "wc26-jordan-argentina", title: "ヨルダン VS アルゼンチン", startsAt: "2026-06-28T11:00", options: ["ヨルダン", "アルゼンチン", "引き分け"] },
+];
+
+function normalizeFixtureText(value) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function normalizeFixtureTime(value) {
+  return toIsoLike(value).slice(0, 16);
+}
+
+function isScheduledMatchRegistered(scheduledMatch, existingMatch) {
+  const [home, away] = scheduledMatch.options;
+  const existingOptionLabels = existingMatch.options.map((option) => normalizeFixtureText(option.label));
+  const hasTeams =
+    existingOptionLabels.includes(normalizeFixtureText(home)) &&
+    existingOptionLabels.includes(normalizeFixtureText(away));
+  const titleText = normalizeFixtureText(existingMatch.title);
+  const titleHasTeams =
+    titleText.includes(normalizeFixtureText(home)) && titleText.includes(normalizeFixtureText(away));
+
+  return (
+    normalizeFixtureTime(existingMatch.startsAt) === scheduledMatch.startsAt &&
+    (hasTeams || titleHasTeams)
+  );
+}
+
+function makeScheduledMatchPayload(scheduledMatch) {
+  return {
+    id: scheduledMatch.id,
+    title: scheduledMatch.title,
+    stage: "",
+    venue: "",
+    startsAt: scheduledMatch.startsAt,
+    closesAt: scheduledMatch.startsAt,
+    question: "",
+    options: scheduledMatch.options.map((label, index) => ({
+      id: `${scheduledMatch.id}-option-${index + 1}`,
+      label,
+    })),
+  };
+}
+
+async function getMatchRegistrationRows(client = pool) {
+  const matchesResult = await client.query(`
+      select id, title, starts_at as "startsAt"
+      from matches
+      order by starts_at asc, created_at asc
+    `);
+  const optionsResult = await client.query(`
+      select match_id as "matchId", label
+      from match_options
+      order by sort_order asc, label asc
+    `);
+
+  const optionsByMatch = new Map();
+  for (const option of optionsResult.rows) {
+    const rows = optionsByMatch.get(option.matchId) ?? [];
+    rows.push({ label: option.label });
+    optionsByMatch.set(option.matchId, rows);
+  }
+
+  return matchesResult.rows.map((match) => ({
+    ...match,
+    options: optionsByMatch.get(match.id) ?? [],
+  }));
+}
+
+function getAvailableScheduledMatches(existingMatches) {
+  return scheduledGroupMatches
+    .filter((scheduledMatch) =>
+      existingMatches.every((existingMatch) => !isScheduledMatchRegistered(scheduledMatch, existingMatch)),
+    )
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
 async function query(text, params = []) {
   if (!pool) {
     const error = new Error("DATABASE_URL is not configured");
@@ -1000,6 +1148,49 @@ app.get("/api/health", (_request, response) => {
 app.get("/api/state", async (_request, response, next) => {
   try {
     response.json(await getState());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/scheduled-matches", async (_request, response, next) => {
+  try {
+    const existingMatches = await getMatchRegistrationRows();
+    response.json({ matches: getAvailableScheduledMatches(existingMatches) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/scheduled-matches/:id", async (request, response, next) => {
+  try {
+    const scheduledMatch = scheduledGroupMatches.find((match) => match.id === request.params.id);
+    if (!scheduledMatch) {
+      response.status(404).json({ error: "Scheduled match not found" });
+      return;
+    }
+
+    let match = null;
+    await withTransaction(async (client) => {
+      const existingMatches = await getMatchRegistrationRows(client);
+      const isRegistered = existingMatches.some((existingMatch) =>
+        isScheduledMatchRegistered(scheduledMatch, existingMatch),
+      );
+      if (isRegistered) {
+        const error = new Error("この試合はすでに登録されています。");
+        error.status = 409;
+        throw error;
+      }
+
+      match = await insertMatch(makeScheduledMatchPayload(scheduledMatch), client);
+    });
+
+    await writeAuditLog("scheduled-match.create", scheduledMatch.id, { title: scheduledMatch.title });
+    response.status(201).json({
+      match,
+      matches: getAvailableScheduledMatches(await getMatchRegistrationRows()),
+      state: await getState(),
+    });
   } catch (error) {
     next(error);
   }

@@ -69,6 +69,13 @@ type MatchRecord = {
   settledAt?: string;
 };
 
+type ScheduledMatchCandidate = {
+  id: string;
+  title: string;
+  startsAt: string;
+  options: string[];
+};
+
 type VoteRecord = {
   id: string;
   matchId: string;
@@ -203,6 +210,19 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
 async function fetchAppState() {
   return apiRequest<AppData>("/api/state");
+}
+
+async function fetchScheduledMatches() {
+  return apiRequest<{ matches: ScheduledMatchCandidate[] }>("/api/scheduled-matches");
+}
+
+async function createScheduledMatch(matchId: string) {
+  return apiRequest<{
+    state: AppData;
+    matches: ScheduledMatchCandidate[];
+  }>(`/api/scheduled-matches/${matchId}`, {
+    method: "POST",
+  });
 }
 
 async function postState(path: string, body?: unknown, method = "POST", adminToken = "") {
@@ -605,6 +625,10 @@ function App() {
   const [pendingVote, setPendingVote] = useState<PendingVote | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
+  const [showScheduledPicker, setShowScheduledPicker] = useState(false);
+  const [scheduledMatches, setScheduledMatches] = useState<ScheduledMatchCandidate[]>([]);
+  const [isScheduledLoading, setIsScheduledLoading] = useState(false);
+  const [scheduledMessage, setScheduledMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -710,6 +734,55 @@ function App() {
       setBackupMessage(`バックアップ一覧を取得できませんでした: ${message}`);
     } finally {
       setIsBackupLoading(false);
+    }
+  }
+
+  async function loadScheduledMatches() {
+    setIsScheduledLoading(true);
+    setScheduledMessage("");
+    try {
+      const result = await fetchScheduledMatches();
+      setScheduledMatches(result.matches);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setScheduledMessage(`追加候補を取得できませんでした: ${message}`);
+    } finally {
+      setIsScheduledLoading(false);
+    }
+  }
+
+  async function openScheduledPicker() {
+    setShowScheduledPicker(true);
+    await loadScheduledMatches();
+  }
+
+  async function addScheduledMatch(candidate: ScheduledMatchCandidate) {
+    const confirmed = window.confirm(
+      [
+        "この試合を追加しますか？",
+        "",
+        candidate.title,
+        `${formatDateTime(candidate.startsAt)} 開始`,
+        `投票先: ${candidate.options.join(" / ")}`,
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setIsSyncing(true);
+    setScheduledMessage("");
+    try {
+      const result = await createScheduledMatch(candidate.id);
+      setData(result.state);
+      setScheduledMatches(result.matches);
+      setHasRemoteState(true);
+      setApiError("");
+      setToastMessage("試合を追加しました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setScheduledMessage(`試合を追加できませんでした: ${message}`);
+      setApiError(`DB更新に失敗しました: ${message}`);
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -1477,6 +1550,12 @@ function App() {
 
         {view === "open" && (
           <section className="view-stack">
+            <div className="open-actions">
+              <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
+                <ListPlus size={16} aria-hidden />
+                追加
+              </button>
+            </div>
             <div className="summary-list">
               {openMatches.length ? (
                 <>
@@ -2121,6 +2200,17 @@ function App() {
         </button>
       )}
 
+      {showScheduledPicker && (
+        <ScheduledMatchPicker
+          matches={scheduledMatches}
+          isLoading={isScheduledLoading}
+          message={scheduledMessage}
+          onAdd={addScheduledMatch}
+          onClose={() => setShowScheduledPicker(false)}
+          onRefresh={loadScheduledMatches}
+        />
+      )}
+
       {showReferenceOdds && (
         <div className="reference-links" aria-label="予想の参考リンク">
           <a
@@ -2371,6 +2461,72 @@ function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
       label: row.option.label,
       oddsText: `${row.odds.toFixed(2)}x`,
     }));
+}
+
+function ScheduledMatchPicker({
+  matches,
+  isLoading,
+  message,
+  onAdd,
+  onClose,
+  onRefresh,
+}: {
+  matches: ScheduledMatchCandidate[];
+  isLoading: boolean;
+  message: string;
+  onAdd: (match: ScheduledMatchCandidate) => void;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="schedule-modal-backdrop" role="presentation">
+      <section className="schedule-modal" role="dialog" aria-modal="true" aria-label="試合を追加">
+        <div className="schedule-modal-head">
+          <div>
+            <span>Official fixtures</span>
+            <h3>試合を追加</h3>
+          </div>
+          <button className="icon-action" type="button" onClick={onClose} aria-label="閉じる">
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+        <p className="schedule-help">
+          まだ登録されていない決定済みの試合だけを表示しています。追加するとすぐ投票テーマになります。
+        </p>
+        {message && <div className="inline-alert">{message}</div>}
+        <div className="schedule-modal-actions">
+          <button className="ghost-action compact" disabled={isLoading} type="button" onClick={onRefresh}>
+            <RotateCcw size={15} aria-hidden />
+            更新
+          </button>
+        </div>
+        <div className="schedule-list">
+          {isLoading ? (
+            <div className="schedule-loading" aria-label="読み込み中" role="status">
+              <span aria-hidden />
+            </div>
+          ) : matches.length ? (
+            matches.map((match) => (
+              <button
+                className="schedule-row"
+                key={match.id}
+                type="button"
+                onClick={() => onAdd(match)}
+              >
+                <div>
+                  <strong>{match.title}</strong>
+                  <span>{match.options.join(" / ")}</span>
+                </div>
+                <time>{formatDateTime(match.startsAt)} 開始</time>
+              </button>
+            ))
+          ) : (
+            <EmptyState title="追加できる試合はありません" />
+          )}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function MatchSummaryCard({
