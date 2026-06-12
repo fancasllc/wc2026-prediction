@@ -138,6 +138,13 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
+type PersonTrendRow = {
+  name: string;
+  net: number;
+  pending: number;
+  points: Array<{ label: string; value: number }>;
+};
+
 type CsvMatchRow = {
   title?: string;
   startsAt?: string;
@@ -435,6 +442,12 @@ function minutesRemaining(closesAt: string, now: Date) {
 
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ");
+}
+
+function shortenName(name: string, maxLength: number) {
+  const characters = Array.from(name);
+  if (characters.length <= maxLength) return name;
+  return `${characters.slice(0, maxLength).join("")}...`;
 }
 
 function splitOptions(text: string) {
@@ -892,6 +905,53 @@ function App() {
       };
     });
   }, [data.matches, data.votes]);
+
+  const personTrendRows = useMemo<PersonTrendRow[]>(() => {
+    const settledEvents = data.votes
+      .map((vote) => {
+        const match = data.matches.find((item) => item.id === vote.matchId);
+        const payout = match ? calculateVotePayout(vote, match, data.votes) : undefined;
+        if (!match || !payout?.settled) return undefined;
+        return {
+          date: match.settledAt ?? match.closesAt,
+          label: formatDateTime(match.settledAt ?? match.closesAt),
+          net: payout.net,
+          userName: vote.userName,
+        };
+      })
+      .filter((row): row is { date: string; label: string; net: number; userName: string } =>
+        Boolean(row),
+      )
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    if (!settledEvents.length) return [];
+
+    const topNames = userRows
+      .filter((row) => settledEvents.some((event) => event.userName === row.name))
+      .slice(0, 5)
+      .map((row) => row.name);
+
+    return topNames.map((name) => {
+      let runningNet = 0;
+      const points = settledEvents.map((event) => {
+        if (event.userName === name) {
+          runningNet += event.net;
+        }
+        return {
+          label: event.label,
+          value: runningNet,
+        };
+      });
+      const summary = userRows.find((row) => row.name === name);
+
+      return {
+        name,
+        net: summary?.net ?? runningNet,
+        pending: summary?.pending ?? 0,
+        points,
+      };
+    });
+  }, [data.matches, data.votes, userRows]);
 
   const selectedPersonVotes = useMemo(() => {
     const normalized = normalizeName(selectedPersonName);
@@ -1494,6 +1554,7 @@ function App() {
 
         {view === "people" && (
           <section className="view-stack">
+            <PrizeTrendChart rows={personTrendRows} />
             <div className="people-list">
               {userRows.length ? (
                 userRows.map((row) => (
@@ -2173,6 +2234,116 @@ function MotivationTicker({ items }: { items: MotivationItem[] }) {
         ))}
       </div>
     </aside>
+  );
+}
+
+function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
+  if (!rows.length) {
+    return (
+      <section className="trend-card trend-card-empty" aria-label="確定収支推移">
+        <div className="trend-heading">
+          <span>
+            <Trophy size={17} aria-hidden />
+            賞金レース推移
+          </span>
+          <small>結果確定後に表示</small>
+        </div>
+        <p>確定した試合が出ると、上位者の伸び方をここに表示します。</p>
+      </section>
+    );
+  }
+
+  const width = 320;
+  const height = 130;
+  const paddingX = 20;
+  const paddingY = 18;
+  const allValues = rows.flatMap((row) => row.points.map((point) => point.value));
+  const minValue = Math.min(0, ...allValues);
+  const maxValue = Math.max(0, ...allValues);
+  const range = Math.max(1, maxValue - minValue);
+  const colors = ["#ffe45e", "#5ee7ff", "#7cff9d", "#ff8db6", "#bba1ff"];
+
+  function xFor(index: number, count: number) {
+    if (count <= 1) return width / 2;
+    return paddingX + (index / (count - 1)) * (width - paddingX * 2);
+  }
+
+  function yFor(value: number) {
+    return height - paddingY - ((value - minValue) / range) * (height - paddingY * 2);
+  }
+
+  return (
+    <section className="trend-card" aria-label="個人別の確定収支推移">
+      <div className="trend-heading">
+        <span>
+          <Trophy size={17} aria-hidden />
+          賞金レース推移
+        </span>
+        <small>上位{rows.length}人</small>
+      </div>
+      <div className="trend-chart-wrap">
+        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="上位者の確定収支推移">
+          <line
+            className="trend-zero-line"
+            x1={paddingX}
+            x2={width - paddingX}
+            y1={yFor(0)}
+            y2={yFor(0)}
+          />
+          {[0.25, 0.5, 0.75].map((ratio) => (
+            <line
+              className="trend-grid-line"
+              key={ratio}
+              x1={paddingX}
+              x2={width - paddingX}
+              y1={paddingY + ratio * (height - paddingY * 2)}
+              y2={paddingY + ratio * (height - paddingY * 2)}
+            />
+          ))}
+          {rows.map((row, rowIndex) => {
+            const path = row.points
+              .map((point, pointIndex) => {
+                const x = xFor(pointIndex, row.points.length);
+                const y = yFor(point.value);
+                return `${pointIndex === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+              })
+              .join(" ");
+            const lastPoint = row.points[row.points.length - 1];
+            const lastX = xFor(row.points.length - 1, row.points.length);
+            const lastY = yFor(lastPoint.value);
+
+            return (
+              <g key={row.name}>
+                <path
+                  className="trend-line"
+                  d={path}
+                  style={{ stroke: colors[rowIndex % colors.length] }}
+                />
+                <circle
+                  className="trend-dot"
+                  cx={lastX}
+                  cy={lastY}
+                  r="3.8"
+                  style={{ fill: colors[rowIndex % colors.length] }}
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="trend-legend">
+        {rows.map((row, index) => (
+          <span key={row.name}>
+            <i style={{ background: colors[index % colors.length] }} />
+            <b>{shortenName(row.name, 6)}</b>
+            <strong className={row.net >= 0 ? "positive" : "negative"}>
+              {row.net >= 0 ? "+" : ""}
+              {formatPoints(row.net)}
+            </strong>
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
