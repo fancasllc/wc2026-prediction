@@ -2500,7 +2500,7 @@ function ScheduledMatchPicker({
           </button>
         </div>
         <p className="schedule-help">
-          まだ登録されていない決定済みの試合だけを表示しています。追加するとすぐ投票テーマになります。
+          まだ登録されていない試合を追加できます。
         </p>
         {message && <div className="inline-alert">{message}</div>}
         <div className="schedule-modal-actions">

@@ -326,13 +326,16 @@ label span {
   gap: 5px;
   min-height: 34px;
   padding: 7px 12px;
-  color: #004b41;
+  color: #241c00;
   font-size: 0.82rem;
   font-weight: 950;
-  background: linear-gradient(180deg, #ffffff, #c9fff2);
-  border: 1px solid rgba(195, 241, 232, 0.96);
+  background: linear-gradient(180deg, #fff86a 0%, #ffcf19 64%, #f4b400 100%);
+  border: 2px solid rgba(255, 255, 255, 0.92);
   border-radius: 999px;
-  box-shadow: 0 8px 16px rgba(0, 36, 91, 0.18);
+  box-shadow:
+    0 8px 16px rgba(0, 23, 61, 0.34),
+    inset 0 -2px 0 rgba(154, 103, 0, 0.25);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .summary-card,
