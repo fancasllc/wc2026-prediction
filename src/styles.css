@@ -87,6 +87,7 @@ p {
 }
 
 .topbar {
+  position: relative;
   min-height: 0;
   aspect-ratio: 1774 / 887;
   overflow: hidden;
@@ -315,13 +316,10 @@ label span {
   gap: 12px;
 }
 
-.open-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -4px;
-}
-
 .add-scheduled-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -417,18 +415,23 @@ label span {
   padding: 18px 12px;
   background: rgba(0, 17, 48, 0.58);
   backdrop-filter: blur(6px);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .schedule-modal {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   width: min(100%, 430px);
   max-height: min(78dvh, 680px);
+  min-height: 0;
   padding: 14px;
   background: #ffffff;
   border: 1px solid #dceaf4;
   border-radius: 12px;
   box-shadow: 0 22px 48px rgba(0, 20, 62, 0.36);
+  overflow: hidden;
 }
 
 .schedule-modal-head {
@@ -493,10 +496,13 @@ label span {
 
 .schedule-list {
   display: grid;
+  flex: 1 1 auto;
   gap: 8px;
-  min-height: 120px;
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .schedule-row {

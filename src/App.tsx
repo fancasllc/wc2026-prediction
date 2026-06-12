@@ -665,6 +665,15 @@ function App() {
   }, [toastMessage]);
 
   useEffect(() => {
+    if (!showScheduledPicker) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showScheduledPicker]);
+
+  useEffect(() => {
     if (!adminToken) {
       setBackups([]);
       return;
@@ -1501,6 +1510,12 @@ function App() {
           loading="eager"
           decoding="async"
         />
+        {view === "open" && (
+          <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
+            <ListPlus size={16} aria-hidden />
+            追加
+          </button>
+        )}
       </header>
 
       <nav className="tabs" aria-label="メインナビゲーション">
@@ -1550,12 +1565,6 @@ function App() {
 
         {view === "open" && (
           <section className="view-stack">
-            <div className="open-actions">
-              <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
-                <ListPlus size={16} aria-hidden />
-                追加
-              </button>
-            </div>
             <div className="summary-list">
               {openMatches.length ? (
                 <>

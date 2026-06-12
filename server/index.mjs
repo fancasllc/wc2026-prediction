@@ -202,6 +202,10 @@ function normalizeFixtureTime(value) {
   return toIsoLike(value).slice(0, 16);
 }
 
+function scheduledMatchDate(scheduledMatch) {
+  return new Date(`${scheduledMatch.startsAt}:00+09:00`);
+}
+
 function isScheduledMatchRegistered(scheduledMatch, existingMatch) {
   const [home, away] = scheduledMatch.options;
   const existingOptionLabels = existingMatch.options.map((option) => normalizeFixtureText(option.label));
@@ -259,10 +263,12 @@ async function getMatchRegistrationRows(client = pool) {
   }));
 }
 
-function getAvailableScheduledMatches(existingMatches) {
+function getAvailableScheduledMatches(existingMatches, now = new Date()) {
   return scheduledGroupMatches
-    .filter((scheduledMatch) =>
-      existingMatches.every((existingMatch) => !isScheduledMatchRegistered(scheduledMatch, existingMatch)),
+    .filter(
+      (scheduledMatch) =>
+        scheduledMatchDate(scheduledMatch) > now &&
+        existingMatches.every((existingMatch) => !isScheduledMatchRegistered(scheduledMatch, existingMatch)),
     )
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
@@ -1167,6 +1173,10 @@ app.post("/api/scheduled-matches/:id", async (request, response, next) => {
     const scheduledMatch = scheduledGroupMatches.find((match) => match.id === request.params.id);
     if (!scheduledMatch) {
       response.status(404).json({ error: "Scheduled match not found" });
+      return;
+    }
+    if (scheduledMatchDate(scheduledMatch) <= new Date()) {
+      response.status(409).json({ error: "この試合はすでに締め切られています。" });
       return;
     }
 
