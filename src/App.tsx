@@ -2559,7 +2559,8 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   y={labelY + 3}
                   style={{ fill: color }}
                 >
-                  {shortenName(row.name, 5)}
+                  {shortenName(row.name, 4)} {row.net >= 0 ? "+" : ""}
+                  {formatPoints(row.net)}
                 </text>
               </g>
             );
