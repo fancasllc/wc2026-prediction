@@ -2446,28 +2446,37 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return height - paddingY - ((value - minValue) / range) * (height - paddingY * 2);
   }
 
+  function clampChartY(value: number) {
+    return Math.min(height - paddingY, Math.max(paddingY, value));
+  }
+
   function makeSmoothPath(points: Array<{ x: number; y: number }>) {
     if (!points.length) return "";
     if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
 
-    const [firstPoint, secondPoint] = points;
-    const segments = [`M ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)}`];
-    segments.push(
-      `Q ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)} ${((firstPoint.x + secondPoint.x) / 2).toFixed(1)} ${((firstPoint.y + secondPoint.y) / 2).toFixed(1)}`,
-    );
+    const segments = [`M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`];
 
-    for (let index = 1; index < points.length - 1; index += 1) {
+    for (let index = 0; index < points.length - 1; index += 1) {
       const currentPoint = points[index];
       const nextPoint = points[index + 1];
-      const midX = (currentPoint.x + nextPoint.x) / 2;
-      const midY = (currentPoint.y + nextPoint.y) / 2;
+      const deltaX = nextPoint.x - currentPoint.x;
+      const deltaY = nextPoint.y - currentPoint.y;
+      const curveStrength = Math.min(18, Math.abs(deltaY) * 0.22);
+      const overshootY = deltaY === 0 ? 0 : deltaY > 0 ? curveStrength : -curveStrength;
+      const control1 = {
+        x: currentPoint.x + deltaX * 0.34,
+        y: clampChartY(currentPoint.y - overshootY * 0.22),
+      };
+      const control2 = {
+        x: currentPoint.x + deltaX * 0.78,
+        y: clampChartY(nextPoint.y + overshootY),
+      };
+
       segments.push(
-        `Q ${currentPoint.x.toFixed(1)} ${currentPoint.y.toFixed(1)} ${midX.toFixed(1)} ${midY.toFixed(1)}`,
+        `C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)} ${control2.x.toFixed(1)} ${control2.y.toFixed(1)} ${nextPoint.x.toFixed(1)} ${nextPoint.y.toFixed(1)}`,
       );
     }
 
-    const lastPoint = points[points.length - 1];
-    segments.push(`T ${lastPoint.x.toFixed(1)} ${lastPoint.y.toFixed(1)}`);
     return segments.join(" ");
   }
 
