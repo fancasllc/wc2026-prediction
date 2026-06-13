@@ -2416,10 +2416,12 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     );
   }
 
-  const width = 320;
-  const height = 130;
-  const paddingX = 20;
-  const paddingY = 18;
+  const width = 360;
+  const height = 260;
+  const paddingLeft = 20;
+  const paddingRight = 78;
+  const paddingY = 24;
+  const plotRight = width - paddingRight;
   const allValues = rows.flatMap((row) => row.points.map((point) => point.value));
   const minValue = Math.min(0, ...allValues);
   const maxValue = Math.max(0, ...allValues);
@@ -2437,11 +2439,46 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
 
   function xFor(index: number, count: number) {
     if (count <= 1) return width / 2;
-    return paddingX + (index / (count - 1)) * (width - paddingX * 2);
+    return paddingLeft + (index / (count - 1)) * (plotRight - paddingLeft);
   }
 
   function yFor(value: number) {
     return height - paddingY - ((value - minValue) / range) * (height - paddingY * 2);
+  }
+
+  const labelTargetIndexes = new Set<number>();
+  rows.forEach((_, index) => {
+    if (index < 3 || index >= Math.max(0, rows.length - 3)) {
+      labelTargetIndexes.add(index);
+    }
+  });
+
+  const labelRows = [...labelTargetIndexes]
+    .map((rowIndex) => {
+      const row = rows[rowIndex];
+      const lastPoint = row.points[row.points.length - 1];
+      return {
+        row,
+        rowIndex,
+        lineY: yFor(lastPoint.value),
+        labelY: yFor(lastPoint.value),
+      };
+    })
+    .sort((a, b) => a.labelY - b.labelY);
+
+  const minLabelGap = 16;
+  labelRows.forEach((label, index) => {
+    if (index === 0) {
+      label.labelY = Math.max(paddingY, label.labelY);
+      return;
+    }
+    label.labelY = Math.max(labelRows[index - 1].labelY + minLabelGap, label.labelY);
+  });
+  for (let index = labelRows.length - 1; index >= 0; index -= 1) {
+    labelRows[index].labelY = Math.min(height - paddingY, labelRows[index].labelY);
+    if (index < labelRows.length - 1) {
+      labelRows[index].labelY = Math.min(labelRows[index + 1].labelY - minLabelGap, labelRows[index].labelY);
+    }
   }
 
   return (
@@ -2459,20 +2496,20 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
             <line
               className="trend-grid-line"
               key={ratio}
-              x1={paddingX}
-              x2={width - paddingX}
+              x1={paddingLeft}
+              x2={plotRight}
               y1={paddingY + ratio * (height - paddingY * 2)}
               y2={paddingY + ratio * (height - paddingY * 2)}
             />
           ))}
           <line
             className="trend-zero-line"
-            x1={paddingX}
-            x2={width - paddingX}
+            x1={paddingLeft}
+            x2={plotRight}
             y1={yFor(0)}
             y2={yFor(0)}
           />
-          <text className="trend-zero-label" x={paddingX - 5} y={yFor(0) - 4}>
+          <text className="trend-zero-label" x={paddingLeft - 5} y={yFor(0) - 4}>
             0
           </text>
           {rows.map((row, rowIndex) => {
@@ -2501,6 +2538,29 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   r="3.8"
                   style={{ fill: colors[rowIndex % colors.length] }}
                 />
+              </g>
+            );
+          })}
+          {labelRows.map(({ row, rowIndex, lineY, labelY }) => {
+            const color = colors[rowIndex % colors.length];
+            return (
+              <g key={`label-${row.name}`}>
+                <line
+                  className="trend-label-guide"
+                  x1={plotRight + 4}
+                  x2={plotRight + 12}
+                  y1={lineY}
+                  y2={labelY}
+                  style={{ stroke: color }}
+                />
+                <text
+                  className="trend-name-label"
+                  x={plotRight + 14}
+                  y={labelY + 3}
+                  style={{ fill: color }}
+                >
+                  {shortenName(row.name, 5)}
+                </text>
               </g>
             );
           })}
