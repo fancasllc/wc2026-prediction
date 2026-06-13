@@ -1655,11 +1655,16 @@ textarea:focus {
 }
 
 .trend-name-label {
-  font-size: 8.5px;
+  font-size: 7.8px;
   font-weight: 950;
   paint-order: stroke;
   stroke: rgba(0, 23, 72, 0.78);
   stroke-width: 2.4px;
+}
+
+.trend-points-label {
+  font-size: 8.8px;
+  font-weight: 950;
 }
 
 .trend-legend {

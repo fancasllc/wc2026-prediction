@@ -2419,7 +2419,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const width = 360;
   const height = 260;
   const paddingLeft = 20;
-  const paddingRight = 78;
+  const paddingRight = 102;
   const paddingY = 24;
   const plotRight = width - paddingRight;
   const allValues = rows.flatMap((row) => row.points.map((point) => point.value));
@@ -2466,7 +2466,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     })
     .sort((a, b) => a.labelY - b.labelY);
 
-  const minLabelGap = 16;
+  const minLabelGap = 23;
   labelRows.forEach((label, index) => {
     if (index === 0) {
       label.labelY = Math.max(paddingY, label.labelY);
@@ -2548,19 +2548,22 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                 <line
                   className="trend-label-guide"
                   x1={plotRight + 4}
-                  x2={plotRight + 12}
+                  x2={plotRight + 9}
                   y1={lineY}
                   y2={labelY}
                   style={{ stroke: color }}
                 />
                 <text
                   className="trend-name-label"
-                  x={plotRight + 14}
-                  y={labelY + 3}
+                  x={plotRight + 11}
+                  y={labelY - 3}
                   style={{ fill: color }}
                 >
-                  {shortenName(row.name, 4)} {row.net >= 0 ? "+" : ""}
-                  {formatPoints(row.net)}
+                  <tspan x={plotRight + 11}>{shortenName(row.name, 5)}</tspan>
+                  <tspan className="trend-points-label" x={plotRight + 11} dy="11">
+                    {row.net >= 0 ? "+" : ""}
+                    {formatPoints(row.net)}
+                  </tspan>
                 </text>
               </g>
             );
