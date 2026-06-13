@@ -2284,8 +2284,7 @@ function App() {
       )}
       {pendingVote && (
         <div className="confirm-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="vote-confirm-title">
-            <p className="eyebrow" id="vote-confirm-title">Confirm vote</p>
+          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-label="投票内容の確認">
             <dl>
               <div>
                 <dt>予想テーマ</dt>
@@ -2325,7 +2324,7 @@ function App() {
                   <div>
                     <span>{pendingVote.optionLabel}</span>
                     <b>{formatPoints(pendingVoteImpact.optionAfter)}</b>
-                    <small>{formatPoints(pendingVoteImpact.optionBefore)} から変動</small>
+                    <small>+{formatPoints(pendingVote.amount)}</small>
                   </div>
                 </div>
                 <p className="impact-return">
