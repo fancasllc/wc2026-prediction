@@ -2446,6 +2446,31 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return height - paddingY - ((value - minValue) / range) * (height - paddingY * 2);
   }
 
+  function makeSmoothPath(points: Array<{ x: number; y: number }>) {
+    if (!points.length) return "";
+    if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+
+    const [firstPoint, secondPoint] = points;
+    const segments = [`M ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)}`];
+    segments.push(
+      `Q ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)} ${((firstPoint.x + secondPoint.x) / 2).toFixed(1)} ${((firstPoint.y + secondPoint.y) / 2).toFixed(1)}`,
+    );
+
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const currentPoint = points[index];
+      const nextPoint = points[index + 1];
+      const midX = (currentPoint.x + nextPoint.x) / 2;
+      const midY = (currentPoint.y + nextPoint.y) / 2;
+      segments.push(
+        `Q ${currentPoint.x.toFixed(1)} ${currentPoint.y.toFixed(1)} ${midX.toFixed(1)} ${midY.toFixed(1)}`,
+      );
+    }
+
+    const lastPoint = points[points.length - 1];
+    segments.push(`T ${lastPoint.x.toFixed(1)} ${lastPoint.y.toFixed(1)}`);
+    return segments.join(" ");
+  }
+
   const labelTargetIndexes = new Set<number>();
   rows.forEach((_, index) => {
     if (index < 3 || index >= Math.max(0, rows.length - 3)) {
@@ -2513,13 +2538,11 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
             0
           </text>
           {rows.map((row, rowIndex) => {
-            const path = row.points
-              .map((point, pointIndex) => {
-                const x = xFor(pointIndex, row.points.length);
-                const y = yFor(point.value);
-                return `${pointIndex === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-              })
-              .join(" ");
+            const chartPoints = row.points.map((point, pointIndex) => ({
+              x: xFor(pointIndex, row.points.length),
+              y: yFor(point.value),
+            }));
+            const path = makeSmoothPath(chartPoints);
             const lastPoint = row.points[row.points.length - 1];
             const lastX = xFor(row.points.length - 1, row.points.length);
             const lastY = yFor(lastPoint.value);
