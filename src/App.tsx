@@ -1041,12 +1041,11 @@ function App() {
 
     if (!settledEvents.length) return [];
 
-    const topNames = userRows
+    const trendNames = userRows
       .filter((row) => settledEvents.some((event) => event.userName === row.name))
-      .slice(0, 5)
       .map((row) => row.name);
 
-    return topNames.map((name) => {
+    return trendNames.map((name) => {
       let runningNet = 0;
       const points = settledEvents.map((event) => {
         if (event.userName === name) {
@@ -1584,7 +1583,7 @@ function App() {
         ))}
       </datalist>
 
-      {view !== "admin" && motivationItems.length > 0 && (
+      {view !== "admin" && view !== "people" && view !== "personDetail" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} />
       )}
 
@@ -2412,7 +2411,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           </span>
           <small>結果確定後に表示</small>
         </div>
-        <p>確定した試合が出ると、上位者の伸び方をここに表示します。</p>
+        <p>確定した試合が出ると、全員の収支推移をここに表示します。</p>
       </section>
     );
   }
@@ -2425,7 +2424,16 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const minValue = Math.min(0, ...allValues);
   const maxValue = Math.max(0, ...allValues);
   const range = Math.max(1, maxValue - minValue);
-  const colors = ["#ffe45e", "#5ee7ff", "#7cff9d", "#ff8db6", "#bba1ff"];
+  const colors = [
+    "#ffe45e",
+    "#5ee7ff",
+    "#7cff9d",
+    "#ff8db6",
+    "#bba1ff",
+    "#ffb15e",
+    "#8df4d2",
+    "#ff6d6d",
+  ];
 
   function xFor(index: number, count: number) {
     if (count <= 1) return width / 2;
@@ -2443,17 +2451,10 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           <Trophy size={17} aria-hidden />
           賞金レース推移
         </span>
-        <small>上位{rows.length}人</small>
+        <small>全員 {rows.length}人</small>
       </div>
       <div className="trend-chart-wrap">
-        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="上位者の確定収支推移">
-          <line
-            className="trend-zero-line"
-            x1={paddingX}
-            x2={width - paddingX}
-            y1={yFor(0)}
-            y2={yFor(0)}
-          />
+        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="全員の確定収支推移">
           {[0.25, 0.5, 0.75].map((ratio) => (
             <line
               className="trend-grid-line"
@@ -2464,6 +2465,16 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
               y2={paddingY + ratio * (height - paddingY * 2)}
             />
           ))}
+          <line
+            className="trend-zero-line"
+            x1={paddingX}
+            x2={width - paddingX}
+            y1={yFor(0)}
+            y2={yFor(0)}
+          />
+          <text className="trend-zero-label" x={paddingX - 5} y={yFor(0) - 4}>
+            0
+          </text>
           {rows.map((row, rowIndex) => {
             const path = row.points
               .map((point, pointIndex) => {
