@@ -2461,19 +2461,32 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
       const nextPoint = points[index + 1];
       const deltaX = nextPoint.x - currentPoint.x;
       const deltaY = nextPoint.y - currentPoint.y;
-      const curveStrength = Math.min(18, Math.abs(deltaY) * 0.22);
-      const overshootY = deltaY === 0 ? 0 : deltaY > 0 ? curveStrength : -curveStrength;
-      const control1 = {
-        x: currentPoint.x + deltaX * 0.34,
-        y: clampChartY(currentPoint.y - overshootY * 0.22),
+      const wave = Math.min(30, Math.max(8, Math.abs(deltaY) * 0.38));
+      const direction = deltaY === 0 ? (index % 2 === 0 ? -1 : 1) : deltaY > 0 ? 1 : -1;
+      const wavePoint = {
+        x: currentPoint.x + deltaX * 0.64,
+        y: clampChartY(currentPoint.y + deltaY * 0.52 + direction * wave),
       };
-      const control2 = {
+      const firstControl = {
+        x: currentPoint.x + deltaX * 0.24,
+        y: clampChartY(currentPoint.y - direction * wave * 0.55),
+      };
+      const secondControl = {
+        x: currentPoint.x + deltaX * 0.48,
+        y: clampChartY(wavePoint.y + direction * wave * 0.26),
+      };
+      const thirdControl = {
         x: currentPoint.x + deltaX * 0.78,
-        y: clampChartY(nextPoint.y + overshootY),
+        y: clampChartY(wavePoint.y - direction * wave * 0.44),
+      };
+      const fourthControl = {
+        x: currentPoint.x + deltaX * 0.92,
+        y: clampChartY(nextPoint.y + direction * wave * 0.2),
       };
 
       segments.push(
-        `C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)} ${control2.x.toFixed(1)} ${control2.y.toFixed(1)} ${nextPoint.x.toFixed(1)} ${nextPoint.y.toFixed(1)}`,
+        `C ${firstControl.x.toFixed(1)} ${firstControl.y.toFixed(1)} ${secondControl.x.toFixed(1)} ${secondControl.y.toFixed(1)} ${wavePoint.x.toFixed(1)} ${wavePoint.y.toFixed(1)}`,
+        `C ${thirdControl.x.toFixed(1)} ${thirdControl.y.toFixed(1)} ${fourthControl.x.toFixed(1)} ${fourthControl.y.toFixed(1)} ${nextPoint.x.toFixed(1)} ${nextPoint.y.toFixed(1)}`,
       );
     }
 
