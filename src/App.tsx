@@ -129,6 +129,17 @@ type PendingVote = {
   amount: number;
 };
 
+type PendingVoteImpact = {
+  beforeOdds: number | null;
+  afterOdds: number;
+  totalBefore: number;
+  totalAfter: number;
+  optionBefore: number;
+  optionAfter: number;
+  estimatedGross: number;
+  estimatedNet: number;
+};
+
 type MatchDraft = {
   title: string;
   startsAt: string;
@@ -909,6 +920,28 @@ function App() {
     if (!pendingVote) return undefined;
     return data.matches.find((match) => match.id === pendingVote.matchId);
   }, [data.matches, pendingVote]);
+
+  const pendingVoteImpact = useMemo<PendingVoteImpact | null>(() => {
+    if (!pendingVote || !pendingMatch) return null;
+
+    const totalBefore = getMatchTotal(pendingMatch, data.votes);
+    const optionBefore = getOptionTotal(pendingMatch, data.votes, pendingVote.optionId);
+    const totalAfter = totalBefore + pendingVote.amount;
+    const optionAfter = optionBefore + pendingVote.amount;
+    const afterOdds = optionAfter > 0 ? totalAfter / optionAfter : 0;
+    const estimatedGross = afterOdds * pendingVote.amount;
+
+    return {
+      beforeOdds: optionBefore > 0 ? totalBefore / optionBefore : null,
+      afterOdds,
+      totalBefore,
+      totalAfter,
+      optionBefore,
+      optionAfter,
+      estimatedGross,
+      estimatedNet: estimatedGross - pendingVote.amount,
+    };
+  }, [data.votes, pendingMatch, pendingVote]);
 
   const userRows = useMemo(() => {
     return data.knownUsers
@@ -2271,6 +2304,39 @@ function App() {
                 <dd>{formatPoints(pendingVote.amount)}</dd>
               </div>
             </dl>
+            {pendingVoteImpact && (
+              <section className="confirm-impact" aria-label="投票後のオッズ変動">
+                <div className="impact-heading">
+                  <span>投票後のオッズ変動</span>
+                  <b>
+                    {pendingVoteImpact.beforeOdds
+                      ? `${pendingVoteImpact.beforeOdds.toFixed(2)}x`
+                      : "-"}
+                    {" -> "}
+                    {pendingVoteImpact.afterOdds.toFixed(2)}x
+                  </b>
+                </div>
+                <div className="impact-grid">
+                  <div>
+                    <span>総プール</span>
+                    <b>{formatPoints(pendingVoteImpact.totalAfter)}</b>
+                    <small>+{formatPoints(pendingVote.amount)}</small>
+                  </div>
+                  <div>
+                    <span>{pendingVote.optionLabel}</span>
+                    <b>{formatPoints(pendingVoteImpact.optionAfter)}</b>
+                    <small>{formatPoints(pendingVoteImpact.optionBefore)} から変動</small>
+                  </div>
+                </div>
+                <p className="impact-return">
+                  的中時の想定プラス
+                  <strong>
+                    {pendingVoteImpact.estimatedNet >= 0 ? "+" : ""}
+                    {formatPoints(pendingVoteImpact.estimatedNet)}
+                  </strong>
+                </p>
+              </section>
+            )}
             <p className="confirm-note">投票後は取り消せません。</p>
             <div className="confirm-actions">
               <button className="ghost-action" type="button" onClick={() => setPendingVote(null)}>

@@ -1238,6 +1238,87 @@ label span {
   overflow-wrap: anywhere;
 }
 
+.confirm-impact {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(135deg, #fff7cf 0%, #e9f7ff 100%);
+  border: 2px solid #ffd938;
+  border-radius: 12px;
+  box-shadow: 0 10px 20px rgba(255, 209, 25, 0.16);
+}
+
+.impact-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.impact-heading span {
+  color: #0f6ca8;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.impact-heading b {
+  color: #003d8f;
+  font-size: 1.18rem;
+  font-weight: 950;
+}
+
+.impact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.impact-grid div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(0, 117, 190, 0.14);
+  border-radius: 9px;
+}
+
+.impact-grid span,
+.impact-grid small {
+  color: #60748b;
+  font-weight: 900;
+}
+
+.impact-grid span {
+  font-size: 0.75rem;
+}
+
+.impact-grid b {
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.impact-grid small {
+  font-size: 0.68rem;
+}
+
+.impact-return {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  color: #0c4b87;
+  font-weight: 950;
+}
+
+.impact-return strong {
+  color: #15815a;
+  font-size: 1.18rem;
+  white-space: nowrap;
+}
+
 .confirm-note {
   color: var(--red);
   font-weight: 950;
