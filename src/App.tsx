@@ -2446,10 +2446,6 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return height - paddingY - ((value - minValue) / range) * (height - paddingY * 2);
   }
 
-  function clampChartY(value: number) {
-    return Math.min(height - paddingY, Math.max(paddingY, value));
-  }
-
   function makeSmoothPath(points: Array<{ x: number; y: number }>) {
     if (!points.length) return "";
     if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
@@ -2460,33 +2456,17 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
       const currentPoint = points[index];
       const nextPoint = points[index + 1];
       const deltaX = nextPoint.x - currentPoint.x;
-      const deltaY = nextPoint.y - currentPoint.y;
-      const wave = Math.min(30, Math.max(8, Math.abs(deltaY) * 0.38));
-      const direction = deltaY === 0 ? (index % 2 === 0 ? -1 : 1) : deltaY > 0 ? 1 : -1;
-      const wavePoint = {
-        x: currentPoint.x + deltaX * 0.64,
-        y: clampChartY(currentPoint.y + deltaY * 0.52 + direction * wave),
+      const control1 = {
+        x: currentPoint.x + deltaX * 0.42,
+        y: currentPoint.y,
       };
-      const firstControl = {
-        x: currentPoint.x + deltaX * 0.24,
-        y: clampChartY(currentPoint.y - direction * wave * 0.55),
-      };
-      const secondControl = {
-        x: currentPoint.x + deltaX * 0.48,
-        y: clampChartY(wavePoint.y + direction * wave * 0.26),
-      };
-      const thirdControl = {
-        x: currentPoint.x + deltaX * 0.78,
-        y: clampChartY(wavePoint.y - direction * wave * 0.44),
-      };
-      const fourthControl = {
-        x: currentPoint.x + deltaX * 0.92,
-        y: clampChartY(nextPoint.y + direction * wave * 0.2),
+      const control2 = {
+        x: currentPoint.x + deltaX * 0.58,
+        y: nextPoint.y,
       };
 
       segments.push(
-        `C ${firstControl.x.toFixed(1)} ${firstControl.y.toFixed(1)} ${secondControl.x.toFixed(1)} ${secondControl.y.toFixed(1)} ${wavePoint.x.toFixed(1)} ${wavePoint.y.toFixed(1)}`,
-        `C ${thirdControl.x.toFixed(1)} ${thirdControl.y.toFixed(1)} ${fourthControl.x.toFixed(1)} ${fourthControl.y.toFixed(1)} ${nextPoint.x.toFixed(1)} ${nextPoint.y.toFixed(1)}`,
+        `C ${control1.x.toFixed(1)} ${control1.y.toFixed(1)} ${control2.x.toFixed(1)} ${control2.y.toFixed(1)} ${nextPoint.x.toFixed(1)} ${nextPoint.y.toFixed(1)}`,
       );
     }
 
