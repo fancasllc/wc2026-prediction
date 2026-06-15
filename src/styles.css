@@ -1899,7 +1899,7 @@ textarea:focus {
 
 .stats-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .stat-card {
@@ -1907,15 +1907,15 @@ textarea:focus {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 2px 8px;
   align-items: center;
-  padding: 9px 10px;
+  padding: 7px 9px;
 }
 
 .stat-icon {
   grid-row: span 2;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   color: #035a9b;
   background: #e8f8ff;
   border-radius: 8px;
@@ -1923,14 +1923,14 @@ textarea:focus {
 
 .stat-card span {
   color: #60748b;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 950;
 }
 
 .stat-card strong {
   min-width: 0;
   color: var(--ink);
-  font-size: 1.02rem;
+  font-size: 0.92rem;
   line-height: 1.1;
   overflow-wrap: anywhere;
 }
@@ -2275,72 +2275,80 @@ textarea:focus {
 
 .person-vote-card {
   display: grid;
-  gap: 8px;
-  padding: 9px;
+  gap: 6px;
+  padding: 8px;
   background: #ffffff;
   border: 1px solid #dceaf4;
   border-radius: 8px;
 }
 
 .person-vote-card > div {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
 .person-vote-card strong {
   min-width: 0;
   color: var(--ink);
-  font-size: 0.96rem;
+  font-size: 0.9rem;
   font-weight: 950;
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
 .person-vote-card span {
+  flex: 0 0 auto;
   color: #60748b;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   font-weight: 850;
 }
 
 .person-vote-card dl {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
   margin: 0;
 }
 
 .person-vote-card dl div {
   min-width: 0;
-  padding: 6px 7px;
+  padding: 5px 6px;
   background: #f3f9ff;
   border-radius: 8px;
 }
 
 .person-vote-card dt {
   color: #60748b;
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 950;
 }
 
 .person-vote-card dd {
   min-width: 0;
-  margin: 2px 0 0;
+  margin: 1px 0 0;
   color: var(--ink);
-  font-size: 0.86rem;
+  font-size: 0.76rem;
   font-weight: 950;
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
 .balance-history-list {
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .balance-history-card {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 5px 10px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(56px, 0.55fr) auto;
+  align-items: center;
+  gap: 4px 8px;
   width: 100%;
-  padding: 9px 10px;
+  min-height: 58px;
+  padding: 7px 9px;
   color: var(--ink);
   text-align: left;
   background: #ffffff;
@@ -2349,14 +2357,17 @@ textarea:focus {
 }
 
 .balance-history-card > span {
+  min-width: 0;
   color: #60748b;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 900;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .balance-history-card > div:first-child {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -2368,20 +2379,21 @@ textarea:focus {
 .balance-history-card > div:first-child span,
 .balance-history-card small {
   color: #60748b;
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 900;
 }
 
 .balance-history-card > div:last-child {
   display: grid;
   justify-items: end;
-  gap: 3px;
-  grid-row: span 2;
+  gap: 2px;
+  min-width: 86px;
 }
 
 .balance-history-card b {
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 950;
+  line-height: 1.1;
 }
 
 .list-expand-button {
