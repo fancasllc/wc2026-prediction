@@ -1862,11 +1862,12 @@ function App() {
             </div>
             {adminToken && (
               <>
-            <div className="data-panel admin-backup-panel">
-              <div className="panel-title">
+            <details className="data-panel admin-backup-panel admin-disclosure">
+              <summary className="panel-title admin-disclosure-title">
                 <Database size={18} aria-hidden />
                 DBバックアップ
-              </div>
+                <span>開く</span>
+              </summary>
               <p className="admin-help">
                 毎日04:00以降に1回、試合・選択肢・投票・ユーザー別収支をCSVで保存します。
                 結果確定後にも少し時間を置いて自動保存します。既存の投票データは変更しません。
@@ -1943,7 +1944,7 @@ function App() {
               ) : (
                 <EmptyState title={isBackupLoading ? "バックアップを確認中です" : "バックアップはまだありません"} />
               )}
-            </div>
+            </details>
 
             <div className="admin-column">
               <form className="data-panel form-panel" onSubmit={addMatch}>
@@ -2051,33 +2052,42 @@ function App() {
             </div>
 
             <div className="admin-column wide-column">
-              <div className="data-panel">
-                <div className="panel-title">
+              <details className="data-panel admin-disclosure">
+                <summary className="panel-title admin-disclosure-title">
                   <Database size={18} aria-hidden />
                   結果確定
-                </div>
+                  <span>開く</span>
+                </summary>
                 <p className="admin-help">
                   締切済みの予想テーマだけを表示しています。結果を選んでから確定してください。
                 </p>
                 {settleCandidateMatches.length ? (
                   <div className="admin-settle-list">
                     {settleCandidateMatches.map((match) => (
-                      <AdminSettleCard
-                        adminToken={adminToken}
-                        key={match.id}
-                        match={match}
-                        now={now}
-                        onDelete={() => deleteMatch(match.id)}
-                        onReopen={() => reopenMatch(match)}
-                        onSelect={(optionId) =>
-                          setResultDrafts((current) => ({ ...current, [match.id]: optionId }))
-                        }
-                        onSettle={() =>
-                          settleMatch(match, resultDrafts[match.id] || match.resultOptionId || "")
-                        }
-                        selectedOptionId={resultDrafts[match.id] || match.resultOptionId || ""}
-                        votes={data.votes}
-                      />
+                      <details className="admin-item-disclosure" key={match.id}>
+                        <summary>
+                          <span>
+                            <strong>{match.title}</strong>
+                            <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, data.votes).length}件</small>
+                          </span>
+                          <b>結果を選ぶ</b>
+                        </summary>
+                        <AdminSettleCard
+                          adminToken={adminToken}
+                          match={match}
+                          now={now}
+                          onDelete={() => deleteMatch(match.id)}
+                          onReopen={() => reopenMatch(match)}
+                          onSelect={(optionId) =>
+                            setResultDrafts((current) => ({ ...current, [match.id]: optionId }))
+                          }
+                          onSettle={() =>
+                            settleMatch(match, resultDrafts[match.id] || match.resultOptionId || "")
+                          }
+                          selectedOptionId={resultDrafts[match.id] || match.resultOptionId || ""}
+                          votes={data.votes}
+                        />
+                      </details>
                     ))}
                   </div>
                 ) : (
@@ -2097,13 +2107,14 @@ function App() {
                     ))}
                   </div>
                 )}
-              </div>
+              </details>
 
-              <div className="data-panel">
-                <div className="panel-title">
+              <details className="data-panel admin-disclosure">
+                <summary className="panel-title admin-disclosure-title">
                   <UserRound size={18} aria-hidden />
                   ユーザーDB
-                </div>
+                  <span>開く</span>
+                </summary>
                 {userRows.length ? (
                   <div className="responsive-table">
                     <table>
@@ -2137,13 +2148,14 @@ function App() {
                 ) : (
                   <EmptyState title="ユーザーはまだ登録されていません" />
                 )}
-              </div>
+              </details>
 
-              <div className="data-panel">
-                <div className="panel-title">
+              <details className="data-panel admin-disclosure">
+                <summary className="panel-title admin-disclosure-title">
                   <History size={18} aria-hidden />
                   投票DB
-                </div>
+                  <span>開く</span>
+                </summary>
                 {data.votes.length ? (
                   <div className="responsive-table">
                     <table>
@@ -2205,13 +2217,14 @@ function App() {
                   <RotateCcw size={18} aria-hidden />
                   DB再同期
                 </button>
-              </div>
+              </details>
 
-              <div className="data-panel form-panel">
-                <div className="panel-title">
+              <details className="data-panel form-panel admin-disclosure">
+                <summary className="panel-title admin-disclosure-title">
                   <ListPlus size={18} aria-hidden />
                   試合編集
-                </div>
+                  <span>開く</span>
+                </summary>
                 <p className="admin-help">
                   投票済みでもタイトル・開始時刻・締切時刻は編集できます。投票済みの選択肢は削除や名称変更ができません。
                 </p>
@@ -2328,7 +2341,7 @@ function App() {
                     </button>
                   </form>
                 )}
-              </div>
+              </details>
             </div>
               </>
             )}

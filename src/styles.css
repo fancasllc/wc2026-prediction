@@ -1887,6 +1887,98 @@ textarea:focus {
   grid-column: auto;
 }
 
+.admin-disclosure {
+  align-content: start;
+}
+
+.admin-disclosure-title {
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-disclosure-title::-webkit-details-marker {
+  display: none;
+}
+
+.admin-disclosure-title span {
+  margin-left: auto;
+  padding: 5px 10px;
+  color: #0b5cad;
+  font-size: 0;
+  font-weight: 950;
+  background: #eef8ff;
+  border: 1px solid #d5e8f6;
+  border-radius: 999px;
+}
+
+.admin-disclosure-title span::before {
+  font-size: 0.78rem;
+}
+
+.admin-disclosure:not([open]) > .admin-disclosure-title span::before {
+  content: "開く";
+}
+
+.admin-disclosure[open] > .admin-disclosure-title span::before {
+  content: "閉じる";
+}
+
+.admin-item-disclosure {
+  padding: 0;
+  background: #f6fbff;
+  border: 1px solid #dce9f1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin-item-disclosure > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-item-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-item-disclosure > summary span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-item-disclosure > summary strong {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.admin-item-disclosure > summary small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.admin-item-disclosure > summary b {
+  color: #0b5cad;
+  font-size: 0.78rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.admin-item-disclosure[open] > summary {
+  border-bottom: 1px solid #dce9f1;
+}
+
+.admin-item-disclosure > .admin-settle-card {
+  margin: 10px;
+}
+
 .admin-auth-row p {
   margin: 0;
 }
