@@ -457,6 +457,10 @@ function formatHandicapPoints(value: number) {
   return value % 1 === 0 ? String(value) : value.toFixed(1);
 }
 
+function hasHalfPointHandicap(value: number) {
+  return Math.abs(value % 1) === 0.5;
+}
+
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
@@ -811,7 +815,10 @@ function App() {
     candidate: ScheduledMatchCandidate,
     handicap: { handicapOptionIndex: number; handicapPoints: number },
   ) {
-    const optionLabels = candidate.options.map((label, index) =>
+    const visibleOptions = hasHalfPointHandicap(handicap.handicapPoints)
+      ? candidate.options.slice(0, 2)
+      : candidate.options;
+    const optionLabels = visibleOptions.map((label, index) =>
       handicap.handicapPoints > 0 && handicap.handicapOptionIndex === index
         ? `${label}（＋${formatHandicapPoints(handicap.handicapPoints)}）`
         : label,
@@ -2786,6 +2793,9 @@ function ScheduledMatchPicker({
           ) : matches.length ? (
             matches.map((match) => {
               const handicap = getHandicap(match);
+              const visibleOptions = hasHalfPointHandicap(handicap.points)
+                ? match.options.slice(0, 2)
+                : match.options;
               const optionObjects = match.options.slice(0, 2).map((label, index) => ({
                 id: String(index),
                 label,
@@ -2796,7 +2806,7 @@ function ScheduledMatchPicker({
                   <div className="schedule-row-head">
                     <div>
                       <strong>{match.title}</strong>
-                      <span>{match.options.join(" / ")}</span>
+                      <span>{visibleOptions.join(" / ")}</span>
                     </div>
                     <time>{formatDateTime(match.startsAt)} 開始</time>
                   </div>

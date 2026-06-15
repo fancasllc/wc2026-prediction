@@ -262,6 +262,10 @@ function makeScheduledMatchPayload(scheduledMatch) {
   };
 }
 
+function hasHalfPointHandicap(handicapPoints) {
+  return Math.abs(handicapPoints % 1) === 0.5;
+}
+
 function makeScheduledMatchPayloadWithHandicap(scheduledMatch, input = {}) {
   const payload = makeScheduledMatchPayload(scheduledMatch);
   const optionIndex = Number(input.handicapOptionIndex);
@@ -269,9 +273,13 @@ function makeScheduledMatchPayloadWithHandicap(scheduledMatch, input = {}) {
   const option = Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex <= 1
     ? payload.options[optionIndex]
     : null;
+  const options = hasHalfPointHandicap(handicapPoints)
+    ? payload.options.slice(0, 2)
+    : payload.options;
 
   return {
     ...payload,
+    options,
     handicapOptionId: option && handicapPoints > 0 ? option.id : "",
     handicapPoints,
   };
