@@ -140,6 +140,15 @@ type PendingVoteImpact = {
   optionAfter: number;
   estimatedGross: number;
   estimatedNet: number;
+  userTotalAfter: number;
+  userOptionRows: Array<{
+    optionId: string;
+    label: string;
+    amount: number;
+    gross: number;
+    net: number;
+    currentSelection: boolean;
+  }>;
 };
 
 type MatchDraft = {
@@ -981,6 +990,39 @@ function App() {
     const optionAfter = optionBefore + pendingVote.amount;
     const afterOdds = optionAfter > 0 ? totalAfter / optionAfter : 0;
     const estimatedGross = afterOdds * pendingVote.amount;
+    const userOptionTotals = new Map<string, number>();
+
+    data.votes
+      .filter((vote) => vote.matchId === pendingMatch.id && vote.userName === pendingVote.userName)
+      .forEach((vote) => {
+        userOptionTotals.set(vote.optionId, (userOptionTotals.get(vote.optionId) ?? 0) + vote.amount);
+      });
+    userOptionTotals.set(
+      pendingVote.optionId,
+      (userOptionTotals.get(pendingVote.optionId) ?? 0) + pendingVote.amount,
+    );
+
+    const userTotalAfter = [...userOptionTotals.values()].reduce((sum, amount) => sum + amount, 0);
+    const userOptionRows = [...userOptionTotals.entries()]
+      .map(([optionId, amount]) => {
+        const optionTotalAfter =
+          getOptionTotal(pendingMatch, data.votes, optionId) +
+          (optionId === pendingVote.optionId ? pendingVote.amount : 0);
+        const gross = optionTotalAfter > 0 ? (totalAfter * amount) / optionTotalAfter : 0;
+        return {
+          optionId,
+          label: optionLabel(pendingMatch, optionId),
+          amount,
+          gross,
+          net: gross - userTotalAfter,
+          currentSelection: optionId === pendingVote.optionId,
+        };
+      })
+      .sort((a, b) => {
+        if (a.currentSelection !== b.currentSelection) return a.currentSelection ? -1 : 1;
+        return b.amount - a.amount || a.label.localeCompare(b.label, "ja");
+      });
+    const selectedUserOption = userOptionRows.find((row) => row.currentSelection);
 
     return {
       beforeOdds: optionBefore > 0 ? totalBefore / optionBefore : null,
@@ -989,8 +1031,10 @@ function App() {
       totalAfter,
       optionBefore,
       optionAfter,
-      estimatedGross,
-      estimatedNet: estimatedGross - pendingVote.amount,
+      estimatedGross: selectedUserOption?.gross ?? estimatedGross,
+      estimatedNet: selectedUserOption?.net ?? estimatedGross - pendingVote.amount,
+      userTotalAfter,
+      userOptionRows,
     };
   }, [data.votes, pendingMatch, pendingVote]);
 
@@ -2443,12 +2487,33 @@ function App() {
                   </div>
                 </div>
                 <p className="impact-return">
-                  的中時の想定プラス
+                  今回の選択が的中した場合
                   <strong>
                     {pendingVoteImpact.estimatedNet >= 0 ? "+" : ""}
                     {formatPoints(pendingVoteImpact.estimatedNet)}
                   </strong>
                 </p>
+                <div className="impact-personal-summary">
+                  <div className="impact-subheading">
+                    <span>投票後の個人別見込み</span>
+                    <b>投票合計 {formatPoints(pendingVoteImpact.userTotalAfter)}</b>
+                  </div>
+                  <div className="impact-personal-rows">
+                    {pendingVoteImpact.userOptionRows.map((row) => (
+                      <div className={row.currentSelection ? "current" : ""} key={row.optionId}>
+                        <span>{row.label}</span>
+                        <b>{formatPoints(row.amount)}</b>
+                        <small>
+                          的中時リターン {formatPoints(row.gross)} / 個人最終収支{" "}
+                          <strong className={row.net >= 0 ? "positive" : "negative"}>
+                            {row.net >= 0 ? "+" : ""}
+                            {formatPoints(row.net)}
+                          </strong>
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </section>
             )}
             <p className="confirm-note">投票後は取り消せません。</p>
