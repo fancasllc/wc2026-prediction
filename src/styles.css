@@ -356,12 +356,36 @@ label span {
   color: var(--ink);
 }
 
-.summary-card > strong {
+.summary-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.summary-title-row > strong {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 1.22rem;
   font-weight: 950;
   line-height: 1.12;
   overflow-wrap: anywhere;
+}
+
+.handicap-badge {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: #083b86;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff7b7, #ffd84c);
+  border: 1px solid rgba(0, 77, 168, 0.28);
+  border-radius: 999px;
+  box-shadow: 0 2px 5px rgba(0, 29, 75, 0.14);
 }
 
 .summary-time {

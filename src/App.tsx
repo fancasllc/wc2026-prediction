@@ -811,6 +811,11 @@ function App() {
     candidate: ScheduledMatchCandidate,
     handicap: { handicapOptionIndex: number; handicapPoints: number },
   ) {
+    const optionLabels = candidate.options.map((label, index) =>
+      handicap.handicapPoints > 0 && handicap.handicapOptionIndex === index
+        ? `${label}（＋${formatHandicapPoints(handicap.handicapPoints)}）`
+        : label,
+    );
     const handicapLabel =
       handicap.handicapPoints > 0 && handicap.handicapOptionIndex >= 0
         ? `${candidate.options[handicap.handicapOptionIndex]}に＋${formatHandicapPoints(handicap.handicapPoints)}`
@@ -821,7 +826,7 @@ function App() {
         "",
         candidate.title,
         `${formatDateTime(candidate.startsAt)} 開始`,
-        `投票先: ${candidate.options.join(" / ")}`,
+        `投票先: ${optionLabels.join(" / ")}`,
         `ハンデ: ${handicapLabel}`,
       ].join("\n"),
     );
@@ -2846,10 +2851,22 @@ function MatchSummaryCard({
 }) {
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
+  const handicap = getMatchHandicap(match);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
-      <strong>{match.title}</strong>
+      <span className="summary-title-row">
+        <strong>{match.title}</strong>
+        {handicap && (
+          <span
+            className="handicap-badge"
+            aria-label={`${handicap.option.label}に＋${formatHandicapPoints(handicap.points)}点のハンデ`}
+            title={`${handicap.option.label}に＋${formatHandicapPoints(handicap.points)}点`}
+          >
+            H
+          </span>
+        )}
+      </span>
       <div className="summary-time">
         <span className="summary-countdown">
           <Clock3 size={16} aria-hidden />
