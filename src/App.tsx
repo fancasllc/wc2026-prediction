@@ -539,7 +539,7 @@ function isMatchOpen(match: MatchRecord, now: Date) {
 }
 
 function getStatusLabel(match: MatchRecord, now: Date) {
-  if (match.resultOptionId) return "結果確定";
+  if (match.resultOptionId) return "確定済み";
   if (isMatchOpen(match, now)) return "受付中";
   return "受付終了";
 }
@@ -2878,9 +2878,23 @@ function MatchSummaryCard({
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
   const handicap = getMatchHandicap(match);
+  const open = isMatchOpen(match, now);
+  const settled = Boolean(match.resultOptionId);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
+      {!open && (
+        <span className="summary-status-line">
+          <span className={`summary-status-pill ${settled ? "settled" : "closed"}`}>
+            {settled ? "確定済み" : "締切済み"}
+          </span>
+          {settled && (
+            <b>
+              確定結果: {optionLabel(match, match.resultOptionId ?? "")}
+            </b>
+          )}
+        </span>
+      )}
       <span className="summary-title-row">
         <strong>{match.title}</strong>
         {handicap && (
@@ -3462,7 +3476,7 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
         })
         .sort((a, b) => b.amount - a.amount || optionLabel(match, a.optionId).localeCompare(optionLabel(match, b.optionId), "ja")),
     }))
-    .sort((a, b) => a.userName.localeCompare(b.userName, "ja") || b.totalStake - a.totalStake);
+    .sort((a, b) => b.totalStake - a.totalStake || a.userName.localeCompare(b.userName, "ja"));
 
   return (
     <div className="bettor-list">
@@ -3513,7 +3527,7 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
                         <i>{optionLabel(match, optionRow.optionId)}</i>
                         <b>{formatPoints(optionRow.amount)}</b>
                         <small className={optionRow.net >= 0 ? "positive" : "negative"}>
-                          的中時 リターン {formatPoints(Math.round(optionRow.gross))} / 収支{" "}
+                          的中時 リターン {formatPoints(Math.round(optionRow.gross))} / 個人最終収支{" "}
                           {optionRow.net >= 0 ? "+" : ""}
                           {formatPoints(Math.round(optionRow.net))}
                         </small>

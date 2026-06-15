@@ -356,6 +356,39 @@ label span {
   color: var(--ink);
 }
 
+.summary-status-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.summary-status-line b {
+  min-width: 0;
+  color: #08604f;
+  font-size: 0.78rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.summary-status-pill {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 950;
+  border-radius: 999px;
+}
+
+.summary-status-pill.closed {
+  color: #8a5200;
+  background: #fff0c6;
+}
+
+.summary-status-pill.settled {
+  color: #046152;
+  background: #d9fff1;
+}
+
 .summary-title-row {
   display: flex;
   align-items: flex-start;
