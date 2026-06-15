@@ -1657,6 +1657,109 @@ textarea:focus {
   gap: 8px;
 }
 
+.bettor-person-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.bettor-person-card {
+  overflow: hidden;
+  background: #eef9ff;
+  border: 1px solid #d8ecf6;
+  border-radius: 8px;
+}
+
+.bettor-person-card summary {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bettor-person-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.bettor-person-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.bettor-person-top span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.bettor-person-top strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.bettor-person-top small,
+.bettor-person-details > small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.bettor-person-top b {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.bettor-person-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.bettor-person-preview > span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid #d7ebf6;
+  border-radius: 8px;
+}
+
+.bettor-person-preview i {
+  min-width: 0;
+  color: var(--ink);
+  font-style: normal;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.bettor-person-preview b {
+  color: var(--ink);
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.bettor-person-preview small {
+  grid-column: 1 / -1;
+  justify-self: end;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-align: right;
+}
+
+.bettor-person-details {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid #d8ecf6;
+}
+
 .bettor-chip {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

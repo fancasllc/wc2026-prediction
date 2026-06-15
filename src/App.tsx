@@ -3416,14 +3416,53 @@ function VoteForm({
 
 function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] }) {
   const matchVotes = getMatchVotes(match, votes);
-  const [sortMode, setSortMode] = useState<"newest" | "oldest" | "name">("newest");
+  const [sortMode, setSortMode] = useState<"person" | "newest" | "oldest">("person");
   const sortedVotes = [...matchVotes].sort((a, b) => {
-    if (sortMode === "name") {
-      return a.userName.localeCompare(b.userName, "ja") || b.createdAt.localeCompare(a.createdAt);
-    }
     const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     return sortMode === "oldest" ? diff : -diff;
   });
+  const total = getMatchTotal(match, votes);
+  const personRows = [...matchVotes.reduce((map, vote) => {
+    const current = map.get(vote.userName) ?? {
+      userName: vote.userName,
+      totalStake: 0,
+      latestAt: vote.createdAt,
+      votes: [] as VoteRecord[],
+      optionTotals: new Map<string, number>(),
+    };
+    current.totalStake += vote.amount;
+    current.votes.push(vote);
+    current.latestAt =
+      new Date(vote.createdAt).getTime() > new Date(current.latestAt).getTime()
+        ? vote.createdAt
+        : current.latestAt;
+    current.optionTotals.set(vote.optionId, (current.optionTotals.get(vote.optionId) ?? 0) + vote.amount);
+    map.set(vote.userName, current);
+    return map;
+  }, new Map<string, {
+    userName: string;
+    totalStake: number;
+    latestAt: string;
+    votes: VoteRecord[];
+    optionTotals: Map<string, number>;
+  }>()).values()]
+    .map((row) => ({
+      ...row,
+      optionRows: [...row.optionTotals.entries()]
+        .map(([optionId, amount]) => {
+          const optionTotal = getOptionTotal(match, votes, optionId);
+          const odds = optionTotal > 0 ? total / optionTotal : 0;
+          const gross = amount * odds;
+          return {
+            optionId,
+            amount,
+            gross,
+            net: gross - row.totalStake,
+          };
+        })
+        .sort((a, b) => b.amount - a.amount || optionLabel(match, a.optionId).localeCompare(optionLabel(match, b.optionId), "ja")),
+    }))
+    .sort((a, b) => a.userName.localeCompare(b.userName, "ja") || b.totalStake - a.totalStake);
 
   return (
     <div className="bettor-list">
@@ -3431,6 +3470,13 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
         <div className="small-heading">投票状況</div>
         {matchVotes.length > 1 && (
           <div className="sort-control" aria-label="投票状況の並び替え">
+            <button
+              className={sortMode === "person" ? "active" : ""}
+              onClick={() => setSortMode("person")}
+              type="button"
+            >
+              個人別
+            </button>
             <button
               className={sortMode === "newest" ? "active" : ""}
               onClick={() => setSortMode("newest")}
@@ -3445,22 +3491,54 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
             >
               古い順
             </button>
-            <button
-              className={sortMode === "name" ? "active" : ""}
-              onClick={() => setSortMode("name")}
-              type="button"
-            >
-              名前順
-            </button>
           </div>
         )}
       </div>
       {matchVotes.length ? (
-        <div className="bettor-grid">
-          {sortedVotes.map((vote) => (
-            <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
-          ))}
-        </div>
+        sortMode === "person" ? (
+          <div className="bettor-person-grid">
+            {personRows.map((row) => (
+              <details className="bettor-person-card" key={row.userName}>
+                <summary>
+                  <div className="bettor-person-top">
+                    <span>
+                      <strong>{row.userName}</strong>
+                      <small>{row.votes.length}件 / 最終 {formatDateTime(row.latestAt)}</small>
+                    </span>
+                    <b>合計 {formatPoints(row.totalStake)}</b>
+                  </div>
+                  <div className="bettor-person-preview">
+                    {row.optionRows.map((optionRow) => (
+                      <span key={optionRow.optionId}>
+                        <i>{optionLabel(match, optionRow.optionId)}</i>
+                        <b>{formatPoints(optionRow.amount)}</b>
+                        <small className={optionRow.net >= 0 ? "positive" : "negative"}>
+                          的中時 リターン {formatPoints(Math.round(optionRow.gross))} / 収支{" "}
+                          {optionRow.net >= 0 ? "+" : ""}
+                          {formatPoints(Math.round(optionRow.net))}
+                        </small>
+                      </span>
+                    ))}
+                  </div>
+                </summary>
+                <div className="bettor-person-details">
+                  <small>投票明細</small>
+                  {[...row.votes]
+                    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((vote) => (
+                      <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
+                    ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <div className="bettor-grid">
+            {sortedVotes.map((vote) => (
+              <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
+            ))}
+          </div>
+        )
       ) : (
         <p className="muted-line">まだ投票はありません。</p>
       )}
