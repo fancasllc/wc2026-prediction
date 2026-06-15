@@ -67,6 +67,8 @@ type MatchRecord = {
   options: MatchOption[];
   resultOptionId?: string;
   settledAt?: string;
+  handicapOptionId?: string;
+  handicapPoints?: number;
 };
 
 type ScheduledMatchCandidate = {
@@ -145,6 +147,8 @@ type MatchDraft = {
   startsAt: string;
   closesAt: string;
   optionsText: string;
+  handicapOptionId: string;
+  handicapPoints: number;
 };
 
 type MotivationItem = {
@@ -182,6 +186,7 @@ const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
+const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 
 function getStoredAdminToken() {
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
@@ -227,12 +232,16 @@ async function fetchScheduledMatches() {
   return apiRequest<{ matches: ScheduledMatchCandidate[] }>("/api/scheduled-matches");
 }
 
-async function createScheduledMatch(matchId: string) {
+async function createScheduledMatchWithHandicap(
+  matchId: string,
+  handicap: { handicapOptionIndex: number; handicapPoints: number },
+) {
   return apiRequest<{
     state: AppData;
     matches: ScheduledMatchCandidate[];
   }>(`/api/scheduled-matches/${matchId}`, {
     method: "POST",
+    body: JSON.stringify(handicap),
   });
 }
 
@@ -351,6 +360,8 @@ const emptyMatchDraft: MatchDraft = {
   startsAt: "2026-06-12T04:00",
   closesAt: "2026-06-12T04:00",
   optionsText: worldCupWinnerLabels.join("\n"),
+  handicapOptionId: "",
+  handicapPoints: 0,
 };
 
 const csvTemplate = `title,startsAt,closesAt,options
@@ -442,6 +453,10 @@ function formatPoints(value: number) {
   return `${pointsFormatter.format(Math.round(value))} pt`;
 }
 
+function formatHandicapPoints(value: number) {
+  return value % 1 === 0 ? String(value) : value.toFixed(1);
+}
+
 function formatBytes(value: number) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
@@ -495,8 +510,24 @@ function makeOptions(labels: string[]) {
   }));
 }
 
+function getMatchHandicap(match: MatchRecord | undefined) {
+  const points = Number(match?.handicapPoints ?? 0);
+  if (!match?.handicapOptionId || points <= 0) return null;
+  const option = match.options.find((item) => item.id === match.handicapOptionId);
+  if (!option) return null;
+  return { option, points };
+}
+
+function optionDisplayLabel(match: MatchRecord | undefined, option: MatchOption | undefined) {
+  if (!option) return "未設定";
+  const handicap = getMatchHandicap(match);
+  if (!handicap || handicap.option.id !== option.id) return option.label;
+  return `${option.label}（＋${formatHandicapPoints(handicap.points)}）`;
+}
+
 function optionLabel(match: MatchRecord | undefined, optionId: string) {
-  return match?.options.find((option) => option.id === optionId)?.label ?? "未設定";
+  const option = match?.options.find((item) => item.id === optionId);
+  return optionDisplayLabel(match, option);
 }
 
 function isMatchOpen(match: MatchRecord, now: Date) {
@@ -776,7 +807,14 @@ function App() {
     await loadScheduledMatches();
   }
 
-  async function addScheduledMatch(candidate: ScheduledMatchCandidate) {
+  async function addScheduledMatch(
+    candidate: ScheduledMatchCandidate,
+    handicap: { handicapOptionIndex: number; handicapPoints: number },
+  ) {
+    const handicapLabel =
+      handicap.handicapPoints > 0 && handicap.handicapOptionIndex >= 0
+        ? `${candidate.options[handicap.handicapOptionIndex]}に＋${formatHandicapPoints(handicap.handicapPoints)}`
+        : "なし";
     const confirmed = window.confirm(
       [
         "この試合を追加しますか？",
@@ -784,6 +822,7 @@ function App() {
         candidate.title,
         `${formatDateTime(candidate.startsAt)} 開始`,
         `投票先: ${candidate.options.join(" / ")}`,
+        `ハンデ: ${handicapLabel}`,
       ].join("\n"),
     );
     if (!confirmed) return;
@@ -791,7 +830,7 @@ function App() {
     setIsSyncing(true);
     setScheduledMessage("");
     try {
-      const result = await createScheduledMatch(candidate.id);
+      const result = await createScheduledMatchWithHandicap(candidate.id, handicap);
       setData(result.state);
       setScheduledMatches(result.matches);
       setHasRemoteState(true);
@@ -1170,7 +1209,7 @@ function App() {
     setPendingVote({
       matchId: match.id,
       optionId: draft.optionId,
-      optionLabel: selectedOption?.label ?? "未選択",
+      optionLabel: optionDisplayLabel(match, selectedOption),
       userName: name,
       amount,
     });
@@ -1251,6 +1290,8 @@ function App() {
       return;
     }
 
+    const options = makeOptions(labels);
+    const handicapOption = options.find((option) => option.label === matchDraft.handicapOptionId);
     const match: MatchRecord = {
       id: createId("match"),
       title: matchDraft.title.trim(),
@@ -1259,7 +1300,9 @@ function App() {
       startsAt: matchDraft.startsAt,
       closesAt: matchDraft.closesAt || matchDraft.startsAt,
       question: "",
-      options: makeOptions(labels),
+      options,
+      handicapOptionId: matchDraft.handicapPoints > 0 ? handicapOption?.id : undefined,
+      handicapPoints: handicapOption && matchDraft.handicapPoints > 0 ? matchDraft.handicapPoints : 0,
     };
 
     try {
@@ -1386,6 +1429,8 @@ function App() {
       startsAt: match.startsAt,
       closesAt: match.closesAt,
       optionsText: match.options.map((option) => option.label).join("\n"),
+      handicapOptionId: match.handicapOptionId ?? "",
+      handicapPoints: Number(match.handicapPoints ?? 0),
     });
   }
 
@@ -1408,6 +1453,16 @@ function App() {
     }
 
     const existingMatch = data.matches.find((item) => item.id === editMatchId);
+    const nextOptions = labels.map((label, index) => {
+      const existingOption = existingMatch?.options.find((option) => option.label === label);
+      return {
+        id: existingOption?.id ?? createId(`option-${index + 1}`),
+        label,
+      };
+    });
+    const nextHandicapOption = nextOptions.find(
+      (option) => option.id === editMatchDraft.handicapOptionId || option.label === editMatchDraft.handicapOptionId,
+    );
     const match: MatchRecord = {
       id: editMatchId,
       title: editMatchDraft.title.trim(),
@@ -1416,13 +1471,9 @@ function App() {
       startsAt: editMatchDraft.startsAt,
       closesAt: editMatchDraft.closesAt || editMatchDraft.startsAt,
       question: "",
-      options: labels.map((label, index) => {
-        const existingOption = existingMatch?.options.find((option) => option.label === label);
-        return {
-          id: existingOption?.id ?? createId(`option-${index + 1}`),
-          label,
-        };
-      }),
+      options: nextOptions,
+      handicapOptionId: editMatchDraft.handicapPoints > 0 ? nextHandicapOption?.id : undefined,
+      handicapPoints: nextHandicapOption && editMatchDraft.handicapPoints > 0 ? editMatchDraft.handicapPoints : 0,
     };
 
     try {
@@ -1936,6 +1987,23 @@ function App() {
                       rows={4}
                     />
                   </label>
+                  <div className="wide">
+                    <HandicapPicker
+                      optionId={matchDraft.handicapOptionId}
+                      options={splitOptions(matchDraft.optionsText).slice(0, 2).map((label) => ({
+                        id: label,
+                        label,
+                      }))}
+                      points={matchDraft.handicapPoints}
+                      onChange={(next) =>
+                        setMatchDraft((current) => ({
+                          ...current,
+                          handicapOptionId: next.optionId,
+                          handicapPoints: next.points,
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
                 <button className="primary-action" type="submit">
                   <ListPlus size={18} aria-hidden />
@@ -2203,6 +2271,26 @@ function App() {
                         rows={5}
                       />
                     </label>
+                    <HandicapPicker
+                      optionId={editMatchDraft.handicapOptionId}
+                      options={splitOptions(editMatchDraft.optionsText).slice(0, 2).map((label) => {
+                        const existingOption = data.matches
+                          .find((item) => item.id === editMatchId)
+                          ?.options.find((option) => option.label === label);
+                        return {
+                          id: existingOption?.id ?? label,
+                          label,
+                        };
+                      })}
+                      points={editMatchDraft.handicapPoints}
+                      onChange={(next) =>
+                        setEditMatchDraft((current) => ({
+                          ...current,
+                          handicapOptionId: next.optionId,
+                          handicapPoints: next.points,
+                        }))
+                      }
+                    />
                     <div className="button-row">
                       <button className="primary-action" disabled={!adminToken} type="submit">
                         保存
@@ -2632,7 +2720,7 @@ function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
     .sort((a, b) => a.odds - b.odds || b.amount - a.amount || a.option.label.localeCompare(b.option.label, "ja"))
     .map((row) => ({
       id: row.option.id,
-      label: row.option.label,
+      label: optionDisplayLabel(match, row.option),
       oddsText: `${row.odds.toFixed(2)}x`,
     }));
 }
@@ -2648,10 +2736,21 @@ function ScheduledMatchPicker({
   matches: ScheduledMatchCandidate[];
   isLoading: boolean;
   message: string;
-  onAdd: (match: ScheduledMatchCandidate) => void;
+  onAdd: (
+    match: ScheduledMatchCandidate,
+    handicap: { handicapOptionIndex: number; handicapPoints: number },
+  ) => void;
   onClose: () => void;
   onRefresh: () => void;
 }) {
+  const [handicapByMatch, setHandicapByMatch] = useState<
+    Record<string, { optionIndex: number; points: number }>
+  >({});
+
+  function getHandicap(match: ScheduledMatchCandidate) {
+    return handicapByMatch[match.id] ?? { optionIndex: -1, points: 0 };
+  }
+
   return (
     <div className="schedule-modal-backdrop" role="presentation">
       <section className="schedule-modal" role="dialog" aria-modal="true" aria-label="試合を追加">
@@ -2680,20 +2779,51 @@ function ScheduledMatchPicker({
               <span aria-hidden />
             </div>
           ) : matches.length ? (
-            matches.map((match) => (
-              <button
-                className="schedule-row"
-                key={match.id}
-                type="button"
-                onClick={() => onAdd(match)}
-              >
-                <div>
-                  <strong>{match.title}</strong>
-                  <span>{match.options.join(" / ")}</span>
-                </div>
-                <time>{formatDateTime(match.startsAt)} 開始</time>
-              </button>
-            ))
+            matches.map((match) => {
+              const handicap = getHandicap(match);
+              const optionObjects = match.options.slice(0, 2).map((label, index) => ({
+                id: String(index),
+                label,
+              }));
+
+              return (
+                <article className="schedule-row-card" key={match.id}>
+                  <div className="schedule-row-head">
+                    <div>
+                      <strong>{match.title}</strong>
+                      <span>{match.options.join(" / ")}</span>
+                    </div>
+                    <time>{formatDateTime(match.startsAt)} 開始</time>
+                  </div>
+                  <HandicapPicker
+                    optionId={handicap.optionIndex >= 0 ? String(handicap.optionIndex) : ""}
+                    options={optionObjects}
+                    points={handicap.points}
+                    onChange={(next) =>
+                      setHandicapByMatch((current) => ({
+                        ...current,
+                        [match.id]: {
+                          optionIndex: next.optionId ? Number(next.optionId) : -1,
+                          points: next.points,
+                        },
+                      }))
+                    }
+                  />
+                  <button
+                    className="schedule-add-action"
+                    type="button"
+                    onClick={() =>
+                      onAdd(match, {
+                        handicapOptionIndex: handicap.optionIndex,
+                        handicapPoints: handicap.points,
+                      })
+                    }
+                  >
+                    追加する
+                  </button>
+                </article>
+              );
+            })
           ) : (
             <EmptyState title="追加できる試合はありません" />
           )}
@@ -2756,6 +2886,61 @@ function OddsTicker({
   );
 }
 
+function HandicapPicker({
+  optionId,
+  options,
+  points,
+  onChange,
+}: {
+  optionId: string;
+  options: Array<{ id: string; label: string }>;
+  points: number;
+  onChange: (next: { optionId: string; points: number }) => void;
+}) {
+  const active = points > 0 && optionId;
+
+  return (
+    <div className="handicap-picker">
+      <div className="handicap-picker-head">
+        <span>ハンデ設定</span>
+        <b>{active ? `${options.find((option) => option.id === optionId)?.label ?? ""} ＋${formatHandicapPoints(points)}` : "なし"}</b>
+      </div>
+      <div className="handicap-option-buttons" aria-label="ハンデ対象">
+        <button
+          className={!active ? "selected" : ""}
+          onClick={() => onChange({ optionId: "", points: 0 })}
+          type="button"
+        >
+          なし
+        </button>
+        {options.map((option) => (
+          <button
+            className={active && optionId === option.id ? "selected" : ""}
+            key={option.id}
+            onClick={() => onChange({ optionId: option.id, points: points || 0.5 })}
+            type="button"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <div className="handicap-value-buttons" aria-label="ハンデ点">
+        {HANDICAP_VALUES.map((value) => (
+          <button
+            className={points === value ? "selected" : ""}
+            disabled={value > 0 && !optionId}
+            key={value}
+            onClick={() => onChange({ optionId: value === 0 ? "" : optionId, points: value })}
+            type="button"
+          >
+            {value === 0 ? "0" : `＋${formatHandicapPoints(value)}`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StageNoticeList({ now }: { now: Date }) {
   return (
     <div className="stage-notice-list" aria-label="今後の予想テーマ予定">
@@ -2805,6 +2990,7 @@ function MatchHeader({
   const total = getMatchTotal(match, votes);
   const status = getStatusLabel(match, now);
   const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
+  const handicap = getMatchHandicap(match);
 
   return (
     <div className="match-header">
@@ -2826,6 +3012,15 @@ function MatchHeader({
           総プール {formatPoints(total)}
         </span>
       </div>
+      {handicap && (
+        <div className="handicap-notice">
+          <b>ハンデ制</b>
+          <span>
+            この試合は{handicap.option.label}に＋{formatHandicapPoints(handicap.points)}点のハンデが加えられています。
+            最終得点にハンデを加えた結果で判定します。
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -2950,7 +3145,7 @@ function AdminSettleCard({
               type="button"
             >
               <div>
-                <strong>{option.label}</strong>
+                <strong>{optionDisplayLabel(match, option)}</strong>
                 <span>{formatPoints(optionTotal)} / {percentage}%</span>
               </div>
               <div className="meter" aria-hidden>
@@ -3093,7 +3288,7 @@ function VoteForm({
               type="button"
             >
               <div>
-                <strong>{option.label}</strong>
+                <strong>{optionDisplayLabel(match, option)}</strong>
                 <b>{odds ? `${odds.toFixed(2)}x` : "-"}</b>
               </div>
               <div className="meter" aria-hidden>

@@ -97,9 +97,34 @@ function validateMatch(input) {
   const closesAt = String(input.closesAt ?? startsAt).trim();
   const question = clampText(input.question, 180);
   const options = Array.isArray(input.options) ? input.options : [];
+  const handicapOptionId = String(input.handicapOptionId ?? "").trim();
+  const rawHandicapPoints = Number(input.handicapPoints ?? 0);
+  const handicapPoints = Number.isFinite(rawHandicapPoints) ? rawHandicapPoints : 0;
 
   if (!title || !startsAt || !closesAt || options.length < 2 || options.length > 80) {
     const error = new Error("Invalid match payload");
+    error.status = 400;
+    throw error;
+  }
+
+  if (
+    handicapPoints < 0 ||
+    handicapPoints > 5 ||
+    Math.round(handicapPoints * 2) !== handicapPoints * 2 ||
+    (handicapPoints > 0 && !handicapOptionId)
+  ) {
+    const error = new Error("Invalid handicap payload");
+    error.status = 400;
+    throw error;
+  }
+
+  const normalizedOptions = options.map((option, index) => ({
+    id: String(option.id ?? createId(`option-${index + 1}`)),
+    label: clampText(option.label, 80),
+  })).filter((option) => option.label);
+
+  if (handicapPoints > 0 && !normalizedOptions.some((option) => option.id === handicapOptionId)) {
+    const error = new Error("Invalid handicap option");
     error.status = 400;
     throw error;
   }
@@ -112,10 +137,9 @@ function validateMatch(input) {
     startsAt,
     closesAt,
     question,
-    options: options.map((option, index) => ({
-      id: String(option.id ?? createId(`option-${index + 1}`)),
-      label: clampText(option.label, 80),
-    })).filter((option) => option.label),
+    options: normalizedOptions,
+    handicapOptionId: handicapPoints > 0 ? handicapOptionId : "",
+    handicapPoints: handicapPoints > 0 ? handicapPoints : 0,
   };
 }
 
@@ -238,6 +262,21 @@ function makeScheduledMatchPayload(scheduledMatch) {
   };
 }
 
+function makeScheduledMatchPayloadWithHandicap(scheduledMatch, input = {}) {
+  const payload = makeScheduledMatchPayload(scheduledMatch);
+  const optionIndex = Number(input.handicapOptionIndex);
+  const handicapPoints = Number(input.handicapPoints ?? 0);
+  const option = Number.isInteger(optionIndex) && optionIndex >= 0 && optionIndex <= 1
+    ? payload.options[optionIndex]
+    : null;
+
+  return {
+    ...payload,
+    handicapOptionId: option && handicapPoints > 0 ? option.id : "",
+    handicapPoints,
+  };
+}
+
 async function getMatchRegistrationRows(client = pool) {
   const matchesResult = await client.query(`
       select id, title, starts_at as "startsAt"
@@ -346,6 +385,10 @@ async function initializeDatabase() {
 
     create index if not exists votes_match_id_idx on votes(match_id);
     create index if not exists votes_user_name_idx on votes(user_name);
+
+    alter table matches
+      add column if not exists handicap_option_id text,
+      add column if not exists handicap_points numeric(4, 1) not null default 0;
 
     create table if not exists admin_audit_logs (
       id text primary key,
@@ -570,6 +613,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         closes_at,
         question,
         result_option_id,
+        handicap_option_id,
+        handicap_points,
         settled_at,
         created_at
       from matches
@@ -626,6 +671,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       result_option_id: match.result_option_id,
       result_option_label: resultOption?.label ?? "",
       settled_at: match.settled_at?.toISOString?.() ?? "",
+      handicap_option_id: match.handicap_option_id ?? "",
+      handicap_points: Number(match.handicap_points ?? 0),
     });
   }
 
@@ -940,15 +987,18 @@ async function insertMatch(input, client = pool) {
   await client.query(
     `
       insert into matches (
-        id, title, stage, venue, starts_at, closes_at, question, result_option_id, settled_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        id, title, stage, venue, starts_at, closes_at, question, result_option_id, settled_at,
+        handicap_option_id, handicap_points
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       on conflict (id) do update set
         title = excluded.title,
         stage = excluded.stage,
         venue = excluded.venue,
         starts_at = excluded.starts_at,
         closes_at = excluded.closes_at,
-        question = excluded.question
+        question = excluded.question,
+        handicap_option_id = excluded.handicap_option_id,
+        handicap_points = excluded.handicap_points
     `,
     [
       match.id,
@@ -960,6 +1010,8 @@ async function insertMatch(input, client = pool) {
       match.question,
       input.resultOptionId ?? null,
       input.settledAt ?? null,
+      match.handicapOptionId || null,
+      match.handicapPoints,
     ],
   );
 
@@ -991,6 +1043,8 @@ async function getState() {
         closes_at as "closesAt",
         question,
         result_option_id as "resultOptionId",
+        handicap_option_id as "handicapOptionId",
+        handicap_points::float as "handicapPoints",
         settled_at as "settledAt"
       from matches
       order by starts_at asc, created_at asc
@@ -1029,6 +1083,8 @@ async function getState() {
       closesAt: toIsoLike(match.closesAt),
       settledAt: match.settledAt ? new Date(match.settledAt).toISOString() : undefined,
       resultOptionId: match.resultOptionId ?? undefined,
+      handicapOptionId: match.handicapOptionId ?? undefined,
+      handicapPoints: Number(match.handicapPoints ?? 0),
       options: optionsByMatch.get(match.id) ?? [],
     })),
     votes: votesResult.rows.filter(Boolean).map((vote) => ({
@@ -1192,7 +1248,7 @@ app.post("/api/scheduled-matches/:id", async (request, response, next) => {
         throw error;
       }
 
-      match = await insertMatch(makeScheduledMatchPayload(scheduledMatch), client);
+      match = await insertMatch(makeScheduledMatchPayloadWithHandicap(scheduledMatch, request.body), client);
     });
 
     await writeAuditLog("scheduled-match.create", scheduledMatch.id, { title: scheduledMatch.title });
@@ -1312,7 +1368,9 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
               venue = $4,
               starts_at = $5,
               closes_at = $6,
-              question = $7
+              question = $7,
+              handicap_option_id = $8,
+              handicap_points = $9
           where id = $1
         `,
         [
@@ -1323,6 +1381,8 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
           match.startsAt,
           match.closesAt,
           match.question,
+          match.handicapOptionId || null,
+          match.handicapPoints,
         ],
       );
 
