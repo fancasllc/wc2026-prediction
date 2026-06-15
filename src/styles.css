@@ -27,6 +27,11 @@
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  -webkit-text-size-adjust: 100%;
   background:
     radial-gradient(circle at 14% 8%, rgba(36, 142, 255, 0.44), transparent 13rem),
     radial-gradient(circle at 86% 18%, rgba(255, 255, 255, 0.18), transparent 18rem),
@@ -35,7 +40,11 @@ html {
 
 body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-width: 320px;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   font-size: 13px;
   background:
     radial-gradient(circle at 10% 8%, rgba(50, 149, 255, 0.24), transparent 10rem),
@@ -71,6 +80,12 @@ input:disabled {
   opacity: 0.58;
 }
 
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 h1,
 h2,
 h3,
@@ -80,10 +95,12 @@ p {
 
 .app-shell {
   width: min(100%, 430px);
+  max-width: 100%;
   min-height: 100dvh;
   margin: 0 auto;
   padding: 14px 12px 34px;
   position: relative;
+  overflow-x: clip;
 }
 
 .topbar {
@@ -1032,6 +1049,7 @@ label span {
   gap: 12px;
   padding: 12px;
   position: relative;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -1118,6 +1136,7 @@ label span {
 .option-board {
   position: relative;
   display: grid;
+  min-width: 0;
   overflow: hidden;
   background: #ffffff;
   border: 1px solid #dbe8f0;
@@ -1128,6 +1147,8 @@ label span {
   display: grid;
   gap: 7px;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 10px;
   text-align: left;
   background: transparent;
@@ -1199,9 +1220,14 @@ label span {
 
 .option-row span {
   flex: 0 0 auto;
+  max-width: 48%;
   color: #60748b;
   font-size: 0.9rem;
   font-weight: 850;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .option-row b {
@@ -1648,6 +1674,7 @@ textarea {
   min-height: 46px;
   padding: 10px 11px;
   color: var(--ink);
+  font-size: 16px;
   background: var(--field);
   border: 2px solid #d9e5ec;
   border-radius: 8px;
