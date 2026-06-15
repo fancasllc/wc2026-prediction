@@ -1578,6 +1578,7 @@ function App() {
 
   const showReferenceOdds =
     view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now));
+  const isMatchDetailView = view === "matchDetail";
 
   return (
     <div
@@ -1596,22 +1597,24 @@ function App() {
           <span aria-hidden />
         </div>
       )}
-      <header className="topbar">
-        <img
-          src="/hero-japan-2026.jpg"
-          alt="2026 日本代表サッカー予想"
-          width="1100"
-          height="550"
-          loading="eager"
-          decoding="async"
-        />
-        {view === "open" && (
-          <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
-            <ListPlus size={16} aria-hidden />
-            追加
-          </button>
-        )}
-      </header>
+      {!isMatchDetailView && (
+        <header className="topbar">
+          <img
+            src="/hero-japan-2026.jpg"
+            alt="2026 日本代表サッカー予想"
+            width="1100"
+            height="550"
+            loading="eager"
+            decoding="async"
+          />
+          {view === "open" && (
+            <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
+              <ListPlus size={16} aria-hidden />
+              追加
+            </button>
+          )}
+        </header>
+      )}
 
       <nav className="tabs" aria-label="メインナビゲーション">
         <button
@@ -1646,7 +1649,7 @@ function App() {
         ))}
       </datalist>
 
-      {view !== "admin" && view !== "people" && view !== "personDetail" && motivationItems.length > 0 && (
+      {view !== "admin" && view !== "people" && view !== "personDetail" && view !== "matchDetail" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} />
       )}
 
@@ -2374,7 +2377,7 @@ function App() {
             rel="noopener noreferrer"
             aria-label="海外の参考オッズを開く"
           >
-            <span>参考オッズ</span>
+            <span>オッズ</span>
             <ExternalLink size={16} aria-hidden />
           </a>
           <a
@@ -2384,7 +2387,7 @@ function App() {
             rel="noopener noreferrer"
             aria-label="FIFAランキングを開く"
           >
-            <span>FIFAランキング</span>
+            <span>ランキング</span>
             <ExternalLink size={16} aria-hidden />
           </a>
         </div>
@@ -3074,6 +3077,10 @@ function PersonVoteList({
   matches: MatchRecord[];
   allVotes: VoteRecord[];
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleVotes = expanded ? votes : votes.slice(0, 4);
+  const canExpand = votes.length > 4;
+
   return (
     <div className="data-panel">
       <div className="panel-title">
@@ -3081,48 +3088,55 @@ function PersonVoteList({
         投票詳細
       </div>
       {votes.length ? (
-        <div className="person-vote-list">
-          {votes.map((vote) => {
-            const match = matches.find((item) => item.id === vote.matchId);
-            const payout = getVotePayout(vote, match, allVotes);
-            const status = getVoteOutcomeText(payout);
+        <>
+          <div className="person-vote-list">
+            {visibleVotes.map((vote) => {
+              const match = matches.find((item) => item.id === vote.matchId);
+              const payout = getVotePayout(vote, match, allVotes);
+              const status = getVoteOutcomeText(payout);
 
-            return (
-              <article className="person-vote-card" id={`vote-detail-${vote.id}`} key={vote.id}>
-                <div>
-                  <strong>{match?.title ?? "削除済み"}</strong>
-                  <span>{formatDateTime(vote.createdAt)}</span>
-                </div>
-                <dl>
+              return (
+                <article className="person-vote-card" id={`vote-detail-${vote.id}`} key={vote.id}>
                   <div>
-                    <dt>選択</dt>
-                    <dd>{optionLabel(match, vote.optionId)}</dd>
+                    <strong>{match?.title ?? "削除済み"}</strong>
+                    <span>{formatDateTime(vote.createdAt)}</span>
                   </div>
-                  <div>
-                    <dt>投票pt</dt>
-                    <dd>{formatPoints(vote.amount)}</dd>
-                  </div>
-                  <div>
-                    <dt>結果</dt>
-                    <dd>{status}</dd>
-                  </div>
-                  <div>
-                    <dt>還元</dt>
-                    <dd>{payout.settled ? formatPoints(payout.gross) : "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>収支</dt>
-                    <dd className={payout.net >= 0 ? "positive" : "negative"}>
-                      {payout.settled
-                        ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
-                        : "-"}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-            );
-          })}
-        </div>
+                  <dl>
+                    <div>
+                      <dt>選択</dt>
+                      <dd>{optionLabel(match, vote.optionId)}</dd>
+                    </div>
+                    <div>
+                      <dt>投票pt</dt>
+                      <dd>{formatPoints(vote.amount)}</dd>
+                    </div>
+                    <div>
+                      <dt>結果</dt>
+                      <dd>{status}</dd>
+                    </div>
+                    <div>
+                      <dt>還元</dt>
+                      <dd>{payout.settled ? formatPoints(payout.gross) : "-"}</dd>
+                    </div>
+                    <div>
+                      <dt>収支</dt>
+                      <dd className={payout.net >= 0 ? "positive" : "negative"}>
+                        {payout.settled
+                          ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
+                          : "-"}
+                      </dd>
+                    </div>
+                  </dl>
+                </article>
+              );
+            })}
+          </div>
+          {canExpand && (
+            <button className="list-expand-button" type="button" onClick={() => setExpanded((current) => !current)}>
+              {expanded ? "4件表示に戻す" : `すべて表示（${votes.length}件）`}
+            </button>
+          )}
+        </>
       ) : (
         <EmptyState title="この人の投票はまだありません" />
       )}
@@ -3232,6 +3246,10 @@ function PersonBalanceHistory({
     balance: number;
   }>;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? rows : rows.slice(0, 4);
+  const canExpand = rows.length > 4;
+
   function scrollToVote(voteId: string) {
     document.getElementById(`vote-detail-${voteId}`)?.scrollIntoView({
       behavior: "smooth",
@@ -3240,36 +3258,43 @@ function PersonBalanceHistory({
   }
 
   return (
-    <div className="balance-history-list">
-      {rows.map(({ vote, match, payout, balance }) => (
-        <button
-          className="balance-history-card"
-          key={vote.id}
-          onClick={() => scrollToVote(vote.id)}
-          type="button"
-        >
-          <div>
-            <strong>{match?.title ?? "削除済み"}</strong>
-            <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
-          </div>
-          <span>{optionLabel(match, vote.optionId)}</span>
-          <div>
-            <b className={payout.net >= 0 ? "positive" : "negative"}>
-              {payout.net >= 0 ? "+" : ""}
-              {formatPoints(payout.net)}
-            </b>
-            <small>
-              確定収支
-              <strong className={balance >= 0 ? "positive" : "negative"}>
-                {" "}
-                {balance >= 0 ? "+" : ""}
-                {formatPoints(balance)}
-              </strong>
-            </small>
-          </div>
+    <>
+      <div className="balance-history-list">
+        {visibleRows.map(({ vote, match, payout, balance }) => (
+          <button
+            className="balance-history-card"
+            key={vote.id}
+            onClick={() => scrollToVote(vote.id)}
+            type="button"
+          >
+            <div>
+              <strong>{match?.title ?? "削除済み"}</strong>
+              <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
+            </div>
+            <span>{optionLabel(match, vote.optionId)}</span>
+            <div>
+              <b className={payout.net >= 0 ? "positive" : "negative"}>
+                {payout.net >= 0 ? "+" : ""}
+                {formatPoints(payout.net)}
+              </b>
+              <small>
+                確定収支
+                <strong className={balance >= 0 ? "positive" : "negative"}>
+                  {" "}
+                  {balance >= 0 ? "+" : ""}
+                  {formatPoints(balance)}
+                </strong>
+              </small>
+            </div>
+          </button>
+        ))}
+      </div>
+      {canExpand && (
+        <button className="list-expand-button" type="button" onClick={() => setExpanded((current) => !current)}>
+          {expanded ? "4件表示に戻す" : `すべて表示（${rows.length}件）`}
         </button>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 
@@ -3391,13 +3416,48 @@ function VoteForm({
 
 function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] }) {
   const matchVotes = getMatchVotes(match, votes);
+  const [sortMode, setSortMode] = useState<"newest" | "oldest" | "name">("newest");
+  const sortedVotes = [...matchVotes].sort((a, b) => {
+    if (sortMode === "name") {
+      return a.userName.localeCompare(b.userName, "ja") || b.createdAt.localeCompare(a.createdAt);
+    }
+    const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return sortMode === "oldest" ? diff : -diff;
+  });
 
   return (
     <div className="bettor-list">
-      <div className="small-heading">投票状況</div>
+      <div className="bettor-heading">
+        <div className="small-heading">投票状況</div>
+        {matchVotes.length > 1 && (
+          <div className="sort-control" aria-label="投票状況の並び替え">
+            <button
+              className={sortMode === "newest" ? "active" : ""}
+              onClick={() => setSortMode("newest")}
+              type="button"
+            >
+              新しい順
+            </button>
+            <button
+              className={sortMode === "oldest" ? "active" : ""}
+              onClick={() => setSortMode("oldest")}
+              type="button"
+            >
+              古い順
+            </button>
+            <button
+              className={sortMode === "name" ? "active" : ""}
+              onClick={() => setSortMode("name")}
+              type="button"
+            >
+              名前順
+            </button>
+          </div>
+        )}
+      </div>
       {matchVotes.length ? (
         <div className="bettor-grid">
-          {matchVotes.map((vote) => (
+          {sortedVotes.map((vote) => (
             <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
           ))}
         </div>
