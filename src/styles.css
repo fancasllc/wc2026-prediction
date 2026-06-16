@@ -445,7 +445,7 @@ label span {
   align-items: center;
   gap: 5px;
   min-width: 0;
-  color: var(--red);
+  color: #df7278;
   font-weight: 950;
   white-space: nowrap;
 }
