@@ -202,6 +202,7 @@ const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
 const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
+const VOTE_CANCEL_CLOCK_SKEW_MS = 10 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 
 function getStoredAdminToken() {
@@ -555,7 +556,8 @@ function isMatchOpen(match: MatchRecord, now: Date) {
 }
 
 function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: VoteRecord[], now: Date) {
-  if (!match || !isMatchOpen(match, now)) return false;
+  const referenceTime = Math.max(now.getTime(), Date.now());
+  if (!match || !isMatchOpen(match, new Date(referenceTime))) return false;
   const createdAt = new Date(vote.createdAt).getTime();
   if (Number.isNaN(createdAt)) return false;
   const hasLaterVote = votes.some((item) => {
@@ -563,8 +565,8 @@ function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: 
     return new Date(item.createdAt).getTime() > createdAt;
   });
   if (hasLaterVote) return false;
-  const age = now.getTime() - createdAt;
-  return age >= 0 && age <= VOTE_CANCEL_WINDOW_MS;
+  const age = referenceTime - createdAt;
+  return age >= -VOTE_CANCEL_CLOCK_SKEW_MS && age <= VOTE_CANCEL_WINDOW_MS;
 }
 
 function getStatusLabel(match: MatchRecord, now: Date) {
