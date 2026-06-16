@@ -441,12 +441,19 @@ label span {
 .summary-time {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 10px;
   min-width: 0;
   color: #52677d;
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+.summary-live {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
 }
 
 .summary-countdown {
@@ -457,6 +464,40 @@ label span {
   color: var(--red);
   font-weight: 950;
   white-space: nowrap;
+}
+
+.summary-recent-votes {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 3px 8px;
+  overflow: hidden;
+  color: #07518d;
+  font-size: 0.67rem;
+  font-weight: 950;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #fff9d9 0%, #ffef9d 100%);
+  border: 1px solid rgba(255, 198, 18, 0.78);
+  border-radius: 999px;
+  box-shadow: 0 4px 10px rgba(255, 197, 0, 0.14);
+}
+
+.summary-recent-votes b {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: 27px;
+  height: 16px;
+  color: #fff9c2;
+  font-size: 0.55rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, #ff5a2c, #ffba00);
+  border-radius: 999px;
 }
 
 .summary-side {

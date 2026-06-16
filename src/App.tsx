@@ -2906,6 +2906,13 @@ function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
     }));
 }
 
+function getRecentVoteTotal(matchId: string, votes: VoteRecord[], now: Date) {
+  const since = now.getTime() - 60 * 60 * 1000;
+  return votes
+    .filter((vote) => vote.matchId === matchId && new Date(vote.createdAt).getTime() >= since)
+    .reduce((sum, vote) => sum + vote.amount, 0);
+}
+
 function ScheduledMatchPicker({
   matches,
   isLoading,
@@ -3033,6 +3040,7 @@ function MatchSummaryCard({
   const handicap = getMatchHandicap(match);
   const open = isMatchOpen(match, now);
   const settled = Boolean(match.resultOptionId);
+  const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
@@ -3061,10 +3069,18 @@ function MatchSummaryCard({
         )}
       </span>
       <div className="summary-time">
-        <span className="summary-countdown">
-          <Clock3 size={16} aria-hidden />
-          {minutesRemaining(match.closesAt, now)}
-        </span>
+        <div className="summary-live">
+          <span className="summary-countdown">
+            <Clock3 size={16} aria-hidden />
+            {minutesRemaining(match.closesAt, now)}
+          </span>
+          {recentVoteTotal > 0 && (
+            <span className="summary-recent-votes">
+              <b>HOT</b>
+              1時間以内に +{formatPoints(recentVoteTotal)} 投票
+            </span>
+          )}
+        </div>
         <div className="summary-side" aria-label="開始時刻と総プール">
           <span>{formatDateTime(match.startsAt)} 開始</span>
           <span>総プール {formatPoints(total)}</span>
