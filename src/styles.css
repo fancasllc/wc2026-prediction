@@ -1779,6 +1779,43 @@ textarea:focus {
   font-weight: 950;
 }
 
+.panel-title-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detail-filter {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  min-width: 0;
+  margin-left: auto;
+  padding: 3px;
+  background: #edf7ff;
+  border: 1px solid #d7e9f5;
+  border-radius: 999px;
+}
+
+.detail-filter button {
+  min-height: 28px;
+  padding: 4px 8px;
+  color: #60748b;
+  font-size: 0.66rem;
+  font-weight: 950;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+}
+
+.detail-filter button.active {
+  color: #07518d;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 42, 103, 0.1);
+}
+
 .sort-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2344,6 +2381,16 @@ textarea:focus {
   border-radius: 8px;
 }
 
+.person-vote-card.won {
+  background: linear-gradient(180deg, #f2fff8 0%, #e8fbf2 100%);
+  border-color: #9ee0bd;
+}
+
+.person-vote-card.lost {
+  background: linear-gradient(180deg, #fff7f7 0%, #ffeded 100%);
+  border-color: #f4b2b8;
+}
+
 .person-vote-card > div {
   display: flex;
   align-items: baseline;
@@ -2396,6 +2443,31 @@ textarea:focus {
   font-weight: 950;
   line-height: 1.15;
   overflow-wrap: anywhere;
+}
+
+.vote-result-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 950;
+  border-radius: 999px;
+}
+
+.vote-result-label.pending {
+  color: #44576c;
+  background: #e8f2fb;
+}
+
+.vote-result-label.won {
+  color: #067345;
+  background: #dff9ec;
+}
+
+.vote-result-label.lost {
+  color: #b82735;
+  background: #ffe0e3;
 }
 
 .balance-history-list {

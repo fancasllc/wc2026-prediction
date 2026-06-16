@@ -3245,25 +3245,51 @@ function PersonVoteList({
   allVotes: VoteRecord[];
 }) {
   const [expanded, setExpanded] = useState(false);
-  const visibleVotes = expanded ? votes : votes.slice(0, 4);
-  const canExpand = votes.length > 4;
+  const [filter, setFilter] = useState<"all" | "pending" | "settled">("all");
+  const filteredVotes = votes.filter((vote) => {
+    const match = matches.find((item) => item.id === vote.matchId);
+    const settled = Boolean(match?.resultOptionId);
+    if (filter === "pending") return !settled;
+    if (filter === "settled") return settled;
+    return true;
+  });
+  const visibleVotes = expanded ? filteredVotes : filteredVotes.slice(0, 4);
+  const canExpand = filteredVotes.length > 4;
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [filter]);
 
   return (
     <div className="data-panel">
       <div className="panel-title">
-        <History size={18} aria-hidden />
-        投票詳細
+        <span className="panel-title-label">
+          <History size={18} aria-hidden />
+          投票詳細
+        </span>
+        <div className="detail-filter" aria-label="投票詳細の表示切り替え">
+          <button className={filter === "all" ? "active" : ""} type="button" onClick={() => setFilter("all")}>
+            一覧
+          </button>
+          <button className={filter === "pending" ? "active" : ""} type="button" onClick={() => setFilter("pending")}>
+            未確定
+          </button>
+          <button className={filter === "settled" ? "active" : ""} type="button" onClick={() => setFilter("settled")}>
+            確定済み
+          </button>
+        </div>
       </div>
-      {votes.length ? (
+      {filteredVotes.length ? (
         <>
           <div className="person-vote-list">
             {visibleVotes.map((vote) => {
               const match = matches.find((item) => item.id === vote.matchId);
               const payout = getVotePayout(vote, match, allVotes);
               const status = getVoteOutcomeText(payout);
+              const outcomeClass = payout.settled ? (payout.won ? "won" : "lost") : "pending";
 
               return (
-                <article className="person-vote-card" id={`vote-detail-${vote.id}`} key={vote.id}>
+                <article className={`person-vote-card ${outcomeClass}`} id={`vote-detail-${vote.id}`} key={vote.id}>
                   <div>
                     <strong>{match?.title ?? "削除済み"}</strong>
                     <span>{formatDateTime(vote.createdAt)}</span>
@@ -3279,7 +3305,9 @@ function PersonVoteList({
                     </div>
                     <div>
                       <dt>結果</dt>
-                      <dd>{status}</dd>
+                      <dd>
+                        <span className={`vote-result-label ${outcomeClass}`}>{status}</span>
+                      </dd>
                     </div>
                     <div>
                       <dt>還元</dt>
@@ -3300,12 +3328,12 @@ function PersonVoteList({
           </div>
           {canExpand && (
             <button className="list-expand-button" type="button" onClick={() => setExpanded((current) => !current)}>
-              {expanded ? "4件表示に戻す" : `すべて表示（${votes.length}件）`}
+              {expanded ? "4件表示に戻す" : `すべて表示（${filteredVotes.length}件）`}
             </button>
           )}
         </>
       ) : (
-        <EmptyState title="この人の投票はまだありません" />
+        <EmptyState title={votes.length ? "該当する投票はありません" : "この人の投票はまだありません"} />
       )}
     </div>
   );
