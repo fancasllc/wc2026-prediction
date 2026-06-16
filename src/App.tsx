@@ -645,7 +645,10 @@ function CountryFlag({
       className="country-flag"
       decoding="async"
       loading="lazy"
-      src={`https://flagcdn.com/w80/${flag.code}.png`}
+      onError={(event) => {
+        event.currentTarget.style.display = "none";
+      }}
+      src={`/flags/${flag.code}.png`}
     />
   );
 }
