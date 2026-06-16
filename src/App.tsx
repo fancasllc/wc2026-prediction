@@ -554,10 +554,15 @@ function isMatchOpen(match: MatchRecord, now: Date) {
   return !match.resultOptionId && new Date(match.closesAt).getTime() > now.getTime();
 }
 
-function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, now: Date) {
+function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: VoteRecord[], now: Date) {
   if (!match || !isMatchOpen(match, now)) return false;
   const createdAt = new Date(vote.createdAt).getTime();
   if (Number.isNaN(createdAt)) return false;
+  const hasLaterVote = votes.some((item) => {
+    if (item.matchId !== vote.matchId || item.id === vote.id) return false;
+    return new Date(item.createdAt).getTime() > createdAt;
+  });
+  if (hasLaterVote) return false;
   const age = now.getTime() - createdAt;
   return age >= 0 && age <= VOTE_CANCEL_WINDOW_MS;
 }
@@ -1352,9 +1357,9 @@ function App() {
     if (!pendingVoteDelete) return;
 
     const { match, vote } = pendingVoteDelete;
-    if (!canCancelVote(vote, match, new Date())) {
+    if (!canCancelVote(vote, match, data.votes, new Date())) {
       setPendingVoteDelete(null);
-      window.alert("投票から5分経過してしまったため削除できません。締切後の投票も削除できません。");
+      window.alert("投票から5分経過したか、締切後、またはこの後に別の投票が入ったため削除できません。");
       return;
     }
 
@@ -2596,7 +2601,7 @@ function App() {
               名前を間違えて他人の投票を削除しないようにご注意ください。
             </p>
             <p className="cancel-limit-note">
-              削除できるのは投票から5分以内、かつ締切前の投票のみです。確認中に5分を過ぎた場合も削除できません。
+              削除できるのは投票から5分以内、締切前、かつその試合で最新の投票のみです。確認中に別の投票が入った場合も削除できません。
             </p>
             <div className="confirm-actions">
               <button className="ghost-action" type="button" onClick={() => setPendingVoteDelete(null)}>
@@ -3744,7 +3749,7 @@ function BettorChip({
   onRequestCancel: (vote: VoteRecord) => void;
 }) {
   const payout = getVotePayout(vote, match, votes);
-  const cancellable = canCancelVote(vote, match, now);
+  const cancellable = canCancelVote(vote, match, votes, now);
 
   return (
     <div className="bettor-chip">

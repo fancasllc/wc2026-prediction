@@ -1604,6 +1604,13 @@ app.delete("/api/votes/:id/cancel", voteRateLimit, async (request, response, nex
           and matches.result_option_id is null
           and matches.closes_at > now()
           and votes.created_at > now() - interval '5 minutes'
+          and not exists (
+            select 1
+            from votes later_votes
+            where later_votes.match_id = votes.match_id
+              and later_votes.id <> votes.id
+              and later_votes.created_at > votes.created_at
+          )
         returning votes.match_id as "matchId", votes.user_name as "userName", votes.amount::float as amount
       `,
       [request.params.id],
@@ -1611,7 +1618,7 @@ app.delete("/api/votes/:id/cancel", voteRateLimit, async (request, response, nex
 
     if (!result.rowCount) {
       response.status(409).json({
-        error: "投票から5分経過したか、締切後のため削除できません",
+        error: "投票から5分経過したか、締切後、またはこの後に別の投票が入ったため削除できません",
       });
       return;
     }
