@@ -1441,6 +1441,15 @@ label span {
   overflow-wrap: anywhere;
 }
 
+.cancel-limit-note {
+  padding: 10px 12px;
+  color: #7a2430;
+  font-weight: 900;
+  background: #fff4f4;
+  border: 1px solid #ffd1d4;
+  border-radius: 10px;
+}
+
 .confirm-impact {
   display: grid;
   gap: 10px;
@@ -1719,6 +1728,15 @@ textarea:focus {
   filter: brightness(1.02);
 }
 
+.primary-action.danger-action {
+  color: #ffffff;
+  background: linear-gradient(180deg, #ff6b72, #d93643);
+  border-color: #ff9fa5;
+  box-shadow:
+    inset 0 -4px 0 rgba(139, 0, 20, 0.28),
+    0 8px 16px rgba(178, 36, 52, 0.22);
+}
+
 .ghost-action,
 .icon-action {
   color: var(--ink);
@@ -1922,6 +1940,23 @@ textarea:focus {
   margin: 0;
   color: var(--muted);
   font-weight: 800;
+}
+
+.vote-cancel-button {
+  grid-column: 2;
+  justify-self: end;
+  min-height: 24px;
+  padding: 3px 10px;
+  color: var(--red);
+  font-size: 0.72rem;
+  font-weight: 950;
+  background: #fff1f2;
+  border: 1px solid #f2a5ac;
+  border-radius: 999px;
+}
+
+.vote-cancel-button:active {
+  transform: translateY(1px);
 }
 
 .stats-row {

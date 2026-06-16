@@ -1593,6 +1593,36 @@ app.delete("/api/matches/:id", requireAdmin, async (request, response, next) => 
   }
 });
 
+app.delete("/api/votes/:id/cancel", voteRateLimit, async (request, response, next) => {
+  try {
+    const result = await query(
+      `
+        delete from votes
+        using matches
+        where votes.id = $1
+          and votes.match_id = matches.id
+          and matches.result_option_id is null
+          and matches.closes_at > now()
+          and votes.created_at > now() - interval '5 minutes'
+        returning votes.match_id as "matchId", votes.user_name as "userName", votes.amount::float as amount
+      `,
+      [request.params.id],
+    );
+
+    if (!result.rowCount) {
+      response.status(409).json({
+        error: "投票から5分経過したか、締切後のため削除できません",
+      });
+      return;
+    }
+
+    await writeAuditLog("vote.user_cancel", request.params.id, result.rows[0]);
+    response.json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.delete("/api/votes/:id", requireAdmin, async (request, response, next) => {
   try {
     const result = await query(

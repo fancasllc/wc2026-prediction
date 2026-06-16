@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Trophy,
+  Trash2,
   Upload,
   UserRound,
   WalletCards,
@@ -131,6 +132,11 @@ type PendingVote = {
   amount: number;
 };
 
+type PendingVoteDelete = {
+  vote: VoteRecord;
+  match: MatchRecord;
+};
+
 type PendingVoteImpact = {
   beforeOdds: number | null;
   afterOdds: number;
@@ -195,6 +201,7 @@ const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
 const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
+const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 
 function getStoredAdminToken() {
@@ -547,6 +554,14 @@ function isMatchOpen(match: MatchRecord, now: Date) {
   return !match.resultOptionId && new Date(match.closesAt).getTime() > now.getTime();
 }
 
+function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, now: Date) {
+  if (!match || !isMatchOpen(match, now)) return false;
+  const createdAt = new Date(vote.createdAt).getTime();
+  if (Number.isNaN(createdAt)) return false;
+  const age = now.getTime() - createdAt;
+  return age >= 0 && age <= VOTE_CANCEL_WINDOW_MS;
+}
+
 function getStatusLabel(match: MatchRecord, now: Date) {
   if (match.resultOptionId) return "確定済み";
   if (isMatchOpen(match, now)) return "受付中";
@@ -678,6 +693,7 @@ function App() {
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
   const [pendingVote, setPendingVote] = useState<PendingVote | null>(null);
+  const [pendingVoteDelete, setPendingVoteDelete] = useState<PendingVoteDelete | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
   const [showScheduledPicker, setShowScheduledPicker] = useState(false);
@@ -1332,6 +1348,27 @@ function App() {
     }
   }
 
+  async function cancelRecentVote() {
+    if (!pendingVoteDelete) return;
+
+    const { match, vote } = pendingVoteDelete;
+    if (!canCancelVote(vote, match, new Date())) {
+      setPendingVoteDelete(null);
+      window.alert("投票から5分経過してしまったため削除できません。締切後の投票も削除できません。");
+      return;
+    }
+
+    try {
+      await syncState(() => postState(`/api/votes/${vote.id}/cancel`, undefined, "DELETE"));
+      setPendingVoteDelete(null);
+      setToastMessage("投票を削除しました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setPendingVoteDelete(null);
+      window.alert(`投票を削除できませんでした。\n${message}`);
+    }
+  }
+
   async function addMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const labels = splitOptions(matchDraft.optionsText);
@@ -1777,7 +1814,12 @@ function App() {
                 onSubmit={(event) => handleVote(selectedMatch, event)}
               />
 
-              <BettorList match={selectedMatch} votes={data.votes} />
+              <BettorList
+                match={selectedMatch}
+                now={now}
+                votes={data.votes}
+                onRequestCancel={(vote) => setPendingVoteDelete({ match: selectedMatch, vote })}
+              />
             </article>
           </section>
         )}
@@ -2524,6 +2566,45 @@ function App() {
               <button className="primary-action" type="button" onClick={submitConfirmedVote} disabled={isSyncing}>
                 <WalletCards size={18} aria-hidden />
                 投票する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingVoteDelete && (
+        <div className="confirm-backdrop" role="presentation">
+          <div className="confirm-dialog cancel-dialog" role="dialog" aria-modal="true" aria-label="投票削除の確認">
+            <dl>
+              <div>
+                <dt>予想テーマ</dt>
+                <dd>{pendingVoteDelete.match.title}</dd>
+              </div>
+              <div>
+                <dt>名前</dt>
+                <dd>{pendingVoteDelete.vote.userName}</dd>
+              </div>
+              <div>
+                <dt>投票先</dt>
+                <dd>{optionLabel(pendingVoteDelete.match, pendingVoteDelete.vote.optionId)}</dd>
+              </div>
+              <div>
+                <dt>投票pt</dt>
+                <dd>{formatPoints(pendingVoteDelete.vote.amount)}</dd>
+              </div>
+            </dl>
+            <p className="confirm-note">
+              名前を間違えて他人の投票を削除しないようにご注意ください。
+            </p>
+            <p className="cancel-limit-note">
+              削除できるのは投票から5分以内、かつ締切前の投票のみです。確認中に5分を過ぎた場合も削除できません。
+            </p>
+            <div className="confirm-actions">
+              <button className="ghost-action" type="button" onClick={() => setPendingVoteDelete(null)}>
+                戻る
+              </button>
+              <button className="primary-action danger-action" type="button" onClick={cancelRecentVote} disabled={isSyncing}>
+                <Trash2 size={18} aria-hidden />
+                本当に削除する
               </button>
             </div>
           </div>
@@ -3493,7 +3574,17 @@ function VoteForm({
   );
 }
 
-function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] }) {
+function BettorList({
+  match,
+  votes,
+  now,
+  onRequestCancel,
+}: {
+  match: MatchRecord;
+  votes: VoteRecord[];
+  now: Date;
+  onRequestCancel: (vote: VoteRecord) => void;
+}) {
   const matchVotes = getMatchVotes(match, votes);
   const [sortMode, setSortMode] = useState<"person" | "newest" | "oldest">("person");
   const sortedVotes = [...matchVotes].sort((a, b) => {
@@ -3605,7 +3696,14 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
                   {[...row.votes]
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .map((vote) => (
-                      <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
+                      <BettorChip
+                        key={vote.id}
+                        match={match}
+                        now={now}
+                        vote={vote}
+                        votes={votes}
+                        onRequestCancel={onRequestCancel}
+                      />
                     ))}
                 </div>
               </details>
@@ -3614,7 +3712,14 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
         ) : (
           <div className="bettor-grid">
             {sortedVotes.map((vote) => (
-              <BettorChip key={vote.id} match={match} vote={vote} votes={votes} />
+              <BettorChip
+                key={vote.id}
+                match={match}
+                now={now}
+                vote={vote}
+                votes={votes}
+                onRequestCancel={onRequestCancel}
+              />
             ))}
           </div>
         )
@@ -3627,14 +3732,19 @@ function BettorList({ match, votes }: { match: MatchRecord; votes: VoteRecord[] 
 
 function BettorChip({
   match,
+  now,
   vote,
   votes,
+  onRequestCancel,
 }: {
   match: MatchRecord;
+  now: Date;
   vote: VoteRecord;
   votes: VoteRecord[];
+  onRequestCancel: (vote: VoteRecord) => void;
 }) {
   const payout = getVotePayout(vote, match, votes);
+  const cancellable = canCancelVote(vote, match, now);
 
   return (
     <div className="bettor-chip">
@@ -3649,6 +3759,11 @@ function BettorChip({
           {payout.net >= 0 ? "+" : ""}
           {formatPoints(payout.net)}
         </small>
+      )}
+      {cancellable && (
+        <button className="vote-cancel-button" type="button" onClick={() => onRequestCancel(vote)}>
+          削除
+        </button>
       )}
     </div>
   );
