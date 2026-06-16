@@ -25,6 +25,58 @@ type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "adm
 const REFERENCE_ODDS_URL = "https://www.365scores.com/football/league/fifa-world-cup-5930";
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
 
+const COUNTRY_FLAG_CODES: Record<string, string> = {
+  アメリカ: "us",
+  アルジェリア: "dz",
+  アルゼンチン: "ar",
+  イラク: "iq",
+  イラン: "ir",
+  イングランド: "gb-eng",
+  ウズベキスタン: "uz",
+  ウルグアイ: "uy",
+  エクアドル: "ec",
+  エジプト: "eg",
+  オーストラリア: "au",
+  オーストリア: "at",
+  オランダ: "nl",
+  カタール: "qa",
+  カナダ: "ca",
+  ガーナ: "gh",
+  カーボベルデ: "cv",
+  キュラソー: "cw",
+  クロアチア: "hr",
+  コートジボワール: "ci",
+  コロンビア: "co",
+  コンゴ民主共和国: "cd",
+  サウジアラビア: "sa",
+  スイス: "ch",
+  スウェーデン: "se",
+  スコットランド: "gb-sct",
+  スペイン: "es",
+  セネガル: "sn",
+  チェコ: "cz",
+  チュニジア: "tn",
+  トルコ: "tr",
+  ドイツ: "de",
+  ニュージーランド: "nz",
+  ノルウェー: "no",
+  ハイチ: "ht",
+  パナマ: "pa",
+  パラグアイ: "py",
+  ブラジル: "br",
+  フランス: "fr",
+  ベルギー: "be",
+  ボスニア: "ba",
+  ボスニア・ヘルツェゴビナ: "ba",
+  ポルトガル: "pt",
+  メキシコ: "mx",
+  モロッコ: "ma",
+  ヨルダン: "jo",
+  韓国: "kr",
+  南アフリカ: "za",
+  日本: "jp",
+};
+
 const STAGE_NOTICE_CARDS = [
   {
     id: "round-of-32",
@@ -550,6 +602,87 @@ function optionDisplayLabel(match: MatchRecord | undefined, option: MatchOption 
 function optionLabel(match: MatchRecord | undefined, optionId: string) {
   const option = match?.options.find((item) => item.id === optionId);
   return optionDisplayLabel(match, option);
+}
+
+function cleanCountryLabel(label: string) {
+  return label
+    .replace(/[（(]\s*[＋+]?\d+(?:\.\d+)?\s*[)）]/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/＜[^＞]+＞/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function getCountryFlag(label: string | undefined) {
+  if (!label) return null;
+  const cleaned = cleanCountryLabel(label);
+  const exactCode = COUNTRY_FLAG_CODES[cleaned];
+  if (exactCode) return { code: exactCode, name: cleaned };
+
+  const matchedName = Object.keys(COUNTRY_FLAG_CODES)
+    .sort((a, b) => b.length - a.length)
+    .find((name) => cleaned.includes(name));
+  if (!matchedName) return null;
+  return { code: COUNTRY_FLAG_CODES[matchedName], name: matchedName };
+}
+
+function splitMatchTitle(title: string) {
+  const parts = title.split(/\s+(?:VS|vs|Vs|ＶＳ|ｖｓ)\s+/);
+  if (parts.length !== 2) return null;
+  return { left: parts[0], right: parts[1] };
+}
+
+function CountryFlag({
+  label,
+}: {
+  label: string | undefined;
+}) {
+  const flag = getCountryFlag(label);
+  if (!flag) return null;
+  return (
+    <img
+      alt={`${flag.name}の国旗`}
+      className="country-flag"
+      decoding="async"
+      loading="lazy"
+      src={`https://flagcdn.com/w80/${flag.code}.png`}
+    />
+  );
+}
+
+function MatchTitleWithFlags({
+  title,
+}: {
+  title: string;
+}) {
+  const splitTitle = splitMatchTitle(title);
+  if (!splitTitle) return <>{title}</>;
+  return (
+    <span className="match-title-flags">
+      <span className="match-title-side">
+        <CountryFlag label={splitTitle.left} />
+        <span>{splitTitle.left}</span>
+      </span>
+      <span className="match-title-vs">VS</span>
+      <span className="match-title-side right">
+        <span>{splitTitle.right}</span>
+        <CountryFlag label={splitTitle.right} />
+      </span>
+    </span>
+  );
+}
+
+function OptionLabelWithFlag({
+  label,
+}: {
+  label: string;
+}) {
+  return (
+    <span className="option-label-flag">
+      <CountryFlag label={label} />
+      <span>{label}</span>
+    </span>
+  );
 }
 
 function isMatchOpen(match: MatchRecord, now: Date) {
@@ -1807,7 +1940,7 @@ function App() {
               {selectedMatch.resultOptionId && (
                 <div className="result-panel">
                   <CheckCircle2 size={18} aria-hidden />
-                  確定結果: {optionLabel(selectedMatch, selectedMatch.resultOptionId)}
+                  確定結果: <OptionLabelWithFlag label={optionLabel(selectedMatch, selectedMatch.resultOptionId)} />
                 </div>
               )}
 
@@ -2164,7 +2297,7 @@ function App() {
                       <details className="admin-item-disclosure" key={match.id}>
                         <summary>
                           <span>
-                            <strong>{match.title}</strong>
+                            <strong><MatchTitleWithFlags title={match.title} /></strong>
                             <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, data.votes).length}件</small>
                           </span>
                           <b>結果を選ぶ</b>
@@ -2196,7 +2329,7 @@ function App() {
                     {settledMatches.map((match) => (
                       <div className="settled-summary-row" key={match.id}>
                         <span>
-                          <strong>{match.title}</strong>
+                          <strong><MatchTitleWithFlags title={match.title} /></strong>
                           <small>{formatDateTime(match.settledAt ?? match.closesAt)}</small>
                         </span>
                         <b>{optionLabel(match, match.resultOptionId ?? "")}</b>
@@ -2335,7 +2468,7 @@ function App() {
                         type="button"
                       >
                         <div>
-                          <strong>{match.title}</strong>
+                          <strong><MatchTitleWithFlags title={match.title} /></strong>
                           <span>{formatDateTime(match.startsAt)} 開始 / {match.options.length}選択肢</span>
                         </div>
                       </button>
@@ -2982,7 +3115,7 @@ function ScheduledMatchPicker({
                 <article className="schedule-row-card" key={match.id}>
                   <div className="schedule-row-head">
                     <div>
-                      <strong>{match.title}</strong>
+                      <strong><MatchTitleWithFlags title={match.title} /></strong>
                       <span>{visibleOptions.join(" / ")}</span>
                     </div>
                     <time>{formatDateTime(match.startsAt)} 開始</time>
@@ -3057,7 +3190,7 @@ function MatchSummaryCard({
         </span>
       )}
       <span className="summary-title-row">
-        <strong>{match.title}</strong>
+        <strong><MatchTitleWithFlags title={match.title} /></strong>
       </span>
       <div className="summary-time">
         <div className="summary-live">
@@ -3094,7 +3227,7 @@ function OddsTicker({
       <div className={items.length > 1 ? "odds-track animated" : "odds-track"}>
         {tickerItems.map((item, index) => (
           <span className="odds-chip" key={`${item.id}-${index}`}>
-            <b>{item.label}</b>
+            <b><OptionLabelWithFlag label={item.label} /></b>
             <strong>{item.oddsText}</strong>
           </span>
         ))}
@@ -3214,7 +3347,7 @@ function MatchHeader({
       <div className="match-meta">
         <span className={`status-pill ${statusClass}`}>{status}</span>
       </div>
-      <h3>{match.title}</h3>
+      <h3><MatchTitleWithFlags title={match.title} /></h3>
       <div className="match-timebar">
         <span>
           <CalendarClock size={16} aria-hidden />
@@ -3304,7 +3437,7 @@ function PersonVoteList({
                   <dl>
                     <div>
                       <dt>選択</dt>
-                      <dd>{optionLabel(match, vote.optionId)}</dd>
+                      <dd><OptionLabelWithFlag label={optionLabel(match, vote.optionId)} /></dd>
                     </div>
                     <div>
                       <dt>投票pt</dt>
@@ -3401,7 +3534,7 @@ function AdminSettleCard({
               type="button"
             >
               <div>
-                <strong>{optionDisplayLabel(match, option)}</strong>
+                <strong><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></strong>
                 <span>{formatPoints(optionTotal)} / {percentage}%</span>
               </div>
               <div className="meter" aria-hidden>
@@ -3473,7 +3606,7 @@ function PersonBalanceHistory({
               <strong>{match?.title ?? "削除済み"}</strong>
               <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
             </div>
-            <span>{optionLabel(match, vote.optionId)}</span>
+            <span><OptionLabelWithFlag label={optionLabel(match, vote.optionId)} /></span>
             <div>
               <b className={payout.net >= 0 ? "positive" : "negative"}>
                 {payout.net >= 0 ? "+" : ""}
@@ -3555,7 +3688,7 @@ function VoteForm({
               type="button"
             >
               <div>
-                <strong>{optionDisplayLabel(match, option)}</strong>
+                <strong><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></strong>
                 <b>{odds ? `${odds.toFixed(2)}x` : "-"}</b>
               </div>
               <div className="meter" aria-hidden>
@@ -3722,7 +3855,7 @@ function BettorList({
                   <div className="bettor-person-preview">
                     {row.optionRows.map((optionRow) => (
                       <span key={optionRow.optionId}>
-                        <i>{optionLabel(match, optionRow.optionId)}</i>
+                        <i><OptionLabelWithFlag label={optionLabel(match, optionRow.optionId)} /></i>
                         <b>{formatPoints(optionRow.amount)}</b>
                         <small className={optionRow.net >= 0 ? "positive" : "negative"}>
                           的中時 リターン {formatPoints(Math.round(optionRow.gross))} / 個人最終収支{" "}

@@ -422,6 +422,62 @@ label span {
   overflow-wrap: anywhere;
 }
 
+.match-title-flags,
+.match-title-side,
+.option-label-flag {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.match-title-flags {
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  max-width: 100%;
+}
+
+.match-title-side,
+.option-label-flag {
+  gap: 5px;
+}
+
+.match-title-side.right {
+  justify-content: flex-end;
+}
+
+.match-title-side > span,
+.option-label-flag > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.match-title-vs {
+  color: currentColor;
+  font-size: 0.86em;
+  font-weight: 950;
+  opacity: 0.82;
+}
+
+.country-flag {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 16px;
+  object-fit: cover;
+  background: #ffffff;
+  border: 1px solid rgba(5, 42, 85, 0.16);
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 26, 67, 0.14);
+}
+
+.summary-title-row .country-flag,
+.schedule-row-head .country-flag,
+.admin-item-disclosure .country-flag,
+.settled-summary-row .country-flag,
+.admin-match-row .country-flag {
+  width: 20px;
+  height: 14px;
+}
+
 .summary-time {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1024,6 +1080,16 @@ label span {
   font-size: 0.86rem;
 }
 
+.odds-chip .option-label-flag {
+  gap: 4px;
+}
+
+.odds-chip .country-flag {
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
+}
+
 .odds-chip strong {
   color: #004fba;
 }
@@ -1231,6 +1297,11 @@ label span {
   overflow-wrap: anywhere;
 }
 
+.option-row strong .country-flag {
+  width: 24px;
+  height: 17px;
+}
+
 .option-row span {
   flex: 0 0 auto;
   max-width: 48%;
@@ -1241,6 +1312,22 @@ label span {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.option-row .option-label-flag {
+  flex: 1 1 auto;
+  max-width: 100%;
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+}
+
+.option-row .option-label-flag > span {
+  flex: 1 1 auto;
+  max-width: 100%;
+  color: inherit;
+  text-align: left;
+  white-space: normal;
 }
 
 .option-row b {
