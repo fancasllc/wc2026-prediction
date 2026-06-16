@@ -436,7 +436,7 @@ label span {
 .summary-live {
   display: grid;
   justify-items: start;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -459,7 +459,7 @@ label span {
   color: var(--red);
   font-size: 0.68rem;
   font-weight: 950;
-  line-height: 1.2;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -474,23 +474,25 @@ label span {
   display: grid;
   grid-template-columns: 1fr;
   justify-items: end;
-  gap: 2px;
+  align-self: start;
+  gap: 3px;
   text-align: right;
   min-width: max-content;
+  padding-top: 1px;
 }
 
 .summary-side span {
   color: #52677d;
   font-size: 0.78rem;
   font-weight: 950;
-  line-height: 1.05;
+  line-height: 1.12;
   white-space: nowrap;
 }
 
 .summary-side span + span {
   color: #60748b;
   font-size: 0.72rem;
-  line-height: 1.05;
+  line-height: 1.12;
 }
 
 .schedule-modal-backdrop {
