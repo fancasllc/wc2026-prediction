@@ -7,6 +7,7 @@ import {
   Clock3,
   Database,
   ExternalLink,
+  Flame,
   History,
   ListPlus,
   RotateCcw,
@@ -1737,7 +1738,7 @@ function App() {
         ))}
       </datalist>
 
-      {view !== "admin" && view !== "people" && view !== "personDetail" && view !== "matchDetail" && motivationItems.length > 0 && (
+      {view === "open" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} />
       )}
 
@@ -3037,7 +3038,6 @@ function MatchSummaryCard({
 }) {
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
-  const handicap = getMatchHandicap(match);
   const open = isMatchOpen(match, now);
   const settled = Boolean(match.resultOptionId);
   const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
@@ -3058,15 +3058,6 @@ function MatchSummaryCard({
       )}
       <span className="summary-title-row">
         <strong>{match.title}</strong>
-        {handicap && (
-          <span
-            className="handicap-badge"
-            aria-label={`${handicap.option.label}に＋${formatHandicapPoints(handicap.points)}点のハンデ`}
-            title={`${handicap.option.label}に＋${formatHandicapPoints(handicap.points)}点`}
-          >
-            H
-          </span>
-        )}
       </span>
       <div className="summary-time">
         <div className="summary-live">
@@ -3076,7 +3067,7 @@ function MatchSummaryCard({
           </span>
           {recentVoteTotal > 0 && (
             <span className="summary-recent-votes">
-              <b>HOT</b>
+              <Flame size={14} aria-hidden />
               1時間以内に +{formatPoints(recentVoteTotal)} 投票
             </span>
           )}

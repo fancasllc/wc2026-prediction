@@ -422,22 +422,6 @@ label span {
   overflow-wrap: anywhere;
 }
 
-.handicap-badge {
-  flex: 0 0 auto;
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  color: #083b86;
-  font-size: 0.72rem;
-  font-weight: 950;
-  line-height: 1;
-  background: linear-gradient(180deg, #fff7b7, #ffd84c);
-  border: 1px solid rgba(0, 77, 168, 0.28);
-  border-radius: 999px;
-  box-shadow: 0 2px 5px rgba(0, 29, 75, 0.14);
-}
-
 .summary-time {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -469,35 +453,21 @@ label span {
 .summary-recent-votes {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   max-width: 100%;
-  min-height: 22px;
-  padding: 3px 8px;
   overflow: hidden;
-  color: #07518d;
-  font-size: 0.67rem;
+  color: var(--red);
+  font-size: 0.68rem;
   font-weight: 950;
-  line-height: 1;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: linear-gradient(180deg, #fff9d9 0%, #ffef9d 100%);
-  border: 1px solid rgba(255, 198, 18, 0.78);
-  border-radius: 999px;
-  box-shadow: 0 4px 10px rgba(255, 197, 0, 0.14);
 }
 
-.summary-recent-votes b {
+.summary-recent-votes svg {
   flex: 0 0 auto;
-  display: inline-grid;
-  place-items: center;
-  min-width: 27px;
-  height: 16px;
-  color: #fff9c2;
-  font-size: 0.55rem;
-  font-weight: 950;
-  letter-spacing: 0.02em;
-  background: linear-gradient(135deg, #ff5a2c, #ffba00);
-  border-radius: 999px;
+  fill: currentColor;
+  stroke-width: 2.8;
 }
 
 .summary-side {
