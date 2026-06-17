@@ -2394,6 +2394,7 @@ function App() {
                     <table>
                       <thead>
                         <tr>
+                          <th>操作</th>
                           <th>日時</th>
                           <th>名前</th>
                           <th>試合</th>
@@ -2402,7 +2403,6 @@ function App() {
                           <th>結果</th>
                           <th>リターン</th>
                           <th>収支</th>
-                          <th>操作</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2411,18 +2411,6 @@ function App() {
                           const payout = getVotePayout(vote, match, data.votes);
                           return (
                             <tr key={vote.id}>
-                              <td>{formatDateTime(vote.createdAt)}</td>
-                              <td>{vote.userName}</td>
-                              <td>{match?.title ?? "削除済み"}</td>
-                              <td>{optionLabel(match, vote.optionId)}</td>
-                              <td>{formatPoints(vote.amount)}</td>
-                              <td>{getVoteOutcomeText(payout)}</td>
-                              <td>{payout.settled ? formatPoints(payout.gross) : "-"}</td>
-                              <td className={payout.net >= 0 ? "positive" : "negative"}>
-                                {payout.settled
-                                  ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
-                                  : "-"}
-                              </td>
                               <td>
                                 {payout.settled ? (
                                   <span className="locked-action">確定済み</span>
@@ -2436,6 +2424,18 @@ function App() {
                                     削除
                                   </button>
                                 )}
+                              </td>
+                              <td>{formatDateTime(vote.createdAt)}</td>
+                              <td>{vote.userName}</td>
+                              <td>{match?.title ?? "削除済み"}</td>
+                              <td>{optionLabel(match, vote.optionId)}</td>
+                              <td>{formatPoints(vote.amount)}</td>
+                              <td>{getVoteOutcomeText(payout)}</td>
+                              <td>{payout.settled ? formatPoints(payout.gross) : "-"}</td>
+                              <td className={payout.net >= 0 ? "positive" : "negative"}>
+                                {payout.settled
+                                  ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
+                                  : "-"}
                               </td>
                             </tr>
                           );
