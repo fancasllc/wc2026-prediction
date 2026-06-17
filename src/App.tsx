@@ -1807,7 +1807,7 @@ function App() {
 
   return (
     <div
-      className="app-shell"
+      className={`app-shell ${view === "admin" ? "admin-shell" : ""}`}
       onTouchStart={handlePullStart}
       onTouchMove={handlePullMove}
       onTouchEnd={handlePullEnd}

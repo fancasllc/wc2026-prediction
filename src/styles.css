@@ -2870,8 +2870,18 @@ textarea:focus {
 
 .admin-votes-table th:last-child,
 .admin-votes-table td:last-child {
+  position: sticky;
+  right: 0;
   min-width: 74px;
   white-space: nowrap;
+  background: #f7fcff;
+  box-shadow: -10px 0 16px rgba(255, 255, 255, 0.9);
+  z-index: 1;
+}
+
+.admin-votes-table th:last-child {
+  background: #f7fcff;
+  z-index: 2;
 }
 
 table {
@@ -2945,5 +2955,28 @@ th {
     min-height: calc(100dvh - 36px);
     border-left: 1px solid rgba(255, 255, 255, 0.2);
     border-right: 1px solid rgba(0, 0, 0, 0.16);
+  }
+
+  .app-shell.admin-shell {
+    width: min(calc(100% - 36px), 1180px);
+    padding-inline: 18px;
+  }
+
+  .admin-shell .admin-layout {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .admin-shell .admin-disclosure,
+  .admin-shell .form-panel {
+    grid-column: 1 / -1;
+  }
+
+  .admin-shell .responsive-table table {
+    min-width: 100%;
+  }
+
+  .admin-shell .admin-votes-table table {
+    min-width: 1080px;
   }
 }
