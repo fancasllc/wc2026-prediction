@@ -2390,7 +2390,7 @@ function App() {
                   <span>開く</span>
                 </summary>
                 {data.votes.length ? (
-                  <div className="responsive-table">
+                  <div className="responsive-table admin-votes-table">
                     <table>
                       <thead>
                         <tr>

@@ -2320,6 +2320,7 @@ textarea:focus {
 .data-panel {
   display: grid;
   gap: 13px;
+  min-width: 0;
   padding: 14px;
 }
 
@@ -2337,6 +2338,7 @@ textarea:focus {
 
 .admin-disclosure {
   align-content: start;
+  min-width: 0;
 }
 
 .admin-disclosure-title {
@@ -2849,7 +2851,27 @@ textarea:focus {
 }
 
 .responsive-table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-votes-table {
+  padding-bottom: 4px;
+}
+
+.admin-votes-table table {
+  min-width: 1040px;
+}
+
+.admin-votes-table th:last-child,
+.admin-votes-table td:last-child {
+  min-width: 74px;
+  white-space: nowrap;
 }
 
 table {
