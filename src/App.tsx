@@ -1342,6 +1342,10 @@ function App() {
       { totalStake: 0, pendingStake: 0, grossPayout: 0, net: 0 },
     );
   }, [data.matches, data.votes, selectedPersonVotes]);
+  const selectedPersonSettledStake = Math.max(
+    0,
+    selectedPersonSummary.totalStake - selectedPersonSummary.pendingStake,
+  );
 
   const selectedBalanceRows = useMemo(() => {
     const settledRows = selectedPersonVotes
@@ -2014,14 +2018,9 @@ function App() {
 
             <div className="stats-row">
               <StatCard
-                label="総投票ポイント"
-                value={formatPoints(selectedPersonSummary.totalStake)}
+                label="結果確定済みポイント"
+                value={formatPoints(selectedPersonSettledStake)}
                 icon={<WalletCards size={20} aria-hidden />}
-              />
-              <StatCard
-                label="未確定ポイント"
-                value={formatPoints(selectedPersonSummary.pendingStake)}
-                icon={<Clock3 size={20} aria-hidden />}
               />
               <StatCard
                 label="獲得ポイント"
@@ -2035,6 +2034,13 @@ function App() {
                 )}`}
                 tone={selectedPersonSummary.net >= 0 ? "positive" : "negative"}
                 icon={<History size={20} aria-hidden />}
+                variant="net"
+              />
+              <StatCard
+                label="未確定ポイント"
+                value={formatPoints(selectedPersonSummary.pendingStake)}
+                icon={<Clock3 size={20} aria-hidden />}
+                variant="pending"
               />
             </div>
 
@@ -3952,14 +3958,16 @@ function StatCard({
   value,
   icon,
   tone,
+  variant,
 }: {
   label: string;
   value: string;
   icon: ReactNode;
   tone?: "positive" | "negative";
+  variant?: "net" | "pending";
 }) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card${variant ? ` stat-card-${variant}` : ""}`}>
       <div className="stat-icon">{icon}</div>
       <span>{label}</span>
       <strong className={tone}>{value}</strong>

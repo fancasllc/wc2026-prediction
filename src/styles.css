@@ -2109,6 +2109,16 @@ textarea:focus {
   padding: 7px 9px;
 }
 
+.stat-card-net {
+  background: linear-gradient(180deg, #e8f5ff 0%, #f7fcff 100%);
+  border-color: #add7ff;
+}
+
+.stat-card-pending {
+  background: linear-gradient(180deg, #f1f5f9 0%, #fbfdff 100%);
+  border-color: #d5dee8;
+}
+
 .stat-icon {
   grid-row: span 2;
   display: grid;
