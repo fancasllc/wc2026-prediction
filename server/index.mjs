@@ -143,6 +143,67 @@ function validateMatch(input) {
   };
 }
 
+function isDrawOptionLabel(label) {
+  const value = String(label ?? "").trim();
+  return value.includes("引き分け") || value.toLowerCase() === "draw";
+}
+
+function parseScoreValue(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const score = Number(value);
+  if (!Number.isFinite(score) || score < 0 || !Number.isInteger(score)) return null;
+  return score;
+}
+
+function deriveResultFromScores(match, options, homeScoreInput, awayScoreInput) {
+  const teamOptions = options.filter((option) => !isDrawOptionLabel(option.label)).slice(0, 2);
+  const [homeOption, awayOption] = teamOptions;
+  const drawOption = options.find((option) => isDrawOptionLabel(option.label));
+  const homeScore = parseScoreValue(homeScoreInput);
+  const awayScore = parseScoreValue(awayScoreInput);
+
+  if (!homeOption || !awayOption) {
+    const error = new Error("Two team options are required to settle by score");
+    error.status = 400;
+    throw error;
+  }
+  if (homeScore === null || awayScore === null) {
+    const error = new Error("Scores must be non-negative integers");
+    error.status = 400;
+    throw error;
+  }
+
+  const handicapPoints = Number(match.handicap_points ?? match.handicapPoints ?? 0);
+  const handicapOptionId = match.handicap_option_id ?? match.handicapOptionId ?? "";
+  const adjustedHomeScore =
+    handicapOptionId === homeOption.id ? homeScore + handicapPoints : homeScore;
+  const adjustedAwayScore =
+    handicapOptionId === awayOption.id ? awayScore + handicapPoints : awayScore;
+  let resultOption = null;
+
+  if (adjustedHomeScore > adjustedAwayScore) {
+    resultOption = homeOption;
+  } else if (adjustedAwayScore > adjustedHomeScore) {
+    resultOption = awayOption;
+  } else {
+    resultOption = drawOption;
+  }
+
+  if (!resultOption) {
+    const error = new Error("Score result is draw but no draw option exists");
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    resultOptionId: resultOption.id,
+    homeScore,
+    awayScore,
+    adjustedHomeScore,
+    adjustedAwayScore,
+  };
+}
+
 const scheduledGroupMatches = [
   { id: "wc26-mexico-south-africa", title: "メキシコ VS 南アフリカ", startsAt: "2026-06-12T04:00", options: ["メキシコ", "南アフリカ", "引き分け"] },
   { id: "wc26-south-korea-czechia", title: "韓国 VS チェコ", startsAt: "2026-06-12T11:00", options: ["韓国", "チェコ", "引き分け"] },
@@ -396,7 +457,9 @@ async function initializeDatabase() {
 
     alter table matches
       add column if not exists handicap_option_id text,
-      add column if not exists handicap_points numeric(4, 1) not null default 0;
+      add column if not exists handicap_points numeric(4, 1) not null default 0,
+      add column if not exists home_score numeric(5, 1),
+      add column if not exists away_score numeric(5, 1);
 
     create table if not exists admin_audit_logs (
       id text primary key,
@@ -621,6 +684,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         closes_at,
         question,
         result_option_id,
+        home_score,
+        away_score,
         handicap_option_id,
         handicap_points,
         settled_at,
@@ -678,6 +743,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       closes_at: match.closes_at?.toISOString?.() ?? match.closes_at,
       result_option_id: match.result_option_id,
       result_option_label: resultOption?.label ?? "",
+      home_score: match.home_score === null ? "" : Number(match.home_score),
+      away_score: match.away_score === null ? "" : Number(match.away_score),
       settled_at: match.settled_at?.toISOString?.() ?? "",
       handicap_option_id: match.handicap_option_id ?? "",
       handicap_points: Number(match.handicap_points ?? 0),
@@ -1051,6 +1118,8 @@ async function getState() {
         closes_at as "closesAt",
         question,
         result_option_id as "resultOptionId",
+        home_score::float as "homeScore",
+        away_score::float as "awayScore",
         handicap_option_id as "handicapOptionId",
         handicap_points::float as "handicapPoints",
         settled_at as "settledAt"
@@ -1091,6 +1160,8 @@ async function getState() {
       closesAt: toIsoLike(match.closesAt),
       settledAt: match.settledAt ? new Date(match.settledAt).toISOString() : undefined,
       resultOptionId: match.resultOptionId ?? undefined,
+      homeScore: match.homeScore == null ? undefined : Number(match.homeScore),
+      awayScore: match.awayScore == null ? undefined : Number(match.awayScore),
       handicapOptionId: match.handicapOptionId ?? undefined,
       handicapPoints: Number(match.handicapPoints ?? 0),
       options: optionsByMatch.get(match.id) ?? [],
@@ -1528,26 +1599,56 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
 app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next) => {
   try {
     const matchId = request.params.id;
-    const optionId = String(request.body.optionId ?? "");
-    if (!optionId) {
-      response.status(400).json({ error: "optionId is required" });
-      return;
-    }
+    const homeScore = request.body?.homeScore;
+    const awayScore = request.body?.awayScore;
 
-    const result = await query(
-      `
-        update matches
-        set result_option_id = $2, settled_at = now()
-        where id = $1
-          and exists (select 1 from match_options where id = $2 and match_id = $1)
-      `,
-      [matchId, optionId],
-    );
-    if (!result.rowCount) {
-      response.status(404).json({ error: "Match or option not found" });
+    const settlement = await withTransaction(async (client) => {
+      const matchResult = await client.query(
+        `
+          select id, title, handicap_option_id, handicap_points
+          from matches
+          where id = $1
+        `,
+        [matchId],
+      );
+      if (!matchResult.rowCount) return null;
+
+      const optionsResult = await client.query(
+        `
+          select id, label
+          from match_options
+          where match_id = $1
+          order by sort_order asc, label asc
+        `,
+        [matchId],
+      );
+      const decision = deriveResultFromScores(
+        matchResult.rows[0],
+        optionsResult.rows,
+        homeScore,
+        awayScore,
+      );
+
+      await client.query(
+        `
+          update matches
+          set
+            result_option_id = $2,
+            home_score = $3,
+            away_score = $4,
+            settled_at = now()
+          where id = $1
+        `,
+        [matchId, decision.resultOptionId, decision.homeScore, decision.awayScore],
+      );
+      return decision;
+    });
+
+    if (!settlement) {
+      response.status(404).json({ error: "Match not found" });
       return;
     }
-    await writeAuditLog("match.settle", matchId, { optionId });
+    await writeAuditLog("match.settle", matchId, settlement);
     scheduleSettlementBackup(matchId);
 
     response.json({ state: await getState() });
@@ -1559,7 +1660,7 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
 app.post("/api/matches/:id/reopen", requireAdmin, async (request, response, next) => {
   try {
     await query(
-      "update matches set result_option_id = null, settled_at = null where id = $1",
+      "update matches set result_option_id = null, home_score = null, away_score = null, settled_at = null where id = $1",
       [request.params.id],
     );
     await writeAuditLog("match.reopen", request.params.id);

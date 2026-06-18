@@ -1376,8 +1376,7 @@ label span {
 }
 
 .result-panel {
-  display: inline-flex;
-  align-items: center;
+  display: grid;
   gap: 8px;
   padding: 11px 12px;
   color: #7b5000;
@@ -1385,6 +1384,53 @@ label span {
   background: #fff6d6;
   border: 1px solid #ffe28c;
   border-radius: 8px;
+}
+
+.result-panel > div:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.score-outcome {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: #17324e;
+  font-size: 0.78rem;
+  font-weight: 900;
+  background: #f2f9ff;
+  border: 1px solid #cfe5f5;
+  border-radius: 8px;
+}
+
+.score-outcome span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.score-outcome b {
+  flex: 0 0 auto;
+  color: #5b7287;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.score-outcome-result {
+  color: #047a68;
+  font-weight: 950;
+}
+
+.score-outcome.compact {
+  grid-column: 1 / -1;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 7px 8px;
+  font-size: 0.72rem;
 }
 
 .vote-form {
@@ -2818,8 +2864,83 @@ textarea:focus {
   border-radius: 8px;
 }
 
+.score-input-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fbff;
+  border: 1px solid #d7e8f4;
+  border-radius: 8px;
+}
+
+.score-input-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.score-input-grid label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #52677d;
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.score-input-grid input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  color: var(--ink);
+  font-weight: 950;
+  background: #ffffff;
+  border: 1px solid #cfe1ec;
+  border-radius: 8px;
+}
+
+.score-input-grid > b {
+  padding-bottom: 10px;
+  color: #62768a;
+}
+
+.score-preview {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  color: #8a5200;
+  font-size: 0.78rem;
+  font-weight: 950;
+  background: #fff7db;
+  border: 1px solid #ffe28c;
+  border-radius: 8px;
+}
+
+.score-preview.ready {
+  color: #075a4e;
+  background: #eafff7;
+  border-color: #a6ecd5;
+}
+
+.score-preview b {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.score-preview small {
+  color: #587087;
+  font-weight: 900;
+}
+
 .admin-options .option-row.result {
   background: linear-gradient(180deg, #ffffff, #eef7ff);
+}
+
+.admin-options .option-row.selected {
+  background: linear-gradient(180deg, #ffffff, #f0fffb);
+  box-shadow: inset 0 0 0 2px var(--teal);
 }
 
 .admin-match-row {
