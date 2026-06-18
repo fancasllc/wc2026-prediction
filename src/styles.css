@@ -2115,8 +2115,8 @@ textarea:focus {
 }
 
 .stat-card-pending {
-  background: linear-gradient(180deg, #f1f5f9 0%, #fbfdff 100%);
-  border-color: #d5dee8;
+  background: linear-gradient(180deg, #e7edf4 0%, #f1f5f9 100%);
+  border-color: #c8d2df;
 }
 
 .stat-icon {

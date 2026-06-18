@@ -2018,7 +2018,7 @@ function App() {
 
             <div className="stats-row">
               <StatCard
-                label="結果確定済みポイント"
+                label="投票ポイント"
                 value={formatPoints(selectedPersonSettledStake)}
                 icon={<WalletCards size={20} aria-hidden />}
               />
@@ -2037,7 +2037,7 @@ function App() {
                 variant="net"
               />
               <StatCard
-                label="未確定ポイント"
+                label="投票中ポイント"
                 value={formatPoints(selectedPersonSummary.pendingStake)}
                 icon={<Clock3 size={20} aria-hidden />}
                 variant="pending"
