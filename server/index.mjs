@@ -1601,6 +1601,8 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
     const matchId = request.params.id;
     const homeScore = request.body?.homeScore;
     const awayScore = request.body?.awayScore;
+    const optionId = request.body?.optionId ? String(request.body.optionId) : "";
+    const hasScoreInput = homeScore !== undefined || awayScore !== undefined;
 
     const settlement = await withTransaction(async (client) => {
       const matchResult = await client.query(
@@ -1622,12 +1624,31 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
         `,
         [matchId],
       );
-      const decision = deriveResultFromScores(
-        matchResult.rows[0],
-        optionsResult.rows,
-        homeScore,
-        awayScore,
-      );
+      const decision = hasScoreInput
+        ? deriveResultFromScores(
+            matchResult.rows[0],
+            optionsResult.rows,
+            homeScore,
+            awayScore,
+          )
+        : (() => {
+            if (!optionId) {
+              const error = new Error("Result option is required");
+              error.status = 400;
+              throw error;
+            }
+            const option = optionsResult.rows.find((item) => item.id === optionId);
+            if (!option) {
+              const error = new Error("Result option not found");
+              error.status = 400;
+              throw error;
+            }
+            return {
+              resultOptionId: option.id,
+              homeScore: null,
+              awayScore: null,
+            };
+          })();
 
       await client.query(
         `

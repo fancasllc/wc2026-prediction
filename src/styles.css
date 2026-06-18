@@ -2923,6 +2923,12 @@ textarea:focus {
   border-color: #a6ecd5;
 }
 
+.manual-result-preview {
+  color: #0b5394;
+  background: #eef8ff;
+  border-color: #c6e4fb;
+}
+
 .score-preview b {
   color: var(--ink);
   font-size: 1rem;

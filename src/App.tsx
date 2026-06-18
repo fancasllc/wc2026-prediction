@@ -637,6 +637,11 @@ function getDrawOption(match: MatchRecord) {
   return match.options.find((option) => isDrawOption(option));
 }
 
+function usesScoreSettlement(match: MatchRecord) {
+  const hasVersusTitle = /(?:VS|ＶＳ|\bvs\b|対)/i.test(match.title);
+  return hasVersusTitle && getTeamOptions(match).length >= 2;
+}
+
 function parseScoreInput(value: string | number | undefined) {
   if (value === undefined || value === "") return null;
   const score = Number(value);
@@ -946,6 +951,7 @@ function App() {
   const [pendingVoteDelete, setPendingVoteDelete] = useState<PendingVoteDelete | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [scoreDrafts, setScoreDrafts] = useState<Record<string, ScoreDraft>>({});
+  const [resultDrafts, setResultDrafts] = useState<Record<string, string>>({});
   const [showScheduledPicker, setShowScheduledPicker] = useState(false);
   const [scheduledMatches, setScheduledMatches] = useState<ScheduledMatchCandidate[]>([]);
   const [isScheduledLoading, setIsScheduledLoading] = useState(false);
@@ -1687,7 +1693,10 @@ function App() {
     }
   }
 
-  async function settleMatch(match: MatchRecord, scoreDraft: ScoreDraft) {
+  async function settleMatch(
+    match: MatchRecord,
+    settlement: { scoreDraft?: ScoreDraft; optionId?: string },
+  ) {
     if (!adminToken) {
       window.alert("先に管理者認証をしてください。");
       return;
@@ -1696,6 +1705,38 @@ function App() {
       window.alert("受付中の予想テーマは確定できません。締切後に確定してください。");
       return;
     }
+
+    if (!usesScoreSettlement(match)) {
+      const optionId = settlement.optionId ?? "";
+      const resultLabel = optionLabel(match, optionId);
+      if (!optionId || resultLabel === "-") {
+        window.alert("確定する結果を選択してください。");
+        return;
+      }
+
+      const judgementOk = window.confirm(
+        `「${match.title}」の結果を以下で確定します。\n\n確定結果: ${resultLabel}\n\nこの判定で問題ありませんか？`,
+      );
+      if (!judgementOk) return;
+
+      const finalOk = window.confirm(
+        `「${match.title}」を「${resultLabel}」で最終確定します。\n\n確定後、個人別の収支と還元ポイントに反映されます。本当に確定しますか？`,
+      );
+      if (!finalOk) return;
+
+      await syncState(() =>
+        postState(
+          `/api/matches/${match.id}/settle`,
+          { optionId },
+          "POST",
+          adminToken,
+        ),
+      );
+      setResultDrafts((current) => ({ ...current, [match.id]: optionId }));
+      return;
+    }
+
+    const scoreDraft = settlement.scoreDraft ?? { home: "", away: "" };
     const evaluation = evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away);
     if (!evaluation.ok) {
       window.alert(evaluation.error);
@@ -1746,6 +1787,7 @@ function App() {
 
     await syncState(() => postState(`/api/matches/${match.id}/reopen`, undefined, "POST", adminToken));
     setScoreDrafts((current) => ({ ...current, [match.id]: { home: "", away: "" } }));
+    setResultDrafts((current) => ({ ...current, [match.id]: "" }));
   }
 
   async function deleteMatch(matchId: string) {
@@ -2432,15 +2474,18 @@ function App() {
                   <span>開く</span>
                 </summary>
                 <p className="admin-help">
-                  締切済みの予想テーマだけを表示しています。国別の得点を入力すると、ハンデを反映して自動判定します。
+                  締切済みの予想テーマだけを表示しています。VS形式は得点から自動判定し、それ以外は結果を選んで確定します。
                 </p>
                 {settleCandidateMatches.length ? (
                   <div className="admin-settle-list">
                     {settleCandidateMatches.map((match) => {
+                      const scoreMode = usesScoreSettlement(match);
                       const scoreDraft = scoreDrafts[match.id] ?? {
                         home: match.homeScore === undefined ? "" : String(match.homeScore),
                         away: match.awayScore === undefined ? "" : String(match.awayScore),
                       };
+                      const selectedOptionId =
+                        resultDrafts[match.id] ?? match.resultOptionId ?? "";
 
                       return (
                         <details className="admin-item-disclosure" key={match.id}>
@@ -2449,7 +2494,7 @@ function App() {
                               <strong><MatchTitleWithFlags title={match.title} /></strong>
                               <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, data.votes).length}件</small>
                             </span>
-                            <b>得点を入力</b>
+                            <b>{scoreMode ? "得点を入力" : "結果を選ぶ"}</b>
                           </summary>
                           <AdminSettleCard
                             adminToken={adminToken}
@@ -2457,11 +2502,21 @@ function App() {
                             now={now}
                             onDelete={() => deleteMatch(match.id)}
                             onReopen={() => reopenMatch(match)}
+                            onSelect={(optionId) =>
+                              setResultDrafts((current) => ({ ...current, [match.id]: optionId }))
+                            }
                             onScoreChange={(nextDraft) =>
                               setScoreDrafts((current) => ({ ...current, [match.id]: nextDraft }))
                             }
-                            onSettle={() => settleMatch(match, scoreDraft)}
+                            onSettle={() =>
+                              settleMatch(
+                                match,
+                                scoreMode ? { scoreDraft } : { optionId: selectedOptionId },
+                              )
+                            }
                             scoreDraft={scoreDraft}
+                            scoreMode={scoreMode}
+                            selectedOptionId={selectedOptionId}
                             votes={data.votes}
                           />
                         </details>
@@ -3668,9 +3723,12 @@ function AdminSettleCard({
   now,
   onDelete,
   onReopen,
+  onSelect,
   onScoreChange,
   onSettle,
   scoreDraft,
+  scoreMode,
+  selectedOptionId,
   votes,
 }: {
   adminToken: string;
@@ -3678,17 +3736,25 @@ function AdminSettleCard({
   now: Date;
   onDelete: () => void;
   onReopen: () => void;
+  onSelect: (optionId: string) => void;
   onScoreChange: (draft: ScoreDraft) => void;
   onSettle: () => void;
   scoreDraft: ScoreDraft;
+  scoreMode: boolean;
+  selectedOptionId: string;
   votes: VoteRecord[];
 }) {
   const total = getMatchTotal(match, votes);
   const matchVotes = getMatchVotes(match, votes);
   const settled = Boolean(match.resultOptionId);
   const [homeOption, awayOption] = getTeamOptions(match);
-  const scoreEvaluation = evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away);
-  const previewResultId = scoreEvaluation.ok ? scoreEvaluation.decision.resultOptionId : match.resultOptionId;
+  const scoreEvaluation = scoreMode
+    ? evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away)
+    : null;
+  const previewResultId = scoreMode
+    ? (scoreEvaluation?.ok ? scoreEvaluation.decision.resultOptionId : match.resultOptionId)
+    : (selectedOptionId || match.resultOptionId);
+  const selectedResultLabel = optionLabel(match, selectedOptionId);
 
   return (
     <article className="admin-settle-card">
@@ -3698,52 +3764,62 @@ function AdminSettleCard({
         <span>総プール {formatPoints(total)}</span>
       </div>
 
-      <div className="score-input-panel">
-        <div className="score-input-grid">
-          <label>
-            <span>{homeOption?.label ?? "左側チーム"}</span>
-            <input
-              inputMode="numeric"
-              min={0}
-              onChange={(event) => onScoreChange({ ...scoreDraft, home: event.target.value })}
-              pattern="[0-9]*"
-              placeholder="0"
-              type="number"
-              value={scoreDraft.home}
-            />
-          </label>
-          <b>-</b>
-          <label>
-            <span>{awayOption?.label ?? "右側チーム"}</span>
-            <input
-              inputMode="numeric"
-              min={0}
-              onChange={(event) => onScoreChange({ ...scoreDraft, away: event.target.value })}
-              pattern="[0-9]*"
-              placeholder="0"
-              type="number"
-              value={scoreDraft.away}
-            />
-          </label>
+      {scoreMode ? (
+        <div className="score-input-panel">
+          <div className="score-input-grid">
+            <label>
+              <span>{homeOption?.label ?? "左側チーム"}</span>
+              <input
+                inputMode="numeric"
+                min={0}
+                onChange={(event) => onScoreChange({ ...scoreDraft, home: event.target.value })}
+                pattern="[0-9]*"
+                placeholder="0"
+                type="number"
+                value={scoreDraft.home}
+              />
+            </label>
+            <b>-</b>
+            <label>
+              <span>{awayOption?.label ?? "右側チーム"}</span>
+              <input
+                inputMode="numeric"
+                min={0}
+                onChange={(event) => onScoreChange({ ...scoreDraft, away: event.target.value })}
+                pattern="[0-9]*"
+                placeholder="0"
+                type="number"
+                value={scoreDraft.away}
+              />
+            </label>
+          </div>
+          <div className={`score-preview ${scoreEvaluation?.ok ? "ready" : ""}`}>
+            {scoreEvaluation?.ok ? (
+              <>
+                <span>判定プレビュー</span>
+                <b>{scoreEvaluation.decision.resultLabel}</b>
+                {scoreEvaluation.decision.handicap && (
+                  <small>
+                    ハンデ反映後 {formatScoreValue(scoreEvaluation.decision.adjustedHomeScore)} - {formatScoreValue(scoreEvaluation.decision.adjustedAwayScore)}
+                  </small>
+                )}
+              </>
+            ) : (
+              <span>{scoreEvaluation?.error}</span>
+            )}
+          </div>
         </div>
-        <div className={`score-preview ${scoreEvaluation.ok ? "ready" : ""}`}>
-          {scoreEvaluation.ok ? (
-            <>
-              <span>判定プレビュー</span>
-              <b>{scoreEvaluation.decision.resultLabel}</b>
-              {scoreEvaluation.decision.handicap && (
-                <small>
-                  ハンデ反映後 {formatScoreValue(scoreEvaluation.decision.adjustedHomeScore)} - {formatScoreValue(scoreEvaluation.decision.adjustedAwayScore)}
-                </small>
-              )}
-            </>
-          ) : (
-            <span>{scoreEvaluation.error}</span>
-          )}
+      ) : (
+        <div className="score-preview manual-result-preview">
+          <span>結果選択モード</span>
+          <b>{selectedOptionId ? selectedResultLabel : "下の選択肢から結果を選択"}</b>
         </div>
-      </div>
+      )}
 
-      <div className="option-board admin-options" aria-label={`${match.title}の判定候補`}>
+      <div
+        className={`option-board admin-options ${scoreMode ? "" : "selectable"}`}
+        aria-label={`${match.title}の判定候補`}
+      >
         {match.options.map((option) => {
           const optionTotal = getOptionTotal(match, votes, option.id);
           const percentage = total ? Math.round((optionTotal / total) * 100) : 0;
@@ -3752,13 +3828,16 @@ function AdminSettleCard({
           const result = match.resultOptionId === option.id;
 
           return (
-            <div
+            <button
               className={[
                 "option-row",
                 selected ? "selected" : "",
                 result ? "result" : "",
               ].filter(Boolean).join(" ")}
+              disabled={scoreMode || settled}
               key={option.id}
+              onClick={() => onSelect(option.id)}
+              type="button"
             >
               <div>
                 <strong><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></strong>
@@ -3768,7 +3847,7 @@ function AdminSettleCard({
                 <span style={{ width: `${percentage}%` }} />
               </div>
               <b>{result ? "確定結果" : odds ? `${odds.toFixed(2)}x` : "-"}</b>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -3776,12 +3855,12 @@ function AdminSettleCard({
       <div className="admin-settle-actions">
         <button
           className="primary-action"
-          disabled={!adminToken || !scoreEvaluation.ok || settled}
+          disabled={!adminToken || settled || (scoreMode ? !scoreEvaluation?.ok : !selectedOptionId)}
           onClick={onSettle}
           type="button"
         >
           <CheckCircle2 size={18} aria-hidden />
-          得点から確定
+          {scoreMode ? "得点から確定" : "この結果で確定"}
         </button>
         {settled && (
           <button className="ghost-action" disabled={!adminToken} onClick={onReopen} type="button">
