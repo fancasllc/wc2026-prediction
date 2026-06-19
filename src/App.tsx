@@ -350,8 +350,10 @@ async function fetchAppState() {
   return apiRequest<AppData>("/api/state");
 }
 
-async function fetchLatestYoutubeVideo() {
-  return apiRequest<{ video: YoutubeVideo | null; refreshMinutes: number }>("/api/youtube/latest");
+async function fetchLatestYoutubeVideo(forceRefresh = false) {
+  return apiRequest<{ video: YoutubeVideo | null; refreshMinutes: number }>(
+    `/api/youtube/latest${forceRefresh ? "?refresh=1" : ""}`,
+  );
 }
 
 async function fetchScheduledMatches() {
@@ -2109,7 +2111,13 @@ function App() {
   }
 
   async function refreshState() {
-    await syncState(() => fetchAppState());
+    const [, youtubeResult] = await Promise.all([
+      syncState(() => fetchAppState()),
+      fetchLatestYoutubeVideo(true).catch(() => null),
+    ]);
+    if (youtubeResult) {
+      setLatestYoutubeVideo(youtubeResult.video);
+    }
   }
 
   function handlePullStart(event: TouchEvent<HTMLDivElement>) {

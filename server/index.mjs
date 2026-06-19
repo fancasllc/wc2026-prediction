@@ -1813,9 +1813,10 @@ app.get("/api/state", async (_request, response, next) => {
   }
 });
 
-app.get("/api/youtube/latest", async (_request, response, next) => {
+app.get("/api/youtube/latest", async (request, response, next) => {
   try {
-    const video = await getYoutubeLatestVideo();
+    const shouldRefresh = request.query.refresh === "1" || request.query.force === "1";
+    const video = shouldRefresh ? await refreshYoutubeLatestVideo("manual") : await getYoutubeLatestVideo();
     response.json({
       video,
       refreshMinutes: Math.round(youtubeRefreshIntervalMs / 60 / 1000),
