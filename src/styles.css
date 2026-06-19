@@ -217,9 +217,10 @@ p {
 }
 
 .tabs {
+  position: -webkit-sticky;
   position: sticky;
-  top: max(8px, env(safe-area-inset-top));
-  z-index: 50;
+  top: 0;
+  z-index: 80;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
@@ -1632,7 +1633,7 @@ label span {
   justify-items: stretch;
   background: rgba(6, 37, 94, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.34);
-  border-radius: 22px;
+  border-radius: 0;
   box-shadow: 0 16px 30px rgba(0, 19, 64, 0.32);
   backdrop-filter: blur(10px);
 }
@@ -1643,7 +1644,7 @@ label span {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 40px;
+  min-height: 48px;
   padding: 0 14px;
   color: #ffffff;
   font-family: inherit;
@@ -1662,11 +1663,11 @@ label span {
 }
 
 .reference-menu-link:first-child {
-  border-radius: 20px 20px 0 0;
+  border-radius: 0;
 }
 
 .reference-menu-link:last-child {
-  border-radius: 0 0 20px 20px;
+  border-radius: 0;
 }
 
 .reference-menu-link.warm-link {
