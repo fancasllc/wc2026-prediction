@@ -1621,8 +1621,8 @@ label span {
 
 .reference-links {
   position: fixed;
-  right: max(10px, calc((100vw - 430px) / 2 + 10px));
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  right: max(18px, calc((100vw - 430px) / 2 + 18px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
   z-index: 30;
   display: grid;
   gap: 8px;
