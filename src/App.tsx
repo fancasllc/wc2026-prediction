@@ -982,27 +982,23 @@ function YoutubeHero({
   onAddClick: () => void;
   showAddButton: boolean;
 }) {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
   useEffect(() => {
-    setIsPlaying(false);
+    setThumbnailFailed(false);
   }, [video?.id]);
 
+  const showVideoCard = Boolean(video && !thumbnailFailed);
+
   return (
-    <header className={`topbar ${video ? "youtube-topbar" : ""}`}>
-      {video && isPlaying ? (
-        <iframe
-          src={video.embedUrl}
-          title={video.title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-        />
-      ) : video ? (
-        <button
+    <header className={`topbar ${showVideoCard ? "youtube-topbar" : ""}`}>
+      {showVideoCard && video ? (
+        <a
           className="youtube-hero-card"
-          type="button"
-          onClick={() => setIsPlaying(true)}
-          aria-label={`${video.title}を再生`}
+          href={video.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${video.title}をYouTubeで開く`}
         >
           <img
             src={video.thumbnailUrl}
@@ -1011,6 +1007,11 @@ function YoutubeHero({
             height="360"
             loading="eager"
             decoding="async"
+            onError={() => {
+              if (!thumbnailFailed) {
+                setThumbnailFailed(true);
+              }
+            }}
           />
           <span className="youtube-hero-overlay" aria-hidden />
           <span className="youtube-hero-play">
@@ -1020,7 +1021,7 @@ function YoutubeHero({
             <span>DAZN最新動画</span>
             <strong>{video.title}</strong>
           </span>
-        </button>
+        </a>
       ) : (
         <img
           src="/hero-japan-2026.jpg"
@@ -1031,7 +1032,7 @@ function YoutubeHero({
           decoding="async"
         />
       )}
-      {video && !isPlaying && (
+      {showVideoCard && video && (
         <a
           className="youtube-open-link"
           href={video.url}

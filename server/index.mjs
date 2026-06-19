@@ -1432,28 +1432,50 @@ function readXmlTag(xml, tagName) {
   return match ? decodeXmlEntities(match[1].trim()) : "";
 }
 
+function readXmlAttribute(xml, tagName, attributeName) {
+  const tagMatch = xml.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "i"));
+  if (!tagMatch) return "";
+  const attributeMatch = tagMatch[0].match(new RegExp(`${attributeName}="([^"]*)"`, "i"));
+  return attributeMatch ? decodeXmlEntities(attributeMatch[1].trim()) : "";
+}
+
+function readYoutubeEntryUrl(entry, videoId) {
+  const linkMatch = entry.match(/<link\s+[^>]*rel="alternate"[^>]*href="([^"]+)"/i);
+  return linkMatch
+    ? decodeXmlEntities(linkMatch[1].trim())
+    : `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+}
+
 function parseYoutubeFeed(xml) {
-  const entry = xml.match(/<entry>([\s\S]*?)<\/entry>/i)?.[1];
-  if (!entry) return null;
+  const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)].map((match) => match[1]);
+  for (const entry of entries) {
+    const videoId = readXmlTag(entry, "yt:videoId");
+    if (!videoId) continue;
 
-  const videoId = readXmlTag(entry, "yt:videoId");
-  if (!videoId) return null;
+    const url = readYoutubeEntryUrl(entry, videoId);
+    if (/\/shorts\//i.test(url)) continue;
 
-  const title = readXmlTag(entry, "title");
-  const publishedAt = readXmlTag(entry, "published");
-  const updatedAt = readXmlTag(entry, "updated");
+    const title = readXmlTag(entry, "title");
+    const publishedAt = readXmlTag(entry, "published");
+    const updatedAt = readXmlTag(entry, "updated");
+    const thumbnailUrl =
+      readXmlAttribute(entry, "media:thumbnail", "url") ||
+      `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
 
-  return {
-    id: videoId,
-    title: title || "DAZN Japan 最新動画",
-    url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
-    embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&playsinline=1`,
-    thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
-    publishedAt: publishedAt || updatedAt || null,
-    channelTitle: "DAZN Japan",
-    sourceUrl: daznJapanVideosUrl,
-    fetchedAt: new Date().toISOString(),
-  };
+    return {
+      id: videoId,
+      title: title || "DAZN Japan 最新動画",
+      url,
+      embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&playsinline=1`,
+      thumbnailUrl,
+      publishedAt: publishedAt || updatedAt || null,
+      channelTitle: "DAZN Japan",
+      sourceUrl: daznJapanVideosUrl,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  return null;
 }
 
 async function refreshYoutubeLatestVideo(reason = "scheduled") {

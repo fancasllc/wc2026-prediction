@@ -135,7 +135,9 @@ p {
   overflow: hidden;
   color: #ffffff;
   text-align: left;
+  text-decoration: none;
   background: #061a3f;
+  cursor: pointer;
 }
 
 .youtube-hero-card img {
