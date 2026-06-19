@@ -2233,7 +2233,7 @@ function App() {
       </datalist>
 
       {view === "open" && motivationItems.length > 0 && (
-        <MotivationTicker items={motivationItems} />
+        <MotivationTicker items={motivationItems} onOpenPerson={openPersonDetail} />
       )}
 
       <main>
@@ -3114,7 +3114,13 @@ function App() {
   );
 }
 
-function MotivationTicker({ items }: { items: MotivationItem[] }) {
+function MotivationTicker({
+  items,
+  onOpenPerson,
+}: {
+  items: MotivationItem[];
+  onOpenPerson: (name: string) => void;
+}) {
   const stripRef = useRef<HTMLElement | null>(null);
   const visibleItems = items.length > 1 ? [...items, ...items, ...items] : items;
 
@@ -3148,14 +3154,19 @@ function MotivationTicker({ items }: { items: MotivationItem[] }) {
     >
       <div className="motivation-track">
         {visibleItems.map((item, index) => (
-          <span className={`motivation-chip ${item.tone}`} key={`${item.id}-${index}`}>
+          <button
+            className={`motivation-chip ${item.tone}`}
+            key={`${item.id}-${index}`}
+            onClick={() => onOpenPerson(item.name)}
+            type="button"
+          >
             <small>{item.badge.replace("位", "")}</small>
             <span>
               <b>{item.name}</b>
               <strong>{item.value}</strong>
               <em>{item.meta}</em>
             </span>
-          </span>
+          </button>
         ))}
       </div>
     </aside>
@@ -3437,16 +3448,12 @@ function ScheduledMatchPicker({
       <section className="schedule-modal" role="dialog" aria-modal="true" aria-label="試合を追加">
         <div className="schedule-modal-head">
           <div>
-            <span>Official fixtures</span>
             <h3>試合を追加</h3>
           </div>
           <button className="icon-action" type="button" onClick={onClose} aria-label="閉じる">
             <X size={18} aria-hidden />
           </button>
         </div>
-        <p className="schedule-help">
-          まだ登録されていない試合を追加できます。
-        </p>
         {message && <div className="inline-alert">{message}</div>}
         <div className="schedule-modal-actions">
           <button className="ghost-action compact" disabled={isLoading} type="button" onClick={onRefresh}>
