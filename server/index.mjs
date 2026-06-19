@@ -188,6 +188,7 @@ function validateMatch(input) {
   const startsAt = String(input.startsAt ?? "").trim();
   const closesAt = String(input.closesAt ?? startsAt).trim();
   const question = clampText(input.question, 180);
+  const notice = String(input.notice ?? input.注意事項 ?? "").trim().slice(0, 800);
   const options = Array.isArray(input.options) ? input.options : [];
   const handicapOptionId = String(input.handicapOptionId ?? "").trim();
   const rawHandicapPoints = Number(input.handicapPoints ?? 0);
@@ -229,6 +230,7 @@ function validateMatch(input) {
     startsAt,
     closesAt,
     question,
+    notice,
     options: normalizedOptions,
     handicapOptionId: handicapPoints > 0 ? handicapOptionId : "",
     handicapPoints: handicapPoints > 0 ? handicapPoints : 0,
@@ -548,6 +550,7 @@ async function initializeDatabase() {
     create index if not exists votes_user_name_idx on votes(user_name);
 
     alter table matches
+      add column if not exists notice text not null default '',
       add column if not exists handicap_option_id text,
       add column if not exists handicap_points numeric(4, 1) not null default 0,
       add column if not exists home_score numeric(5, 1),
@@ -797,6 +800,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         starts_at,
         closes_at,
         question,
+        notice,
         result_option_id,
         home_score,
         away_score,
@@ -855,6 +859,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       venue: match.venue,
       starts_at: match.starts_at?.toISOString?.() ?? match.starts_at,
       closes_at: match.closes_at?.toISOString?.() ?? match.closes_at,
+      notice: match.notice ?? "",
       result_option_id: match.result_option_id,
       result_option_label: resultOption?.label ?? "",
       home_score: match.home_score === null ? "" : Number(match.home_score),
@@ -1176,9 +1181,9 @@ async function insertMatch(input, client = pool) {
   await client.query(
     `
       insert into matches (
-        id, title, stage, venue, starts_at, closes_at, question, result_option_id, settled_at,
+        id, title, stage, venue, starts_at, closes_at, question, notice, result_option_id, settled_at,
         handicap_option_id, handicap_points
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       on conflict (id) do update set
         title = excluded.title,
         stage = excluded.stage,
@@ -1186,6 +1191,7 @@ async function insertMatch(input, client = pool) {
         starts_at = excluded.starts_at,
         closes_at = excluded.closes_at,
         question = excluded.question,
+        notice = excluded.notice,
         handicap_option_id = excluded.handicap_option_id,
         handicap_points = excluded.handicap_points
     `,
@@ -1197,6 +1203,7 @@ async function insertMatch(input, client = pool) {
       match.startsAt,
       match.closesAt,
       match.question,
+      match.notice,
       input.resultOptionId ?? null,
       input.settledAt ?? null,
       match.handicapOptionId || null,
@@ -1599,6 +1606,7 @@ async function getState() {
         starts_at as "startsAt",
         closes_at as "closesAt",
         question,
+        notice,
         result_option_id as "resultOptionId",
         home_score::float as "homeScore",
         away_score::float as "awayScore",
@@ -2012,8 +2020,9 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
               starts_at = $5,
               closes_at = $6,
               question = $7,
-              handicap_option_id = $8,
-              handicap_points = $9
+              notice = $8,
+              handicap_option_id = $9,
+              handicap_points = $10
           where id = $1
         `,
         [
@@ -2024,6 +2033,7 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
           match.startsAt,
           match.closesAt,
           match.question,
+          match.notice,
           match.handicapOptionId || null,
           match.handicapPoints,
         ],

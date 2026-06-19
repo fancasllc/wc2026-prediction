@@ -122,6 +122,7 @@ type MatchRecord = {
   startsAt: string;
   closesAt: string;
   question: string;
+  notice?: string;
   options: MatchOption[];
   resultOptionId?: string;
   settledAt?: string;
@@ -263,6 +264,7 @@ type MatchDraft = {
   startsAt: string;
   closesAt: string;
   optionsText: string;
+  notice: string;
   handicapOptionId: string;
   handicapPoints: number;
 };
@@ -288,6 +290,8 @@ type CsvMatchRow = {
   startsAt?: string;
   closesAt?: string;
   options?: string;
+  notice?: string;
+  注意事項?: string;
 };
 
 type ApiErrorBody = {
@@ -482,12 +486,13 @@ const emptyMatchDraft: MatchDraft = {
   startsAt: "2026-06-12T04:00",
   closesAt: "2026-06-12T04:00",
   optionsText: worldCupWinnerLabels.join("\n"),
+  notice: "",
   handicapOptionId: "",
   handicapPoints: 0,
 };
 
-const csvTemplate = `title,startsAt,closesAt,options
-ワールドカップ優勝国,2026-06-12T04:00,2026-06-12T04:00,${worldCupWinnerLabels.join("|")}`;
+const csvTemplate = `title,startsAt,closesAt,options,注意事項
+ワールドカップ優勝国,2026-06-12T04:00,2026-06-12T04:00,${worldCupWinnerLabels.join("|")},`;
 
 const pointsFormatter = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0,
@@ -948,9 +953,10 @@ function parseCsvMatches(text: string) {
   });
 
   const matches = parsed.data
-    .map((row) => {
+    .map((row): MatchRecord | null => {
       const title = row.title?.trim() ?? "";
       const startsAt = row.startsAt?.trim() ?? "";
+      const notice = (row.notice ?? row.注意事項 ?? "").trim();
       const labels = (row.options ?? "")
         .split("|")
         .map((label) => label.trim())
@@ -968,6 +974,7 @@ function parseCsvMatches(text: string) {
         startsAt,
         closesAt: row.closesAt?.trim() || startsAt,
         question: "",
+        notice,
         options: makeOptions(labels),
       } satisfies MatchRecord;
     })
@@ -1851,6 +1858,7 @@ function App() {
       startsAt: matchDraft.startsAt,
       closesAt: matchDraft.closesAt || matchDraft.startsAt,
       question: "",
+      notice: matchDraft.notice.trim(),
       options,
       handicapOptionId: matchDraft.handicapPoints > 0 ? handicapOption?.id : undefined,
       handicapPoints: handicapOption && matchDraft.handicapPoints > 0 ? matchDraft.handicapPoints : 0,
@@ -2041,6 +2049,7 @@ function App() {
       startsAt: match.startsAt,
       closesAt: match.closesAt,
       optionsText: match.options.map((option) => option.label).join("\n"),
+      notice: match.notice ?? "",
       handicapOptionId: match.handicapOptionId ?? "",
       handicapPoints: Number(match.handicapPoints ?? 0),
     });
@@ -2083,6 +2092,7 @@ function App() {
       startsAt: editMatchDraft.startsAt,
       closesAt: editMatchDraft.closesAt || editMatchDraft.startsAt,
       question: "",
+      notice: editMatchDraft.notice.trim(),
       options: nextOptions,
       handicapOptionId: editMatchDraft.handicapPoints > 0 ? nextHandicapOption?.id : undefined,
       handicapPoints: nextHandicapOption && editMatchDraft.handicapPoints > 0 ? editMatchDraft.handicapPoints : 0,
@@ -2597,6 +2607,20 @@ function App() {
                       rows={4}
                     />
                   </label>
+                  <label className="wide">
+                    <span>注意事項</span>
+                    <textarea
+                      value={matchDraft.notice}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({
+                          ...current,
+                          notice: event.target.value,
+                        }))
+                      }
+                      placeholder="必要な場合のみ入力"
+                      rows={3}
+                    />
+                  </label>
                   <div className="wide">
                     <HandicapPicker
                       optionId={matchDraft.handicapOptionId}
@@ -2910,6 +2934,20 @@ function App() {
                           }))
                         }
                         rows={5}
+                      />
+                    </label>
+                    <label>
+                      <span>注意事項</span>
+                      <textarea
+                        value={editMatchDraft.notice}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({
+                            ...current,
+                            notice: event.target.value,
+                          }))
+                        }
+                        placeholder="必要な場合のみ入力"
+                        rows={3}
                       />
                     </label>
                     <HandicapPicker
@@ -3781,6 +3819,7 @@ function MatchHeader({
   const status = getStatusLabel(match, now);
   const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
   const handicap = getMatchHandicap(match);
+  const notice = match.notice?.trim();
 
   return (
     <div className="match-header">
@@ -3807,6 +3846,7 @@ function MatchHeader({
         </span>
       </div>
       <ExternalOddsPanel match={match} />
+      {notice && <div className="match-notice">{notice}</div>}
       {handicap && (
         <div className="handicap-notice">
           <span>
