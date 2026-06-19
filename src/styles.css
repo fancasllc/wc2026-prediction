@@ -842,6 +842,14 @@ label span {
   font-weight: 950;
 }
 
+.handicap-notice a {
+  margin-left: 2px;
+  color: #005fc7;
+  font-weight: 950;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .stage-notice-list {
   display: grid;
   gap: 10px;

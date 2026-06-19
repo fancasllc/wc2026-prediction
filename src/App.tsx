@@ -3669,7 +3669,17 @@ function MatchHeader({
         <div className="handicap-notice">
           <span>
             {handicap.option.label}に＋{formatHandicapPoints(handicap.points)}点のハンデ
+            <br />
             <em>（※参考オッズはハンデを考慮していません）</em>
+            <br />
+            ハンデ込の参考オッズは
+            <a
+              href="https://www.pinnacle.com/ja/soccer/fifa-world-cup/matchups/#all"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              こちら
+            </a>
           </span>
         </div>
       )}
