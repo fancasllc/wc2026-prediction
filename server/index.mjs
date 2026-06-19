@@ -24,6 +24,12 @@ const settlementBackupDelayMs = Math.max(
   0,
   Number(process.env.DB_BACKUP_AFTER_SETTLEMENT_DELAY_SECONDS ?? 300) * 1000,
 );
+const externalOddsRefreshIntervalMs = Math.max(
+  5 * 60 * 1000,
+  Number(process.env.EXTERNAL_ODDS_REFRESH_MINUTES ?? 30) * 60 * 1000,
+);
+const betChannelMatchesUrl = "https://bet-channel.com/matches?ct=10037";
+const betChannelApiUrl = "https://bet-channel.com/matches/api/matchlist?ct=10037&limit=300";
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -44,6 +50,75 @@ let backupTimer = null;
 let backupInProgress = false;
 let backupStorageClient = null;
 const settlementBackupTimers = new Map();
+let externalOddsTimer = null;
+let externalOddsInProgress = false;
+
+const englishCountryToJapanese = new Map(
+  Object.entries({
+    "algeria": "アルジェリア",
+    "argentina": "アルゼンチン",
+    "australia": "オーストラリア",
+    "austria": "オーストリア",
+    "belgium": "ベルギー",
+    "bosnia and herzegovina": "ボスニア・ヘルツェゴビナ",
+    "bosnia-herzegovina": "ボスニア・ヘルツェゴビナ",
+    "brazil": "ブラジル",
+    "cameroon": "カメルーン",
+    "canada": "カナダ",
+    "cabo verde": "カーボベルデ",
+    "cape verde": "カーボベルデ",
+    "colombia": "コロンビア",
+    "costa rica": "コスタリカ",
+    "cote d'ivoire": "コートジボワール",
+    "côte d'ivoire": "コートジボワール",
+    "croatia": "クロアチア",
+    "curacao": "キュラソー",
+    "curaçao": "キュラソー",
+    "czech republic": "チェコ",
+    "czechia": "チェコ",
+    "denmark": "デンマーク",
+    "dr congo": "コンゴ民主共和国",
+    "ecuador": "エクアドル",
+    "egypt": "エジプト",
+    "england": "イングランド",
+    "france": "フランス",
+    "germany": "ドイツ",
+    "ghana": "ガーナ",
+    "haiti": "ハイチ",
+    "iran": "イラン",
+    "iraq": "イラク",
+    "ivory coast": "コートジボワール",
+    "japan": "日本",
+    "jordan": "ヨルダン",
+    "korea republic": "韓国",
+    "mexico": "メキシコ",
+    "morocco": "モロッコ",
+    "netherlands": "オランダ",
+    "new zealand": "ニュージーランド",
+    "norway": "ノルウェー",
+    "panama": "パナマ",
+    "paraguay": "パラグアイ",
+    "portugal": "ポルトガル",
+    "qatar": "カタール",
+    "saudi arabia": "サウジアラビア",
+    "scotland": "スコットランド",
+    "senegal": "セネガル",
+    "south africa": "南アフリカ",
+    "south korea": "韓国",
+    "spain": "スペイン",
+    "sweden": "スウェーデン",
+    "switzerland": "スイス",
+    "tunisia": "チュニジア",
+    "turkey": "トルコ",
+    "turkiye": "トルコ",
+    "türkiye": "トルコ",
+    "united states": "アメリカ",
+    "united states of america": "アメリカ",
+    "usa": "アメリカ",
+    "uruguay": "ウルグアイ",
+    "uzbekistan": "ウズベキスタン",
+  }),
+);
 
 const pool = process.env.DATABASE_URL
   ? new Pool({
@@ -494,10 +569,31 @@ async function initializeDatabase() {
       add column if not exists external_url text,
       add column if not exists external_error text,
       add column if not exists external_uploaded_at timestamptz;
+
+    create table if not exists external_odds (
+      id text primary key,
+      match_id text not null references matches(id) on delete cascade,
+      source text not null,
+      source_match_id text not null,
+      source_url text not null,
+      home_label text not null,
+      away_label text not null,
+      home_odds numeric(10, 2),
+      draw_odds numeric(10, 2),
+      away_odds numeric(10, 2),
+      fetched_at timestamptz not null default now(),
+      raw jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      unique (source, source_match_id, match_id)
+    );
+
+    create index if not exists external_odds_match_source_fetched_idx
+      on external_odds (match_id, source, fetched_at desc);
   `);
 
   await ensureDailyBackup();
   startBackupScheduler();
+  startExternalOddsScheduler();
 }
 
 function signAdminToken(expiresAt) {
@@ -1106,8 +1202,198 @@ async function insertMatch(input, client = pool) {
   return match;
 }
 
+function normalizeOddsLabel(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[()（）+＋\d.\-−\s]/g, "")
+    .trim();
+}
+
+function englishToJapaneseCountry(value) {
+  const normalized = String(value ?? "").normalize("NFKC").toLowerCase().trim();
+  return englishCountryToJapanese.get(normalized) ?? String(value ?? "").trim();
+}
+
+function cleanFixtureLabel(value) {
+  return normalizeOddsLabel(
+    String(value ?? "")
+      .replace(/（[^）]*）/g, "")
+      .replace(/\([^)]*\)/g, "")
+      .replace(/ハンデ.*$/g, ""),
+  );
+}
+
+function parseBetChannelKickoff(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const isoLike = text.replace(/\//g, "-").replace(" ", "T");
+  const parsed = new Date(`${isoLike}Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseExternalOdds(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getBetChannelOdds(sourceMatch) {
+  const sourceMatchId = String(sourceMatch?.id ?? sourceMatch?.match_id ?? "");
+  const bets = Object.values(sourceMatch?.MatchBet ?? {})
+    .filter(Boolean)
+    .sort((a, b) => Number(a?.disp_order ?? 0) - Number(b?.disp_order ?? 0));
+  const activeBets = bets.filter((bet) => bet?.is_enabled !== false && bet?.is_cancelled !== true);
+  const drawBet = activeBets.find((bet) => String(bet?.choice_name ?? "").toUpperCase() === "DRAW");
+  const teamBets = activeBets.filter((bet) => String(bet?.choice_name ?? "").toUpperCase() !== "DRAW");
+  if (!sourceMatchId || teamBets.length < 2) return null;
+
+  const homeLabel = englishToJapaneseCountry(teamBets[0]?.choice_name);
+  const awayLabel = englishToJapaneseCountry(teamBets[1]?.choice_name);
+  const kickoffAt = parseBetChannelKickoff(sourceMatch?.game_start_ts);
+  return {
+    sourceMatchId,
+    sourceUrl: betChannelMatchesUrl,
+    homeLabel,
+    awayLabel,
+    homeOdds: parseExternalOdds(teamBets[0]?.odds),
+    drawOdds: parseExternalOdds(drawBet?.odds),
+    awayOdds: parseExternalOdds(teamBets[1]?.odds),
+    kickoffAt,
+    raw: {
+      id: sourceMatchId,
+      name: sourceMatch?.name,
+      gameStartTs: sourceMatch?.game_start_ts,
+    },
+  };
+}
+
+function doesLocalMatchFitExternal(localMatch, externalMatch) {
+  const home = cleanFixtureLabel(externalMatch.homeLabel);
+  const away = cleanFixtureLabel(externalMatch.awayLabel);
+  if (!home || !away) return false;
+
+  const localLabels = [
+    localMatch.title,
+    ...(localMatch.options ?? []).map((option) => option.label),
+  ].map(cleanFixtureLabel);
+  const hasTeams = localLabels.some((label) => label.includes(home))
+    && localLabels.some((label) => label.includes(away));
+  if (!hasTeams) return false;
+
+  if (!localMatch.startsAt || !externalMatch.kickoffAt) return true;
+  const localStart = new Date(localMatch.startsAt).getTime();
+  const externalStart = externalMatch.kickoffAt.getTime();
+  if (Number.isNaN(localStart) || Number.isNaN(externalStart)) return true;
+  return Math.abs(localStart - externalStart) <= 36 * 60 * 60 * 1000;
+}
+
+async function loadLocalMatchesForExternalOdds() {
+  const [matchesResult, optionsResult] = await Promise.all([
+    query(`
+      select id, title, starts_at as "startsAt"
+      from matches
+      where result_option_id is null
+      order by starts_at asc, created_at asc
+    `),
+    query(`
+      select id, match_id as "matchId", label
+      from match_options
+      order by sort_order asc, label asc
+    `),
+  ]);
+
+  const optionsByMatch = new Map();
+  for (const option of optionsResult.rows.filter(Boolean)) {
+    const list = optionsByMatch.get(option.matchId) ?? [];
+    list.push({ id: option.id, label: option.label });
+    optionsByMatch.set(option.matchId, list);
+  }
+
+  return matchesResult.rows.filter(Boolean).map((match) => ({
+    ...match,
+    startsAt: match.startsAt ? new Date(match.startsAt).toISOString() : null,
+    options: optionsByMatch.get(match.id) ?? [],
+  }));
+}
+
+async function refreshExternalOdds(reason = "scheduled") {
+  if (!pool || externalOddsInProgress) return;
+
+  externalOddsInProgress = true;
+  try {
+    const response = await fetch(betChannelApiUrl, {
+      headers: {
+        accept: "application/json, text/plain, */*",
+        referer: betChannelMatchesUrl,
+        "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
+        "x-requested-with": "XMLHttpRequest",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`BET CHANNEL responded ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const externalMatches = Object.values(payload ?? {}).map(getBetChannelOdds).filter(Boolean);
+    const localMatches = await loadLocalMatchesForExternalOdds();
+    let savedCount = 0;
+
+    for (const externalMatch of externalMatches) {
+      const localMatch = localMatches.find((candidate) => doesLocalMatchFitExternal(candidate, externalMatch));
+      if (!localMatch) continue;
+      await query(
+        `
+          insert into external_odds (
+            id, match_id, source, source_match_id, source_url,
+            home_label, away_label, home_odds, draw_odds, away_odds, fetched_at, raw
+          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), $11::jsonb)
+          on conflict (source, source_match_id, match_id) do update set
+            source_url = excluded.source_url,
+            home_label = excluded.home_label,
+            away_label = excluded.away_label,
+            home_odds = excluded.home_odds,
+            draw_odds = excluded.draw_odds,
+            away_odds = excluded.away_odds,
+            fetched_at = excluded.fetched_at,
+            raw = excluded.raw
+        `,
+        [
+          `bet-channel-${externalMatch.sourceMatchId}-${localMatch.id}`,
+          localMatch.id,
+          "BET CHANNEL",
+          externalMatch.sourceMatchId,
+          externalMatch.sourceUrl,
+          externalMatch.homeLabel,
+          externalMatch.awayLabel,
+          externalMatch.homeOdds,
+          externalMatch.drawOdds,
+          externalMatch.awayOdds,
+          JSON.stringify(externalMatch.raw),
+        ],
+      );
+      savedCount += 1;
+    }
+
+    console.log(`Refreshed external odds (${reason}): ${savedCount} matches saved`);
+  } catch (error) {
+    console.warn("Failed to refresh external odds", error);
+  } finally {
+    externalOddsInProgress = false;
+  }
+}
+
+function startExternalOddsScheduler() {
+  if (!pool || externalOddsTimer) return;
+  setTimeout(() => {
+    refreshExternalOdds("startup");
+  }, 15 * 1000);
+  externalOddsTimer = setInterval(() => {
+    refreshExternalOdds("scheduled");
+  }, externalOddsRefreshIntervalMs);
+}
+
 async function getState() {
-  const [matchesResult, optionsResult, votesResult, usersResult] = await Promise.all([
+  const [matchesResult, optionsResult, votesResult, usersResult, externalOddsResult] = await Promise.all([
     query(`
       select
         id,
@@ -1143,6 +1429,20 @@ async function getState() {
       order by created_at desc
     `),
     query("select name from users order by name asc"),
+    query(`
+      select distinct on (match_id)
+        match_id as "matchId",
+        source,
+        source_url as "sourceUrl",
+        home_label as "homeLabel",
+        away_label as "awayLabel",
+        home_odds::float as "homeOdds",
+        draw_odds::float as "drawOdds",
+        away_odds::float as "awayOdds",
+        fetched_at as "fetchedAt"
+      from external_odds
+      order by match_id, fetched_at desc
+    `),
   ]);
 
   const optionsByMatch = new Map();
@@ -1151,6 +1451,20 @@ async function getState() {
     const list = optionsByMatch.get(option.matchId) ?? [];
     list.push({ id: option.id, label: option.label });
     optionsByMatch.set(option.matchId, list);
+  }
+
+  const externalOddsByMatch = new Map();
+  for (const odds of externalOddsResult.rows.filter(Boolean)) {
+    externalOddsByMatch.set(odds.matchId, {
+      source: odds.source,
+      sourceUrl: odds.sourceUrl,
+      homeLabel: odds.homeLabel,
+      awayLabel: odds.awayLabel,
+      homeOdds: odds.homeOdds == null ? undefined : Number(odds.homeOdds),
+      drawOdds: odds.drawOdds == null ? undefined : Number(odds.drawOdds),
+      awayOdds: odds.awayOdds == null ? undefined : Number(odds.awayOdds),
+      fetchedAt: new Date(odds.fetchedAt).toISOString(),
+    });
   }
 
   return {
@@ -1165,6 +1479,7 @@ async function getState() {
       handicapOptionId: match.handicapOptionId ?? undefined,
       handicapPoints: Number(match.handicapPoints ?? 0),
       options: optionsByMatch.get(match.id) ?? [],
+      externalOdds: externalOddsByMatch.get(match.id) ?? undefined,
     })),
     votes: votesResult.rows.filter(Boolean).map((vote) => ({
       ...vote,

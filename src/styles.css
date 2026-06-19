@@ -1530,6 +1530,91 @@ label span {
   transform: translateY(1px);
 }
 
+.external-odds-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+  padding: 8px 9px;
+  border: 1px solid #cce3f4;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #eef8ff 0%, #f8fcff 100%);
+}
+
+.external-odds-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #5f7185;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.external-odds-heading a {
+  color: #005fc7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.external-odds-heading time {
+  margin-left: auto;
+  color: #788ba0;
+  font-size: 0.63rem;
+  white-space: nowrap;
+}
+
+.external-odds-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.external-odds-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.external-odds-item {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  padding: 4px 7px;
+  color: #08264d;
+  font-size: 0.72rem;
+  font-weight: 950;
+  background: #ffffff;
+  border: 1px solid #d5e8f5;
+  border-radius: 999px;
+  box-shadow: 0 5px 14px rgba(18, 85, 142, 0.08);
+}
+
+.external-odds-item .option-label-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.external-odds-item .option-label-flag > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.external-odds-item .country-flag {
+  width: 16px;
+  height: 11px;
+}
+
+.external-odds-item b {
+  color: #0052bd;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
 .confirm-backdrop {
   position: fixed;
   inset: 0;

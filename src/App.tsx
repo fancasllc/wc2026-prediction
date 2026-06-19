@@ -22,8 +22,8 @@ import {
 
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
 
-const REFERENCE_ODDS_URL = "https://www.365scores.com/football/league/fifa-world-cup-5930";
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
+const BET_CHANNEL_URL = "https://bet-channel.com/matches?ct=10037";
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
   アメリカ: "us",
@@ -125,6 +125,18 @@ type MatchRecord = {
   awayScore?: number;
   handicapOptionId?: string;
   handicapPoints?: number;
+  externalOdds?: ExternalOddsRecord;
+};
+
+type ExternalOddsRecord = {
+  source: string;
+  sourceUrl: string;
+  homeLabel: string;
+  awayLabel: string;
+  homeOdds?: number;
+  drawOdds?: number;
+  awayOdds?: number;
+  fetchedAt: string;
 };
 
 type ScheduledMatchCandidate = {
@@ -797,6 +809,31 @@ function OptionLabelWithFlag({
       <span>{label}</span>
     </span>
   );
+}
+
+function normalizeExternalOddsLabel(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/（[^）]*）/g, "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[+＋\d.\-−\s]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function getExternalOddsForOption(match: MatchRecord, option: MatchOption) {
+  const externalOdds = match.externalOdds;
+  if (!externalOdds) return undefined;
+  if (isDrawOption(option)) return externalOdds.drawOdds;
+
+  const label = normalizeExternalOddsLabel(option.label);
+  if (label && label === normalizeExternalOddsLabel(externalOdds.homeLabel)) return externalOdds.homeOdds;
+  if (label && label === normalizeExternalOddsLabel(externalOdds.awayLabel)) return externalOdds.awayOdds;
+  return undefined;
+}
+
+function formatExternalOdds(value: number | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)}x` : "-";
 }
 
 function isMatchOpen(match: MatchRecord, now: Date) {
@@ -2111,11 +2148,8 @@ function App() {
 
         {view === "matchDetail" && selectedMatch && (
           <section className="view-stack" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <button className="back-action" type="button" onClick={goBackFromDetail}>
-              予想テーマ一覧へ戻る
-            </button>
             <article className="match-card detail-card">
-              <MatchHeader match={selectedMatch} now={now} votes={data.votes} />
+              <MatchHeader match={selectedMatch} now={now} votes={data.votes} showStatus={false} />
 
               {selectedMatch.resultOptionId && (
                 <div className="result-panel">
@@ -2801,16 +2835,6 @@ function App() {
 
       {showReferenceOdds && (
         <div className="reference-links" aria-label="予想の参考リンク">
-          <a
-            className="reference-link"
-            href={REFERENCE_ODDS_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="海外の参考オッズを開く"
-          >
-            <span>オッズ</span>
-            <ExternalLink size={16} aria-hidden />
-          </a>
           <a
             className="reference-link"
             href={FIFA_RANKING_URL}
@@ -3533,14 +3557,58 @@ function StageNoticeCard({
   );
 }
 
+function ExternalOddsPanel({
+  match,
+}: {
+  match: MatchRecord;
+}) {
+  const externalOdds = match.externalOdds;
+  if (!externalOdds) return null;
+
+  const items = match.options
+    .map((option) => ({
+      id: option.id,
+      label: optionDisplayLabel(match, option),
+      odds: getExternalOddsForOption(match, option),
+    }))
+    .filter((item) => item.odds !== undefined);
+  if (!items.length) return null;
+
+  return (
+    <div className="external-odds-panel">
+      <div className="external-odds-heading">
+        <span>参考オッズ</span>
+        <a
+          href={externalOdds.sourceUrl || BET_CHANNEL_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          BET CHANNEL
+        </a>
+        <time>{formatDateTime(externalOdds.fetchedAt)}取得</time>
+      </div>
+      <div className="external-odds-strip" aria-label="BET CHANNELの参考オッズ">
+        {items.map((item) => (
+          <span className="external-odds-item" key={item.id}>
+            <OptionLabelWithFlag label={item.label} />
+            <b>{formatExternalOdds(item.odds)}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MatchHeader({
   match,
   now,
   votes,
+  showStatus = true,
 }: {
   match: MatchRecord;
   now: Date;
   votes: VoteRecord[];
+  showStatus?: boolean;
 }) {
   const total = getMatchTotal(match, votes);
   const status = getStatusLabel(match, now);
@@ -3549,9 +3617,11 @@ function MatchHeader({
 
   return (
     <div className="match-header">
-      <div className="match-meta">
-        <span className={`status-pill ${statusClass}`}>{status}</span>
-      </div>
+      {showStatus && (
+        <div className="match-meta">
+          <span className={`status-pill ${statusClass}`}>{status}</span>
+        </div>
+      )}
       <h3><MatchTitleWithFlags title={match.title} /></h3>
       <div className="match-timebar">
         <span>
@@ -3567,6 +3637,7 @@ function MatchHeader({
           総プール {formatPoints(total)}
         </span>
       </div>
+      <ExternalOddsPanel match={match} />
       {handicap && (
         <div className="handicap-notice">
           <b>ハンデ制</b>
