@@ -1040,7 +1040,7 @@ function YoutubeHero({
           rel="noreferrer"
           aria-label="YouTubeで視聴"
         >
-          <Play size={22} fill="currentColor" aria-hidden />
+          <Play size={15} fill="currentColor" aria-hidden />
         </a>
       )}
       {showAddButton && (
