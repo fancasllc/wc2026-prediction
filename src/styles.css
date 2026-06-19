@@ -1636,13 +1636,13 @@ label span {
 }
 
 .reference-menu-link {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 16px;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 126px;
+  gap: 8px;
+  width: 136px;
   min-height: 38px;
-  padding: 0 12px 0 14px;
+  padding: 0 12px;
   color: #ffffff;
   font-size: 0.78rem;
   font-weight: 950;
@@ -1653,6 +1653,20 @@ label span {
   box-shadow:
     0 12px 24px rgba(0, 19, 64, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.reference-menu-label {
+  min-width: 0;
+  text-align: center;
+}
+
+.reference-menu-spacer {
+  width: 16px;
+  height: 1px;
+}
+
+.reference-menu-link svg {
+  justify-self: end;
 }
 
 .reference-menu-trigger {
@@ -2773,12 +2787,28 @@ textarea:focus {
 }
 
 .person-vote-card {
+  appearance: none;
   display: grid;
   gap: 6px;
+  width: 100%;
   padding: 8px;
+  color: var(--ink);
+  text-align: left;
   background: #ffffff;
   border: 1px solid #dceaf4;
   border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.person-vote-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.person-vote-card:not(:disabled):active,
+.balance-history-card:not(:disabled):active {
+  transform: translateY(1px);
 }
 
 .person-vote-card.won {
@@ -2876,6 +2906,7 @@ textarea:focus {
 }
 
 .balance-history-card {
+  appearance: none;
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(56px, 0.55fr) auto;
   align-items: center;
@@ -2888,6 +2919,13 @@ textarea:focus {
   background: #ffffff;
   border: 1px solid #dceaf4;
   border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.balance-history-card:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .balance-history-card > span {

@@ -25,7 +25,7 @@ import {
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
 
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
-const FIFA_STANDINGS_URL = "https://www.fifa.com/ja/tournaments/mens/worldcup/canadamexicousa2026/standings";
+const FIFA_STANDINGS_URL = "https://www.flashscore.co.jp/soccer/world/world-championship/standings/SbLsX4y7/standings/";
 const WORLD_CUP_NEWS_URL = "https://www.olympics.com/ja/news/fifa-world-cup-2026-schedule-results-scores-standings-list-japan";
 const BET_CHANNEL_URL = "https://bet-channel.com/matches?ct=10037";
 
@@ -1056,9 +1056,9 @@ function YoutubeHero({
 function ReferenceMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const links = [
-    { label: "FIFAランキング", url: FIFA_RANKING_URL },
     { label: "順位表", url: FIFA_STANDINGS_URL },
     { label: "速報", url: WORLD_CUP_NEWS_URL },
+    { label: "FIFAランキング", url: FIFA_RANKING_URL },
   ];
 
   return (
@@ -1074,7 +1074,8 @@ function ReferenceMenu() {
               rel="noopener noreferrer"
               role="menuitem"
             >
-              <span>{link.label}</span>
+              <span className="reference-menu-spacer" aria-hidden />
+              <span className="reference-menu-label">{link.label}</span>
               <ExternalLink size={13} aria-hidden />
             </a>
           ))}
@@ -2364,7 +2365,6 @@ function App() {
             </button>
             <div className="section-heading">
               <div>
-                <p className="eyebrow">Person detail</p>
                 <h2>{selectedPersonName || "未選択"}</h2>
               </div>
             </div>
@@ -2403,7 +2403,7 @@ function App() {
                 収支履歴
               </div>
               {selectedBalanceRows.length ? (
-                <PersonBalanceHistory rows={selectedBalanceRows} />
+                <PersonBalanceHistory rows={selectedBalanceRows} onOpenMatch={openMatchDetail} />
               ) : (
                 <EmptyState title="確定済みの収支履歴はまだありません" />
               )}
@@ -2413,6 +2413,7 @@ function App() {
               votes={selectedPersonVotes}
               matches={data.matches}
               allVotes={data.votes}
+              onOpenMatch={openMatchDetail}
             />
           </section>
         )}
@@ -3854,10 +3855,12 @@ function PersonVoteList({
   votes,
   matches,
   allVotes,
+  onOpenMatch,
 }: {
   votes: VoteRecord[];
   matches: MatchRecord[];
   allVotes: VoteRecord[];
+  onOpenMatch: (matchId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "settled">("all");
@@ -3902,9 +3905,19 @@ function PersonVoteList({
               const payout = getVotePayout(vote, match, allVotes);
               const status = getVoteOutcomeText(payout);
               const outcomeClass = payout.settled ? (payout.won ? "won" : "lost") : "pending";
+              const canOpenMatch = Boolean(match);
 
               return (
-                <article className={`person-vote-card ${outcomeClass}`} id={`vote-detail-${vote.id}`} key={vote.id}>
+                <button
+                  className={`person-vote-card ${outcomeClass}`}
+                  disabled={!canOpenMatch}
+                  id={`vote-detail-${vote.id}`}
+                  key={vote.id}
+                  onClick={() => {
+                    if (match) onOpenMatch(match.id);
+                  }}
+                  type="button"
+                >
                   <div>
                     <strong>{match?.title ?? "削除済み"}</strong>
                     <span>{formatDateTime(vote.createdAt)}</span>
@@ -3937,7 +3950,7 @@ function PersonVoteList({
                       </dd>
                     </div>
                   </dl>
-                </article>
+                </button>
               );
             })}
           </div>
@@ -4116,6 +4129,7 @@ function AdminSettleCard({
 
 function PersonBalanceHistory({
   rows,
+  onOpenMatch,
 }: {
   rows: Array<{
     vote: VoteRecord;
@@ -4123,17 +4137,11 @@ function PersonBalanceHistory({
     payout: { gross: number; net: number; won: boolean; settled: boolean };
     balance: number;
   }>;
+  onOpenMatch: (matchId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visibleRows = expanded ? rows : rows.slice(0, 4);
   const canExpand = rows.length > 4;
-
-  function scrollToVote(voteId: string) {
-    document.getElementById(`vote-detail-${voteId}`)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
 
   return (
     <>
@@ -4141,8 +4149,11 @@ function PersonBalanceHistory({
         {visibleRows.map(({ vote, match, payout, balance }) => (
           <button
             className="balance-history-card"
+            disabled={!match}
             key={vote.id}
-            onClick={() => scrollToVote(vote.id)}
+            onClick={() => {
+              if (match) onOpenMatch(match.id);
+            }}
             type="button"
           >
             <div>
