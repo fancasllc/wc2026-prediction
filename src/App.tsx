@@ -3657,10 +3657,9 @@ function MatchHeader({
       <ExternalOddsPanel match={match} />
       {handicap && (
         <div className="handicap-notice">
-          <b>ハンデ制</b>
           <span>
-            この試合は{handicap.option.label}に＋{formatHandicapPoints(handicap.points)}点のハンデが加えられています。
-            <em>（※参考オッズはハンデを考慮していません。）</em>
+            {handicap.option.label}に＋{formatHandicapPoints(handicap.points)}点のハンデ
+            <em>（※参考オッズはハンデを考慮していません）</em>
           </span>
         </div>
       )}

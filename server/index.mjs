@@ -1454,7 +1454,7 @@ async function getState() {
         away_odds::float as "awayOdds",
         fetched_at as "fetchedAt"
       from external_odds
-      order by match_id, fetched_at desc
+      order by match_id, (draw_odds is not null) desc, fetched_at desc
     `),
   ]);
 
