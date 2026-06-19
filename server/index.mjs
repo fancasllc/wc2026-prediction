@@ -38,6 +38,11 @@ const daznJapanChannelId = process.env.YOUTUBE_CHANNEL_ID ?? "UCoFLB_Gw_AoxUuuzK
 const daznJapanVideosUrl = "https://www.youtube.com/@DAZNJapan/videos";
 const youtubeFeedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(daznJapanChannelId)}`;
 const heroFallbackImageUrl = "/hero-japan-2026.jpg";
+const youtubeThumbnailQualities = new Map([
+  ["maxresdefault", "maxresdefault.jpg"],
+  ["sddefault", "sddefault.jpg"],
+  ["hqdefault", "hqdefault.jpg"],
+]);
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -1447,14 +1452,13 @@ function readYoutubeEntryUrl(entry, videoId) {
     : `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
-function getYoutubeThumbnailCandidates(videoId, rssThumbnailUrl) {
+function getYoutubeThumbnailCandidates(videoId) {
   const encodedVideoId = encodeURIComponent(videoId);
-  return [
-    `https://i.ytimg.com/vi/${encodedVideoId}/maxresdefault.jpg`,
-    `https://i.ytimg.com/vi/${encodedVideoId}/sddefault.jpg`,
-    `https://i.ytimg.com/vi/${encodedVideoId}/hqdefault.jpg`,
-    rssThumbnailUrl,
-  ].filter((url, index, urls) => Boolean(url) && urls.indexOf(url) === index);
+  return [...youtubeThumbnailQualities.entries()].map(([quality, filename]) => ({
+    quality,
+    url: `https://i.ytimg.com/vi/${encodedVideoId}/${filename}`,
+    proxyUrl: `/api/youtube/thumbnail/${encodedVideoId}/${quality}`,
+  }));
 }
 
 async function isUsableRemoteImage(url) {
@@ -1478,10 +1482,10 @@ async function isUsableRemoteImage(url) {
   }
 }
 
-async function selectYoutubeThumbnailUrl(videoId, rssThumbnailUrl) {
-  for (const candidate of getYoutubeThumbnailCandidates(videoId, rssThumbnailUrl)) {
-    if (await isUsableRemoteImage(candidate)) {
-      return candidate;
+async function selectYoutubeThumbnailUrl(videoId) {
+  for (const candidate of getYoutubeThumbnailCandidates(videoId)) {
+    if (await isUsableRemoteImage(candidate.url)) {
+      return candidate.proxyUrl;
     }
   }
   return null;
@@ -1515,10 +1519,7 @@ async function parseYoutubeFeed(xml) {
     const title = readXmlTag(entry, "title");
     const publishedAt = readXmlTag(entry, "published");
     const updatedAt = readXmlTag(entry, "updated");
-    const thumbnailUrl = await selectYoutubeThumbnailUrl(
-      videoId,
-      readXmlAttribute(entry, "media:thumbnail", "url"),
-    );
+    const thumbnailUrl = await selectYoutubeThumbnailUrl(videoId);
     const video = buildYoutubeVideoPayload({
       videoId,
       title,
@@ -1811,6 +1812,47 @@ app.get("/api/youtube/latest", async (_request, response, next) => {
       video,
       refreshMinutes: Math.round(youtubeRefreshIntervalMs / 60 / 1000),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/youtube/thumbnail/:videoId/:quality", async (request, response, next) => {
+  try {
+    const { videoId, quality } = request.params;
+    const filename = youtubeThumbnailQualities.get(quality);
+    if (!filename || !/^[a-zA-Z0-9_-]{6,32}$/.test(videoId)) {
+      response.status(404).end();
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const thumbnailResponse = await fetch(
+        `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/${filename}`,
+        {
+          signal: controller.signal,
+          headers: {
+            accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
+          },
+        },
+      );
+      const contentType = thumbnailResponse.headers.get("content-type") ?? "";
+      if (!thumbnailResponse.ok || !contentType.toLowerCase().startsWith("image/")) {
+        response.status(404).end();
+        return;
+      }
+
+      const imageBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
+      response.setHeader("Content-Type", contentType);
+      response.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
+      response.setHeader("Content-Length", String(imageBuffer.byteLength));
+      response.send(imageBuffer);
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (error) {
     next(error);
   }
