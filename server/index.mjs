@@ -37,6 +37,7 @@ const betChannelApiUrl = "https://bet-channel.com/matches/api/matchlist?ct=10037
 const daznJapanChannelId = process.env.YOUTUBE_CHANNEL_ID ?? "UCoFLB_Gw_AoxUuuzKjXrc_Q";
 const daznJapanVideosUrl = "https://www.youtube.com/@DAZNJapan/videos";
 const youtubeFeedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(daznJapanChannelId)}`;
+const heroFallbackImageUrl = "/hero-japan-2026.jpg";
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -1446,8 +1447,64 @@ function readYoutubeEntryUrl(entry, videoId) {
     : `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
 }
 
-function parseYoutubeFeed(xml) {
+function getYoutubeThumbnailCandidates(videoId, rssThumbnailUrl) {
+  const encodedVideoId = encodeURIComponent(videoId);
+  return [
+    `https://i.ytimg.com/vi/${encodedVideoId}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${encodedVideoId}/sddefault.jpg`,
+    `https://i.ytimg.com/vi/${encodedVideoId}/hqdefault.jpg`,
+    rssThumbnailUrl,
+  ].filter((url, index, urls) => Boolean(url) && urls.indexOf(url) === index);
+}
+
+async function isUsableRemoteImage(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      headers: {
+        accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
+      },
+    });
+    const contentType = response.headers.get("content-type") ?? "";
+    return response.ok && contentType.toLowerCase().startsWith("image/");
+  } catch (_error) {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function selectYoutubeThumbnailUrl(videoId, rssThumbnailUrl) {
+  for (const candidate of getYoutubeThumbnailCandidates(videoId, rssThumbnailUrl)) {
+    if (await isUsableRemoteImage(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function buildYoutubeVideoPayload({ videoId, title, url, publishedAt, updatedAt, thumbnailUrl }) {
+  return {
+    id: videoId,
+    title: title || "DAZN Japan 最新動画",
+    url,
+    embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&playsinline=1`,
+    thumbnailUrl,
+    publishedAt: publishedAt || updatedAt || null,
+    channelTitle: "DAZN Japan",
+    sourceUrl: daznJapanVideosUrl,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function parseYoutubeFeed(xml) {
   const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)].map((match) => match[1]);
+  let fallbackVideo = null;
+
   for (const entry of entries) {
     const videoId = readXmlTag(entry, "yt:videoId");
     if (!videoId) continue;
@@ -1458,24 +1515,26 @@ function parseYoutubeFeed(xml) {
     const title = readXmlTag(entry, "title");
     const publishedAt = readXmlTag(entry, "published");
     const updatedAt = readXmlTag(entry, "updated");
-    const thumbnailUrl =
-      readXmlAttribute(entry, "media:thumbnail", "url") ||
-      `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
-
-    return {
-      id: videoId,
-      title: title || "DAZN Japan 最新動画",
+    const thumbnailUrl = await selectYoutubeThumbnailUrl(
+      videoId,
+      readXmlAttribute(entry, "media:thumbnail", "url"),
+    );
+    const video = buildYoutubeVideoPayload({
+      videoId,
+      title,
       url,
-      embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&playsinline=1`,
-      thumbnailUrl,
-      publishedAt: publishedAt || updatedAt || null,
-      channelTitle: "DAZN Japan",
-      sourceUrl: daznJapanVideosUrl,
-      fetchedAt: new Date().toISOString(),
-    };
+      publishedAt,
+      updatedAt,
+      thumbnailUrl: thumbnailUrl || heroFallbackImageUrl,
+    });
+
+    if (thumbnailUrl) {
+      return video;
+    }
+    fallbackVideo ??= video;
   }
 
-  return null;
+  return fallbackVideo;
 }
 
 async function refreshYoutubeLatestVideo(reason = "scheduled") {
@@ -1493,7 +1552,7 @@ async function refreshYoutubeLatestVideo(reason = "scheduled") {
       throw new Error(`YouTube feed responded ${response.status}`);
     }
 
-    const video = parseYoutubeFeed(await response.text());
+    const video = await parseYoutubeFeed(await response.text());
     if (!video) {
       throw new Error("No latest YouTube video found");
     }

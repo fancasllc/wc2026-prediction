@@ -10,7 +10,6 @@ import {
   Flame,
   History,
   ListPlus,
-  PlayCircle,
   RotateCcw,
   ShieldCheck,
   Trophy,
@@ -1014,9 +1013,6 @@ function YoutubeHero({
             }}
           />
           <span className="youtube-hero-overlay" aria-hidden />
-          <span className="youtube-hero-play">
-            <PlayCircle size={34} aria-hidden />
-          </span>
           <span className="youtube-hero-copy">
             <span>DAZN最新動画</span>
             <strong>{video.title}</strong>
