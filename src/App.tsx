@@ -976,15 +976,7 @@ function parseCsvMatches(text: string) {
   return { matches, errors: parsed.errors };
 }
 
-function YoutubeHero({
-  video,
-  onAddClick,
-  showAddButton,
-}: {
-  video: YoutubeVideo | null;
-  onAddClick: () => void;
-  showAddButton: boolean;
-}) {
+function YoutubeHero({ video }: { video: YoutubeVideo | null }) {
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
 
   useEffect(() => {
@@ -1043,42 +1035,56 @@ function YoutubeHero({
           <Play size={15} fill="currentColor" aria-hidden />
         </a>
       )}
-      {showAddButton && (
-        <button className="add-scheduled-button" type="button" onClick={onAddClick}>
-          <ListPlus size={16} aria-hidden />
-          追加
-        </button>
-      )}
     </header>
   );
 }
 
-function ReferenceMenu() {
+function ReferenceMenu({ onAddClick }: { onAddClick: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const links = [
-    { label: "順位表", url: FIFA_STANDINGS_URL },
-    { label: "速報", url: WORLD_CUP_NEWS_URL },
-    { label: "FIFAランキング", url: FIFA_RANKING_URL },
+    { type: "link" as const, label: "順位表", url: FIFA_STANDINGS_URL, tone: "default" as const },
+    { type: "link" as const, label: "速報", url: WORLD_CUP_NEWS_URL, tone: "default" as const },
+    { type: "link" as const, label: "FIFA\nランキング", url: FIFA_RANKING_URL, tone: "default" as const },
+    { type: "link" as const, label: "お金を借りる", url: "https://www.acom.co.jp/first/zero/", tone: "warm" as const },
+    { type: "link" as const, label: "モノを売る", url: "https://www.treasure-f.com/sell/trip/guide/", tone: "warm" as const },
+    { type: "action" as const, label: "追加", tone: "add" as const },
   ];
 
   return (
     <div className={`reference-links ${isOpen ? "open" : ""}`} aria-label="参考リンク">
       {isOpen && (
         <div className="reference-menu" role="menu" aria-label="参考リンク一覧">
-          {links.map((link) => (
-            <a
-              key={link.url}
-              className="reference-menu-link"
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              role="menuitem"
-            >
-              <span className="reference-menu-spacer" aria-hidden />
-              <span className="reference-menu-label">{link.label}</span>
-              <ExternalLink size={13} aria-hidden />
-            </a>
-          ))}
+          {links.map((link) =>
+            link.type === "link" ? (
+              <a
+                key={link.url}
+                className={`reference-menu-link ${link.tone === "warm" ? "warm-link" : ""}`}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                role="menuitem"
+              >
+                <span className="reference-menu-spacer" aria-hidden />
+                <span className="reference-menu-label">{link.label}</span>
+                <ExternalLink size={13} aria-hidden />
+              </a>
+            ) : (
+              <button
+                key={link.label}
+                className="reference-menu-link add-link"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIsOpen(false);
+                  onAddClick();
+                }}
+              >
+                <span className="reference-menu-spacer" aria-hidden />
+                <span className="reference-menu-label">{link.label}</span>
+                <ListPlus size={14} aria-hidden />
+              </button>
+            ),
+          )}
         </div>
       )}
       <button
@@ -2194,8 +2200,6 @@ function App() {
       {!isMatchDetailView && (
         <YoutubeHero
           video={latestYoutubeVideo}
-          onAddClick={openScheduledPicker}
-          showAddButton={view === "open"}
         />
       )}
 
@@ -2977,7 +2981,7 @@ function App() {
         />
       )}
 
-      {showReferenceOdds && <ReferenceMenu />}
+      {showReferenceOdds && <ReferenceMenu onAddClick={openScheduledPicker} />}
       {toastMessage && (
         <div className="toast-message" role="status">
           {toastMessage}
