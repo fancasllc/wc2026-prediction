@@ -1059,6 +1059,14 @@ function ReferenceMenu({ onAddClick }: { onAddClick: () => void }) {
     { type: "action" as const, label: "追加", tone: "add" as const },
   ];
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timer = window.setTimeout(() => {
+      setIsOpen(false);
+    }, 7000);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
   return (
     <div className={`reference-links ${isOpen ? "open" : ""}`} aria-label="参考リンク">
       {isOpen && (
@@ -3393,6 +3401,15 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           {labelRows.map(({ row, rowIndex, lineY, labelY }) => {
             const color = colors[rowIndex % colors.length];
             const isLastPlace = row.name === lastPlaceName;
+            const mascotWidth = 54;
+            const mascotHeight = 68;
+            const mascotX = plotRight + 43;
+            const mascotY = Math.min(
+              Math.max(paddingY + 10, labelY - 56),
+              height - mascotHeight - 26,
+            );
+            const mascotTextX = mascotX + mascotWidth / 2;
+            const mascotTextY = mascotY + mascotHeight + 8;
             return (
               <g key={`label-${row.name}`}>
                 <line
@@ -3403,29 +3420,45 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   y2={labelY}
                   style={{ stroke: color }}
                 />
-                <text
-                  className="trend-name-label"
-                  x={plotRight + 11}
-                  y={labelY - 3}
-                  style={{ fill: color }}
-                >
-                  <tspan x={plotRight + 11}>{shortenName(row.name, 5)}</tspan>
-                  <tspan className="trend-points-label" x={plotRight + 11} dy="11">
-                    {row.net >= 0 ? "+" : ""}
-                    {formatPoints(row.net)}
-                  </tspan>
-                </text>
                 {isLastPlace ? (
-                  <image
-                    className="trend-last-place-mascot"
-                    href="/mascots/last-place.png"
-                    x={plotRight + 42}
-                    y={labelY - 24}
-                    width="25"
-                    height="32"
-                    preserveAspectRatio="xMidYMid meet"
-                  />
-                ) : null}
+                  <>
+                    <image
+                      className="trend-last-place-mascot"
+                      href="/mascots/last-place.png"
+                      x={mascotX}
+                      y={mascotY}
+                      width={mascotWidth}
+                      height={mascotHeight}
+                      preserveAspectRatio="xMidYMid meet"
+                    />
+                    <text
+                      className="trend-name-label trend-last-place-label"
+                      x={mascotTextX}
+                      y={mascotTextY}
+                      textAnchor="middle"
+                      style={{ fill: color }}
+                    >
+                      <tspan x={mascotTextX}>{shortenName(row.name, 5)}</tspan>
+                      <tspan className="trend-points-label" x={mascotTextX} dy="10">
+                        {row.net >= 0 ? "+" : ""}
+                        {formatPoints(row.net)}
+                      </tspan>
+                    </text>
+                  </>
+                ) : (
+                  <text
+                    className="trend-name-label"
+                    x={plotRight + 11}
+                    y={labelY - 3}
+                    style={{ fill: color }}
+                  >
+                    <tspan x={plotRight + 11}>{shortenName(row.name, 5)}</tspan>
+                    <tspan className="trend-points-label" x={plotRight + 11} dy="11">
+                      {row.net >= 0 ? "+" : ""}
+                      {formatPoints(row.net)}
+                    </tspan>
+                  </text>
+                )}
               </g>
             );
           })}
