@@ -10,6 +10,7 @@ import {
   Flame,
   History,
   ListPlus,
+  PlayCircle,
   RotateCcw,
   ShieldCheck,
   Trophy,
@@ -136,6 +137,18 @@ type ExternalOddsRecord = {
   homeOdds?: number;
   drawOdds?: number;
   awayOdds?: number;
+  fetchedAt: string;
+};
+
+type YoutubeVideo = {
+  id: string;
+  title: string;
+  url: string;
+  embedUrl: string;
+  thumbnailUrl: string;
+  publishedAt?: string | null;
+  channelTitle: string;
+  sourceUrl: string;
   fetchedAt: string;
 };
 
@@ -328,6 +341,10 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
 async function fetchAppState() {
   return apiRequest<AppData>("/api/state");
+}
+
+async function fetchLatestYoutubeVideo() {
+  return apiRequest<{ video: YoutubeVideo | null; refreshMinutes: number }>("/api/youtube/latest");
 }
 
 async function fetchScheduledMatches() {
@@ -956,6 +973,86 @@ function parseCsvMatches(text: string) {
   return { matches, errors: parsed.errors };
 }
 
+function YoutubeHero({
+  video,
+  onAddClick,
+  showAddButton,
+}: {
+  video: YoutubeVideo | null;
+  onAddClick: () => void;
+  showAddButton: boolean;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    setIsPlaying(false);
+  }, [video?.id]);
+
+  return (
+    <header className={`topbar ${video ? "youtube-topbar" : ""}`}>
+      {video && isPlaying ? (
+        <iframe
+          src={video.embedUrl}
+          title={video.title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      ) : video ? (
+        <button
+          className="youtube-hero-card"
+          type="button"
+          onClick={() => setIsPlaying(true)}
+          aria-label={`${video.title}を再生`}
+        >
+          <img
+            src={video.thumbnailUrl}
+            alt=""
+            width="480"
+            height="360"
+            loading="eager"
+            decoding="async"
+          />
+          <span className="youtube-hero-overlay" aria-hidden />
+          <span className="youtube-hero-play">
+            <PlayCircle size={34} aria-hidden />
+          </span>
+          <span className="youtube-hero-copy">
+            <span>DAZN最新動画</span>
+            <strong>{video.title}</strong>
+          </span>
+        </button>
+      ) : (
+        <img
+          src="/hero-japan-2026.jpg"
+          alt="2026 日本代表サッカー予想"
+          width="1100"
+          height="550"
+          loading="eager"
+          decoding="async"
+        />
+      )}
+      {video && !isPlaying && (
+        <a
+          className="youtube-open-link"
+          href={video.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="YouTubeで開く"
+        >
+          YouTube
+          <ExternalLink size={12} aria-hidden />
+        </a>
+      )}
+      {showAddButton && (
+        <button className="add-scheduled-button" type="button" onClick={onAddClick}>
+          <ListPlus size={16} aria-hidden />
+          追加
+        </button>
+      )}
+    </header>
+  );
+}
+
 function App() {
   const now = useNow();
   const [view, setView] = useState<View>("open");
@@ -993,6 +1090,7 @@ function App() {
   const [scheduledMatches, setScheduledMatches] = useState<ScheduledMatchCandidate[]>([]);
   const [isScheduledLoading, setIsScheduledLoading] = useState(false);
   const [scheduledMessage, setScheduledMessage] = useState("");
+  const [latestYoutubeVideo, setLatestYoutubeVideo] = useState<YoutubeVideo | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1011,6 +1109,22 @@ function App() {
       })
       .finally(() => {
         if (active) setIsSyncing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchLatestYoutubeVideo()
+      .then(({ video }) => {
+        if (active) setLatestYoutubeVideo(video);
+      })
+      .catch(() => {
+        if (active) setLatestYoutubeVideo(null);
       });
 
     return () => {
@@ -2037,22 +2151,11 @@ function App() {
         </div>
       )}
       {!isMatchDetailView && (
-        <header className="topbar">
-          <img
-            src="/hero-japan-2026.jpg"
-            alt="2026 日本代表サッカー予想"
-            width="1100"
-            height="550"
-            loading="eager"
-            decoding="async"
-          />
-          {view === "open" && (
-            <button className="add-scheduled-button" type="button" onClick={openScheduledPicker}>
-              <ListPlus size={16} aria-hidden />
-              追加
-            </button>
-          )}
-        </header>
+        <YoutubeHero
+          video={latestYoutubeVideo}
+          onAddClick={openScheduledPicker}
+          showAddButton={view === "open"}
+        />
       )}
 
       <nav className="tabs" aria-label="メインナビゲーション">

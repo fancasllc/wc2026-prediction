@@ -28,8 +28,15 @@ const externalOddsRefreshIntervalMs = Math.max(
   5 * 60 * 1000,
   Number(process.env.EXTERNAL_ODDS_REFRESH_MINUTES ?? 30) * 60 * 1000,
 );
+const youtubeRefreshIntervalMs = Math.max(
+  5 * 60 * 1000,
+  Number(process.env.YOUTUBE_REFRESH_MINUTES ?? 30) * 60 * 1000,
+);
 const betChannelMatchesUrl = "https://bet-channel.com/matches?ct=10037";
 const betChannelApiUrl = "https://bet-channel.com/matches/api/matchlist?ct=10037&limit=300";
+const daznJapanChannelId = process.env.YOUTUBE_CHANNEL_ID ?? "UCoFLB_Gw_AoxUuuzKjXrc_Q";
+const daznJapanVideosUrl = "https://www.youtube.com/@DAZNJapan/videos";
+const youtubeFeedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(daznJapanChannelId)}`;
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -52,6 +59,10 @@ let backupStorageClient = null;
 const settlementBackupTimers = new Map();
 let externalOddsTimer = null;
 let externalOddsInProgress = false;
+let youtubeLatestVideoCache = null;
+let youtubeLatestVideoFetchedAt = 0;
+let youtubeLatestVideoTimer = null;
+let youtubeLatestVideoInProgress = false;
 
 const englishCountryToJapanese = new Map(
   Object.entries({
@@ -594,6 +605,7 @@ async function initializeDatabase() {
   await ensureDailyBackup();
   startBackupScheduler();
   startExternalOddsScheduler();
+  startYoutubeLatestVideoScheduler();
 }
 
 function signAdminToken(expiresAt) {
@@ -1405,6 +1417,95 @@ function startExternalOddsScheduler() {
   }, externalOddsRefreshIntervalMs);
 }
 
+function decodeXmlEntities(value = "") {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'");
+}
+
+function readXmlTag(xml, tagName) {
+  const match = xml.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tagName}>`, "i"));
+  return match ? decodeXmlEntities(match[1].trim()) : "";
+}
+
+function parseYoutubeFeed(xml) {
+  const entry = xml.match(/<entry>([\s\S]*?)<\/entry>/i)?.[1];
+  if (!entry) return null;
+
+  const videoId = readXmlTag(entry, "yt:videoId");
+  if (!videoId) return null;
+
+  const title = readXmlTag(entry, "title");
+  const publishedAt = readXmlTag(entry, "published");
+  const updatedAt = readXmlTag(entry, "updated");
+
+  return {
+    id: videoId,
+    title: title || "DAZN Japan 最新動画",
+    url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+    embedUrl: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0&playsinline=1`,
+    thumbnailUrl: `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
+    publishedAt: publishedAt || updatedAt || null,
+    channelTitle: "DAZN Japan",
+    sourceUrl: daznJapanVideosUrl,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function refreshYoutubeLatestVideo(reason = "scheduled") {
+  if (youtubeLatestVideoInProgress) return youtubeLatestVideoCache;
+
+  youtubeLatestVideoInProgress = true;
+  try {
+    const response = await fetch(youtubeFeedUrl, {
+      headers: {
+        accept: "application/atom+xml, application/xml, text/xml, */*",
+        "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`YouTube feed responded ${response.status}`);
+    }
+
+    const video = parseYoutubeFeed(await response.text());
+    if (!video) {
+      throw new Error("No latest YouTube video found");
+    }
+
+    youtubeLatestVideoCache = video;
+    youtubeLatestVideoFetchedAt = Date.now();
+    console.log(`Refreshed YouTube latest video (${reason}): ${video.id}`);
+    return youtubeLatestVideoCache;
+  } catch (error) {
+    console.warn("Failed to refresh YouTube latest video", error);
+    return youtubeLatestVideoCache;
+  } finally {
+    youtubeLatestVideoInProgress = false;
+  }
+}
+
+async function getYoutubeLatestVideo() {
+  const cacheAge = Date.now() - youtubeLatestVideoFetchedAt;
+  if (youtubeLatestVideoCache && cacheAge < youtubeRefreshIntervalMs) {
+    return youtubeLatestVideoCache;
+  }
+  return refreshYoutubeLatestVideo("request");
+}
+
+function startYoutubeLatestVideoScheduler() {
+  if (youtubeLatestVideoTimer) return;
+  setTimeout(() => {
+    refreshYoutubeLatestVideo("startup");
+  }, 8 * 1000);
+  youtubeLatestVideoTimer = setInterval(() => {
+    refreshYoutubeLatestVideo("scheduled");
+  }, youtubeRefreshIntervalMs);
+}
+
 async function getState() {
   const [matchesResult, optionsResult, votesResult, usersResult, externalOddsResult] = await Promise.all([
     query(`
@@ -1617,6 +1718,18 @@ app.get("/api/health", (_request, response) => {
 app.get("/api/state", async (_request, response, next) => {
   try {
     response.json(await getState());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/youtube/latest", async (_request, response, next) => {
+  try {
+    const video = await getYoutubeLatestVideo();
+    response.json({
+      video,
+      refreshMinutes: Math.round(youtubeRefreshIntervalMs / 60 / 1000),
+    });
   } catch (error) {
     next(error);
   }
