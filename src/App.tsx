@@ -3302,6 +3302,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
       labelTargetIndexes.add(index);
     }
   });
+  const lastPlaceName = rows[rows.length - 1]?.name;
 
   const labelRows = [...labelTargetIndexes]
     .map((rowIndex) => {
@@ -3391,6 +3392,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           })}
           {labelRows.map(({ row, rowIndex, lineY, labelY }) => {
             const color = colors[rowIndex % colors.length];
+            const isLastPlace = row.name === lastPlaceName;
             return (
               <g key={`label-${row.name}`}>
                 <line
@@ -3413,6 +3415,17 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                     {formatPoints(row.net)}
                   </tspan>
                 </text>
+                {isLastPlace ? (
+                  <image
+                    className="trend-last-place-mascot"
+                    href="/mascots/last-place.png"
+                    x={plotRight + 42}
+                    y={labelY - 24}
+                    width="25"
+                    height="32"
+                    preserveAspectRatio="xMidYMid meet"
+                  />
+                ) : null}
               </g>
             );
           })}

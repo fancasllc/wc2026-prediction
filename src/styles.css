@@ -2601,6 +2601,11 @@ textarea:focus {
   font-weight: 950;
 }
 
+.trend-last-place-mascot {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
 .trend-legend {
   display: flex;
   gap: 7px;
