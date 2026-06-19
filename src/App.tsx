@@ -3573,9 +3573,19 @@ function ExternalOddsPanel({
       isDraw: isDrawOption(option),
     }))
     .filter((item) => item.odds !== undefined);
-  if (!items.length) return null;
   const teamItems = items.filter((item) => !item.isDraw);
-  const drawItems = items.filter((item) => item.isDraw);
+  const optionDrawItems = items.filter((item) => item.isDraw);
+  const drawItems = optionDrawItems.length > 0
+    ? optionDrawItems
+    : typeof externalOdds.drawOdds === "number"
+      ? [{
+          id: `${match.id}-external-draw`,
+          label: "引き分け",
+          odds: externalOdds.drawOdds,
+          isDraw: true,
+        }]
+      : [];
+  if (!teamItems.length && !drawItems.length) return null;
 
   return (
     <div className="external-odds-panel">
