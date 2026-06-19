@@ -158,7 +158,7 @@ p {
 
 .youtube-hero-copy {
   position: absolute;
-  right: 92px;
+  right: 66px;
   bottom: 13px;
   left: 16px;
   display: grid;
@@ -192,17 +192,28 @@ p {
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 5px 9px;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
   color: #ffffff;
-  font-size: 0.7rem;
-  font-weight: 900;
   text-decoration: none;
-  background: rgba(0, 111, 232, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.58);
+  background: linear-gradient(180deg, #2895ff 0%, #0064df 100%);
+  border: 1px solid rgba(255, 255, 255, 0.66);
   border-radius: 999px;
-  box-shadow: 0 7px 16px rgba(0, 18, 58, 0.26);
+  box-shadow:
+    0 9px 18px rgba(0, 18, 58, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.youtube-open-link svg {
+  margin-left: 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 20, 60, 0.35));
+}
+
+.youtube-open-link:active {
+  transform: translateY(1px);
 }
 
 .youtube-topbar .add-scheduled-button {
@@ -1614,19 +1625,26 @@ label span {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
   z-index: 30;
   display: grid;
-  gap: 9px;
+  gap: 8px;
   justify-items: end;
 }
 
-.reference-link {
+.reference-menu {
+  display: grid;
+  gap: 7px;
+  justify-items: end;
+}
+
+.reference-menu-link {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 42px;
-  padding: 0 13px;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 126px;
+  min-height: 38px;
+  padding: 0 12px 0 14px;
   color: #ffffff;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-weight: 950;
   text-decoration: none;
   background: linear-gradient(180deg, #1486ff, #0052bd);
@@ -1637,7 +1655,25 @@ label span {
     inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
-.reference-link:active {
+.reference-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.32), transparent 28%),
+    linear-gradient(180deg, #178dff 0%, #0054c5 100%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  box-shadow:
+    0 14px 28px rgba(0, 19, 64, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.reference-menu-trigger:active,
+.reference-menu-link:active {
   transform: translateY(1px);
 }
 

@@ -10,6 +10,8 @@ import {
   Flame,
   History,
   ListPlus,
+  Menu,
+  Play,
   RotateCcw,
   ShieldCheck,
   Trophy,
@@ -23,6 +25,8 @@ import {
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
 
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
+const FIFA_STANDINGS_URL = "https://www.fifa.com/ja/tournaments/mens/worldcup/canadamexicousa2026/standings";
+const WORLD_CUP_NEWS_URL = "https://www.olympics.com/ja/news/fifa-world-cup-2026-schedule-results-scores-standings-list-japan";
 const BET_CHANNEL_URL = "https://bet-channel.com/matches?ct=10037";
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
@@ -1034,10 +1038,9 @@ function YoutubeHero({
           href={video.url}
           target="_blank"
           rel="noreferrer"
-          aria-label="YouTubeで開く"
+          aria-label="YouTubeで視聴"
         >
-          YouTube
-          <ExternalLink size={12} aria-hidden />
+          <Play size={22} fill="currentColor" aria-hidden />
         </a>
       )}
       {showAddButton && (
@@ -1047,6 +1050,46 @@ function YoutubeHero({
         </button>
       )}
     </header>
+  );
+}
+
+function ReferenceMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+  const links = [
+    { label: "FIFAランキング", url: FIFA_RANKING_URL },
+    { label: "順位表", url: FIFA_STANDINGS_URL },
+    { label: "速報", url: WORLD_CUP_NEWS_URL },
+  ];
+
+  return (
+    <div className={`reference-links ${isOpen ? "open" : ""}`} aria-label="参考リンク">
+      {isOpen && (
+        <div className="reference-menu" role="menu" aria-label="参考リンク一覧">
+          {links.map((link) => (
+            <a
+              key={link.url}
+              className="reference-menu-link"
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              role="menuitem"
+            >
+              <span>{link.label}</span>
+              <ExternalLink size={13} aria-hidden />
+            </a>
+          ))}
+        </div>
+      )}
+      <button
+        className="reference-menu-trigger"
+        type="button"
+        onClick={() => setIsOpen((value) => !value)}
+        aria-label={isOpen ? "参考リンクを閉じる" : "参考リンクを開く"}
+        aria-expanded={isOpen}
+      >
+        {isOpen ? <X size={20} aria-hidden /> : <Menu size={22} aria-hidden />}
+      </button>
+    </div>
   );
 }
 
@@ -2933,20 +2976,7 @@ function App() {
         />
       )}
 
-      {showReferenceOdds && (
-        <div className="reference-links" aria-label="予想の参考リンク">
-          <a
-            className="reference-link"
-            href={FIFA_RANKING_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="FIFAランキングを開く"
-          >
-            <span>ランキング</span>
-            <ExternalLink size={16} aria-hidden />
-          </a>
-        </div>
-      )}
+      {showReferenceOdds && <ReferenceMenu />}
       {toastMessage && (
         <div className="toast-message" role="status">
           {toastMessage}
