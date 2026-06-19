@@ -836,6 +836,12 @@ label span {
   line-height: 1.45;
 }
 
+.handicap-notice em {
+  color: #d1424c;
+  font-style: normal;
+  font-weight: 950;
+}
+
 .stage-notice-list {
   display: grid;
   gap: 10px;
@@ -1191,9 +1197,17 @@ label span {
 .match-timebar {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 6px;
+  gap: 5px;
   padding-top: 12px;
   border-top: 1px solid #dce8ef;
+}
+
+.match-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .match-timebar span {
@@ -1202,14 +1216,15 @@ label span {
   gap: 6px;
   min-width: 0;
   color: #596b75;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .match-timebar .deadline {
   color: var(--red);
-  font-size: 0.98rem;
-  font-weight: 950;
+  font-size: 0.84rem;
+  font-weight: 900;
 }
 
 .option-board {
@@ -1575,6 +1590,11 @@ label span {
   display: none;
 }
 
+.external-odds-rows {
+  display: grid;
+  gap: 5px;
+}
+
 .external-odds-item {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1589,6 +1609,11 @@ label span {
   border: 1px solid #d5e8f5;
   border-radius: 999px;
   box-shadow: 0 5px 14px rgba(18, 85, 142, 0.08);
+}
+
+.external-odds-item.draw {
+  background: #fffdf6;
+  border-color: #eadcae;
 }
 
 .external-odds-item .option-label-flag {

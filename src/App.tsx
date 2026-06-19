@@ -3570,9 +3570,12 @@ function ExternalOddsPanel({
       id: option.id,
       label: optionDisplayLabel(match, option),
       odds: getExternalOddsForOption(match, option),
+      isDraw: isDrawOption(option),
     }))
     .filter((item) => item.odds !== undefined);
   if (!items.length) return null;
+  const teamItems = items.filter((item) => !item.isDraw);
+  const drawItems = items.filter((item) => item.isDraw);
 
   return (
     <div className="external-odds-panel">
@@ -3587,13 +3590,25 @@ function ExternalOddsPanel({
         </a>
         <time>{formatDateTime(externalOdds.fetchedAt)}取得</time>
       </div>
-      <div className="external-odds-strip" aria-label="BET CHANNELの参考オッズ">
-        {items.map((item) => (
-          <span className="external-odds-item" key={item.id}>
-            <OptionLabelWithFlag label={item.label} />
-            <b>{formatExternalOdds(item.odds)}</b>
-          </span>
-        ))}
+      <div className="external-odds-rows" aria-label="BET CHANNELの参考オッズ">
+        <div className="external-odds-strip external-odds-strip-teams">
+          {teamItems.map((item) => (
+            <span className="external-odds-item" key={item.id}>
+              <OptionLabelWithFlag label={item.label} />
+              <b>{formatExternalOdds(item.odds)}</b>
+            </span>
+          ))}
+        </div>
+        {drawItems.length > 0 && (
+          <div className="external-odds-strip external-odds-strip-draw">
+            {drawItems.map((item) => (
+              <span className="external-odds-item draw" key={item.id}>
+                <OptionLabelWithFlag label={item.label} />
+                <b>{formatExternalOdds(item.odds)}</b>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3624,14 +3639,16 @@ function MatchHeader({
       )}
       <h3><MatchTitleWithFlags title={match.title} /></h3>
       <div className="match-timebar">
-        <span>
-          <CalendarClock size={16} aria-hidden />
-          開始 {formatDateTime(match.startsAt)}
-        </span>
-        <span className="deadline">
-          <Clock3 size={16} aria-hidden />
-          {minutesRemaining(match.closesAt, now)}
-        </span>
+        <div className="match-time-row">
+          <span className="deadline">
+            <Clock3 size={16} aria-hidden />
+            {minutesRemaining(match.closesAt, now)}
+          </span>
+          <span>
+            <CalendarClock size={16} aria-hidden />
+            開始 {formatDateTime(match.startsAt)}
+          </span>
+        </div>
         <span>
           <WalletCards size={16} aria-hidden />
           総プール {formatPoints(total)}
@@ -3643,7 +3660,7 @@ function MatchHeader({
           <b>ハンデ制</b>
           <span>
             この試合は{handicap.option.label}に＋{formatHandicapPoints(handicap.points)}点のハンデが加えられています。
-            最終得点にハンデを加えた結果で判定します。
+            <em>（※参考オッズはハンデを考慮していません。）</em>
           </span>
         </div>
       )}

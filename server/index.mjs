@@ -1237,14 +1237,27 @@ function parseExternalOdds(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function isBetChannelDrawChoice(bet) {
+  const values = [
+    bet?.choice_name,
+    bet?.choice_short_name,
+    bet?.name,
+    bet?.selection_name,
+  ];
+  return values.some((value) => {
+    const normalized = String(value ?? "").normalize("NFKC").trim().toLowerCase();
+    return normalized === "draw" || normalized === "x" || normalized === "引き分け" || normalized === "ドロー";
+  });
+}
+
 function getBetChannelOdds(sourceMatch) {
   const sourceMatchId = String(sourceMatch?.id ?? sourceMatch?.match_id ?? "");
   const bets = Object.values(sourceMatch?.MatchBet ?? {})
     .filter(Boolean)
     .sort((a, b) => Number(a?.disp_order ?? 0) - Number(b?.disp_order ?? 0));
   const activeBets = bets.filter((bet) => bet?.is_enabled !== false && bet?.is_cancelled !== true);
-  const drawBet = activeBets.find((bet) => String(bet?.choice_name ?? "").toUpperCase() === "DRAW");
-  const teamBets = activeBets.filter((bet) => String(bet?.choice_name ?? "").toUpperCase() !== "DRAW");
+  const drawBet = activeBets.find((bet) => isBetChannelDrawChoice(bet));
+  const teamBets = activeBets.filter((bet) => !isBetChannelDrawChoice(bet));
   if (!sourceMatchId || teamBets.length < 2) return null;
 
   const homeLabel = englishToJapaneseCountry(teamBets[0]?.choice_name);
