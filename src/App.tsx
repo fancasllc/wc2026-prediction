@@ -288,15 +288,6 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
-type RecentVoteItem = {
-  id: string;
-  userName: string;
-  matchTitle: string;
-  optionLabel: string;
-  amount: number;
-  createdAt: string;
-};
-
 type PersonTrendRow = {
   name: string;
   net: number;
@@ -1631,23 +1622,6 @@ function App() {
     });
   }, [data.matches, data.votes, userRows]);
 
-  const recentVoteItems = useMemo<RecentVoteItem[]>(() => {
-    return [...data.votes]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 18)
-      .map((vote) => {
-        const match = data.matches.find((item) => item.id === vote.matchId);
-        return {
-          id: vote.id,
-          userName: vote.userName,
-          matchTitle: match?.title ?? "削除済み",
-          optionLabel: optionLabel(match, vote.optionId),
-          amount: vote.amount,
-          createdAt: vote.createdAt,
-        };
-      });
-  }, [data.matches, data.votes]);
-
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
     const settledEvents = data.votes
       .map((vote) => {
@@ -2309,9 +2283,6 @@ function App() {
 
       {view === "open" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} onOpenPerson={openPersonDetail} />
-      )}
-      {view === "open" && recentVoteItems.length > 0 && (
-        <RecentVoteTicker items={recentVoteItems} />
       )}
 
       <main>
@@ -3273,27 +3244,6 @@ function MotivationTicker({
               <em className={`delta-${item.metaTone}`}>{item.meta}</em>
             </span>
           </button>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-function RecentVoteTicker({ items }: { items: RecentVoteItem[] }) {
-  const tickerItems = [...items, ...items];
-
-  return (
-    <aside className="recent-vote-strip" aria-label="投票速報">
-      <div className="recent-vote-track">
-        {tickerItems.map((item, index) => (
-          <span className="recent-vote-chip" key={`${item.id}-${index}`}>
-            <b>{item.userName}</b>
-            <strong>{shortenName(item.optionLabel, 8)}</strong>
-            <em>{formatPoints(item.amount)}</em>
-            <small>
-              {shortenName(item.matchTitle, 12)} / {formatTokyoDateTime(item.createdAt)}
-            </small>
-          </span>
         ))}
       </div>
     </aside>

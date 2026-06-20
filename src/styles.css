@@ -1036,7 +1036,7 @@ label span {
 .motivation-strip {
   min-width: 0;
   max-height: 62px;
-  margin: -2px 0 5px;
+  margin: -4px -2px 10px 0;
   padding: 5px 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -1058,9 +1058,9 @@ label span {
 .motivation-track {
   display: flex;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
   min-width: 100%;
-  padding: 0 7px;
+  padding: 0 5px;
 }
 
 .motivation-chip {
@@ -1068,10 +1068,10 @@ label span {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 0 0 calc((100% - 26px) / 2);
+  flex: 0 0 calc((100% - 22px) / 2.15);
   min-width: 0;
   min-height: 39px;
-  padding: 4px 8px 5px 25px;
+  padding: 4px 7px 5px 20px;
   color: #ffffff;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
@@ -1099,14 +1099,14 @@ label span {
 
 .motivation-chip small {
   position: absolute;
-  top: 3px;
+  top: 4px;
   left: 3px;
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   color: #ffdf58;
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   font-style: normal;
   font-weight: 950;
   line-height: 1;
@@ -1162,93 +1162,6 @@ label span {
 
 .motivation-chip em.delta-negative {
   color: #ff9eaa;
-}
-
-.recent-vote-strip {
-  min-width: 0;
-  height: 31px;
-  margin: 0 0 10px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(217, 235, 248, 0.96);
-  border-radius: 8px;
-  box-shadow: 0 7px 16px rgba(0, 42, 103, 0.12);
-}
-
-.recent-vote-track {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: max-content;
-  min-width: 200%;
-  height: 100%;
-  padding: 3px 7px;
-  animation: recent-vote-scroll 38s linear infinite;
-}
-
-.recent-vote-strip:hover .recent-vote-track {
-  animation-play-state: paused;
-}
-
-.recent-vote-chip {
-  display: grid;
-  grid-template-columns: auto auto auto;
-  align-items: center;
-  gap: 1px 5px;
-  flex: 0 0 auto;
-  min-width: 176px;
-  max-width: 228px;
-  min-height: 24px;
-  padding: 3px 8px;
-  color: #123352;
-  background: linear-gradient(180deg, #f8fcff, #eef8ff);
-  border: 1px solid #d2e7f5;
-  border-radius: 999px;
-}
-
-.recent-vote-chip b,
-.recent-vote-chip strong,
-.recent-vote-chip em,
-.recent-vote-chip small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-vote-chip b {
-  color: #05386f;
-  font-size: 0.64rem;
-  font-weight: 950;
-}
-
-.recent-vote-chip strong {
-  color: #02714e;
-  font-size: 0.64rem;
-  font-weight: 950;
-}
-
-.recent-vote-chip em {
-  color: #d94f5d;
-  font-size: 0.62rem;
-  font-style: normal;
-  font-weight: 950;
-}
-
-.recent-vote-chip small {
-  grid-column: 1 / -1;
-  color: #60748b;
-  font-size: 0.53rem;
-  font-weight: 850;
-}
-
-@keyframes recent-vote-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
 }
 
 .odds-track {
