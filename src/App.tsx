@@ -1618,7 +1618,14 @@ function App() {
         meta: yesterdayDelta === 0
           ? "昨日対比 ー"
           : `昨日対比 ${yesterdayDelta >= 0 ? "+" : ""}${formatPoints(yesterdayDelta)}`,
-        metaTone: yesterdayDelta > 0 ? "positive" : yesterdayDelta < 0 ? "negative" : "neutral",
+        metaTone:
+          yesterdayDelta > 0
+            ? "positive"
+            : yesterdayDelta < 0
+              ? "negative"
+              : row.net >= 0
+                ? "positive"
+                : "neutral",
         tone: row.net >= 0 ? "positive" : "neutral",
       };
     });
