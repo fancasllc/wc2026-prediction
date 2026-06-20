@@ -1610,18 +1610,19 @@ function App() {
     return rankedRows.map((row, index) => {
       const summary = userRows.find((userRow) => userRow.name === row.name);
       const yesterdayDelta = summary?.yesterdayDelta ?? row.net;
+      const displayYesterdayDelta = Math.round(yesterdayDelta);
       return {
         id: `net-rank-${row.name}-${index + 1}`,
         badge: `${index + 1}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
-        meta: yesterdayDelta === 0
+        meta: displayYesterdayDelta === 0
           ? "昨日対比 ー"
-          : `昨日対比 ${yesterdayDelta >= 0 ? "+" : ""}${formatPoints(yesterdayDelta)}`,
+          : `昨日対比 ${displayYesterdayDelta >= 0 ? "+" : ""}${formatPoints(displayYesterdayDelta)}`,
         metaTone:
-          yesterdayDelta > 0
+          displayYesterdayDelta > 0
             ? "positive"
-            : yesterdayDelta < 0
+            : displayYesterdayDelta < 0
               ? "negative"
               : row.net >= 0
                 ? "positive"
