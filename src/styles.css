@@ -1142,8 +1142,12 @@ label span {
   color: #fff15a;
 }
 
+.motivation-chip em.delta-neutral {
+  color: #fff15a;
+}
+
 .motivation-chip em.delta-negative {
-  color: #ff9eaa;
+  color: #d7e7ff;
 }
 
 .odds-track {

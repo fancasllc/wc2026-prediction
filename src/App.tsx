@@ -1615,7 +1615,9 @@ function App() {
         badge: `${index + 1}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
-        meta: `昨日対比 ${yesterdayDelta >= 0 ? "+" : ""}${formatPoints(yesterdayDelta)}`,
+        meta: yesterdayDelta === 0
+          ? "昨日対比 ー"
+          : `昨日対比 ${yesterdayDelta >= 0 ? "+" : ""}${formatPoints(yesterdayDelta)}`,
         metaTone: yesterdayDelta > 0 ? "positive" : yesterdayDelta < 0 ? "negative" : "neutral",
         tone: row.net >= 0 ? "positive" : "neutral",
       };
