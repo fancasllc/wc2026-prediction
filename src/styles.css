@@ -223,9 +223,9 @@ p {
   z-index: 80;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
-  margin: 12px 0 18px;
-  padding: 5px;
+  gap: 4px;
+  margin: 8px 0 8px;
+  padding: 4px;
   background: rgba(255, 255, 255, 0.93);
   border: 1px solid rgba(226, 239, 248, 0.96);
   border-radius: 8px;
@@ -237,12 +237,12 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  min-height: 44px;
-  padding: 7px 3px;
+  min-height: 30px;
+  padding: 4px 2px;
   color: #5d6f84;
-  font-size: clamp(0.78rem, 2.7vw, 0.9rem);
+  font-size: clamp(0.7rem, 2.35vw, 0.82rem);
   font-weight: 900;
   white-space: nowrap;
   background: transparent;
@@ -252,6 +252,8 @@ p {
 
 .tabs button svg {
   flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
 }
 
 .tabs button.active {
@@ -1033,9 +1035,9 @@ label span {
 
 .motivation-strip {
   min-width: 0;
-  max-height: 92px;
-  margin: -6px 0 16px;
-  padding: 8px 0;
+  max-height: 62px;
+  margin: -2px 0 5px;
+  padding: 5px 0;
   overflow-x: auto;
   overflow-y: hidden;
   background:
@@ -1056,9 +1058,9 @@ label span {
 .motivation-track {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
   min-width: 100%;
-  padding: 0 9px;
+  padding: 0 7px;
 }
 
 .motivation-chip {
@@ -1068,8 +1070,8 @@ label span {
   align-items: center;
   flex: 0 0 calc((100% - 26px) / 2);
   min-width: 0;
-  min-height: 58px;
-  padding: 7px 10px 8px 30px;
+  min-height: 39px;
+  padding: 4px 8px 5px 25px;
   color: #ffffff;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
@@ -1089,7 +1091,7 @@ label span {
 
 .motivation-chip span {
   display: grid;
-  gap: 3px;
+  gap: 1px;
   min-width: 0;
   width: 100%;
   justify-items: end;
@@ -1097,14 +1099,14 @@ label span {
 
 .motivation-chip small {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 3px;
+  left: 3px;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #ffdf58;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-style: normal;
   font-weight: 950;
   line-height: 1;
@@ -1119,7 +1121,7 @@ label span {
   min-width: 0;
   max-width: 100%;
   color: #ffffff;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 950;
   line-height: 1.15;
   margin-top: -2px;
@@ -1130,7 +1132,7 @@ label span {
 .motivation-chip strong {
   justify-self: end;
   color: #ffdf58;
-  font-size: 1.22rem;
+  font-size: 1rem;
   font-weight: 950;
   line-height: 1;
   text-align: right;
@@ -1145,13 +1147,108 @@ label span {
   justify-self: end;
   overflow: hidden;
   color: #b9d5ff;
-  font-size: 0.61rem;
+  font-size: 0.56rem;
   font-style: normal;
   font-weight: 900;
   line-height: 1.15;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.motivation-chip em.delta-positive {
+  color: #fff15a;
+}
+
+.motivation-chip em.delta-negative {
+  color: #ff9eaa;
+}
+
+.recent-vote-strip {
+  min-width: 0;
+  height: 31px;
+  margin: 0 0 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(217, 235, 248, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 7px 16px rgba(0, 42, 103, 0.12);
+}
+
+.recent-vote-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content;
+  min-width: 200%;
+  height: 100%;
+  padding: 3px 7px;
+  animation: recent-vote-scroll 38s linear infinite;
+}
+
+.recent-vote-strip:hover .recent-vote-track {
+  animation-play-state: paused;
+}
+
+.recent-vote-chip {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: 1px 5px;
+  flex: 0 0 auto;
+  min-width: 176px;
+  max-width: 228px;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: #123352;
+  background: linear-gradient(180deg, #f8fcff, #eef8ff);
+  border: 1px solid #d2e7f5;
+  border-radius: 999px;
+}
+
+.recent-vote-chip b,
+.recent-vote-chip strong,
+.recent-vote-chip em,
+.recent-vote-chip small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-vote-chip b {
+  color: #05386f;
+  font-size: 0.64rem;
+  font-weight: 950;
+}
+
+.recent-vote-chip strong {
+  color: #02714e;
+  font-size: 0.64rem;
+  font-weight: 950;
+}
+
+.recent-vote-chip em {
+  color: #d94f5d;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.recent-vote-chip small {
+  grid-column: 1 / -1;
+  color: #60748b;
+  font-size: 0.53rem;
+  font-weight: 850;
+}
+
+@keyframes recent-vote-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .odds-track {

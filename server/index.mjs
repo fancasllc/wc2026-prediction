@@ -69,6 +69,8 @@ let youtubeLatestVideoCache = null;
 let youtubeLatestVideoFetchedAt = 0;
 let youtubeLatestVideoTimer = null;
 let youtubeLatestVideoInProgress = false;
+let userPointSnapshotTimer = null;
+let userPointSnapshotInProgress = false;
 
 const englishCountryToJapanese = new Map(
   Object.entries({
@@ -537,6 +539,16 @@ async function initializeDatabase() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists user_point_snapshots (
+      snapshot_date date not null,
+      user_name text not null references users(name) on delete cascade,
+      settled_net numeric(14, 2) not null default 0,
+      gross_payout numeric(14, 2) not null default 0,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key (snapshot_date, user_name)
+    );
+
     create table if not exists votes (
       id text primary key,
       match_id text not null references matches(id) on delete cascade,
@@ -548,6 +560,8 @@ async function initializeDatabase() {
 
     create index if not exists votes_match_id_idx on votes(match_id);
     create index if not exists votes_user_name_idx on votes(user_name);
+    create index if not exists user_point_snapshots_user_date_idx
+      on user_point_snapshots (user_name, snapshot_date desc);
 
     alter table matches
       add column if not exists notice text not null default '',
@@ -611,7 +625,9 @@ async function initializeDatabase() {
       on external_odds (match_id, source, fetched_at desc);
   `);
 
+  await refreshTodayUserPointSnapshots();
   await ensureDailyBackup();
+  startUserPointSnapshotScheduler();
   startBackupScheduler();
   startExternalOddsScheduler();
   startYoutubeLatestVideoScheduler();
@@ -716,6 +732,90 @@ function getTokyoDateParts(date = new Date()) {
   };
 }
 
+async function refreshTodayUserPointSnapshots(db = pool) {
+  if (!db || userPointSnapshotInProgress) return;
+
+  const { dateKey } = getTokyoDateParts();
+  userPointSnapshotInProgress = true;
+  try {
+    const snapshotResult = await db.query(
+      `
+        with cutoff as (
+          select ($1::date::timestamp at time zone 'Asia/Tokyo') as cutoff_at
+        ),
+        match_pools as (
+          select
+            matches.id as match_id,
+            sum(votes.amount) as total_pool,
+            sum(votes.amount) filter (where votes.option_id = matches.result_option_id) as winning_pool
+          from matches
+          join votes on votes.match_id = matches.id
+          group by matches.id, matches.result_option_id
+        )
+        select
+          users.name as "userName",
+          coalesce(sum(
+            case
+              when matches.result_option_id is not null
+                and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
+              then
+                case
+                  when votes.option_id = matches.result_option_id
+                    and coalesce(match_pools.winning_pool, 0) > 0
+                  then (match_pools.total_pool * votes.amount / match_pools.winning_pool) - votes.amount
+                  else -votes.amount
+                end
+              else 0
+            end
+          ), 0)::float as "settledNet",
+          coalesce(sum(
+            case
+              when matches.result_option_id is not null
+                and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
+                and votes.option_id = matches.result_option_id
+                and coalesce(match_pools.winning_pool, 0) > 0
+              then match_pools.total_pool * votes.amount / match_pools.winning_pool
+              else 0
+            end
+          ), 0)::float as "grossPayout"
+        from users
+        cross join cutoff
+        left join votes on votes.user_name = users.name
+        left join matches on matches.id = votes.match_id
+        left join match_pools on match_pools.match_id = matches.id
+        group by users.name
+      `,
+      [dateKey],
+    );
+
+    for (const row of snapshotResult.rows) {
+      await db.query(
+        `
+          insert into user_point_snapshots (
+            snapshot_date, user_name, settled_net, gross_payout, updated_at
+          ) values ($1::date, $2, $3, $4, now())
+          on conflict (snapshot_date, user_name) do update set
+            settled_net = excluded.settled_net,
+            gross_payout = excluded.gross_payout,
+            updated_at = now()
+        `,
+        [dateKey, row.userName, row.settledNet, row.grossPayout],
+      );
+    }
+  } catch (error) {
+    console.error("Failed to refresh user point snapshots", error);
+  } finally {
+    userPointSnapshotInProgress = false;
+  }
+}
+
+function startUserPointSnapshotScheduler() {
+  if (!pool || userPointSnapshotTimer) return;
+  userPointSnapshotTimer = setInterval(() => {
+    refreshTodayUserPointSnapshots();
+  }, backupCheckIntervalMs);
+}
+
 function csvEscape(value) {
   if (value === undefined || value === null) return "";
   const text = String(value);
@@ -754,6 +854,9 @@ function buildCsv(rows) {
     "user_pending_points",
     "user_gross_return",
     "user_settled_net",
+    "snapshot_date",
+    "snapshot_settled_net",
+    "snapshot_gross_payout",
   ];
 
   return [
@@ -790,7 +893,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
   const backupCreatedAt = new Date().toISOString();
   const run = (text, params = []) => db.query(text, params);
 
-  const [matchesResult, optionsResult, usersResult, votesResult] = await Promise.all([
+  const [matchesResult, optionsResult, usersResult, votesResult, snapshotsResult] = await Promise.all([
     run(`
       select
         id,
@@ -826,12 +929,24 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       from votes
       order by created_at asc
     `),
+    run(`
+      select
+        snapshot_date,
+        user_name,
+        settled_net::float as settled_net,
+        gross_payout::float as gross_payout,
+        created_at,
+        updated_at
+      from user_point_snapshots
+      order by snapshot_date asc, user_name asc
+    `),
   ]);
 
   const matches = matchesResult.rows;
   const options = optionsResult.rows;
   const users = usersResult.rows;
   const votes = votesResult.rows;
+  const snapshots = snapshotsResult.rows;
   const matchById = new Map(matches.map((match) => [match.id, match]));
   const optionById = new Map(options.map((option) => [option.id, option]));
 
@@ -941,6 +1056,19 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       user_pending_points: Math.round(summary.pendingPoints),
       user_gross_return: Math.round(summary.grossReturn),
       user_settled_net: Math.round(summary.settledNet),
+    });
+  }
+
+  for (const snapshot of snapshots) {
+    rows.push({
+      section: "user_point_snapshots",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: `${snapshot.snapshot_date}:${snapshot.user_name}`,
+      user_name: snapshot.user_name,
+      snapshot_date: snapshot.snapshot_date?.toISOString?.().slice(0, 10) ?? snapshot.snapshot_date,
+      snapshot_settled_net: Math.round(snapshot.settled_net),
+      snapshot_gross_payout: Math.round(snapshot.gross_payout),
     });
   }
 
@@ -1596,7 +1724,15 @@ function startYoutubeLatestVideoScheduler() {
 }
 
 async function getState() {
-  const [matchesResult, optionsResult, votesResult, usersResult, externalOddsResult] = await Promise.all([
+  const { dateKey } = getTokyoDateParts();
+  const [
+    matchesResult,
+    optionsResult,
+    votesResult,
+    usersResult,
+    userPointSnapshotsResult,
+    externalOddsResult,
+  ] = await Promise.all([
     query(`
       select
         id,
@@ -1633,6 +1769,17 @@ async function getState() {
       order by created_at desc
     `),
     query("select name from users order by name asc"),
+    query(`
+      select
+        snapshot_date::text as "snapshotDate",
+        user_name as "userName",
+        settled_net::float as "settledNet",
+        gross_payout::float as "grossPayout",
+        updated_at as "updatedAt"
+      from user_point_snapshots
+      where snapshot_date = $1::date
+      order by user_name asc
+    `, [dateKey]),
     query(`
       select distinct on (match_id)
         match_id as "matchId",
@@ -1690,6 +1837,10 @@ async function getState() {
       createdAt: new Date(vote.createdAt).toISOString(),
     })),
     knownUsers: usersResult.rows.filter(Boolean).map((user) => user.name),
+    userPointSnapshots: userPointSnapshotsResult.rows.filter(Boolean).map((row) => ({
+      ...row,
+      updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : undefined,
+    })),
   };
 }
 

@@ -172,10 +172,19 @@ type VoteRecord = {
   createdAt: string;
 };
 
+type UserPointSnapshot = {
+  snapshotDate: string;
+  userName: string;
+  settledNet: number;
+  grossPayout: number;
+  updatedAt?: string;
+};
+
 type AppData = {
   matches: MatchRecord[];
   votes: VoteRecord[];
   knownUsers: string[];
+  userPointSnapshots?: UserPointSnapshot[];
 };
 
 type BackupRecord = {
@@ -275,7 +284,17 @@ type MotivationItem = {
   name: string;
   value: string;
   meta: string;
+  metaTone: "positive" | "negative" | "neutral";
   tone: "positive" | "neutral";
+};
+
+type RecentVoteItem = {
+  id: string;
+  userName: string;
+  matchTitle: string;
+  optionLabel: string;
+  amount: number;
+  createdAt: string;
 };
 
 type PersonTrendRow = {
@@ -520,9 +539,10 @@ function loadData(): AppData {
       matches: parsed.matches?.length ? parsed.matches : defaultMatches,
       votes: parsed.votes ?? [],
       knownUsers: parsed.knownUsers ?? [],
+      userPointSnapshots: parsed.userPointSnapshots ?? [],
     };
   } catch {
-    return { matches: defaultMatches, votes: [], knownUsers: [] };
+    return { matches: defaultMatches, votes: [], knownUsers: [], userPointSnapshots: [] };
   }
 }
 
@@ -1526,6 +1546,10 @@ function App() {
   }, [data.votes, pendingMatch, pendingVote]);
 
   const userRows = useMemo(() => {
+    const snapshotByUser = new Map(
+      (data.userPointSnapshots ?? []).map((snapshot) => [snapshot.userName, snapshot]),
+    );
+
     return data.knownUsers
       .map((name) => {
         const votes = data.votes.filter((vote) => vote.userName === name);
@@ -1546,11 +1570,12 @@ function App() {
         return {
           name,
           votes: votes.length,
+          yesterdayDelta: totals.net - (snapshotByUser.get(name)?.settledNet ?? 0),
           ...totals,
         };
       })
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
-  }, [data.matches, data.votes, data.knownUsers]);
+  }, [data.matches, data.votes, data.knownUsers, data.userPointSnapshots]);
 
   const motivationItems = useMemo<MotivationItem[]>(() => {
     const settledVoteRows = data.votes
@@ -1592,15 +1617,35 @@ function App() {
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
 
     return rankedRows.map((row, index) => {
+      const summary = userRows.find((userRow) => userRow.name === row.name);
+      const yesterdayDelta = summary?.yesterdayDelta ?? row.net;
       return {
         id: `net-rank-${row.name}-${index + 1}`,
         badge: `${index + 1}位`,
         name: row.name,
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
-        meta: `投票中 ${formatPoints(row.pending)}`,
+        meta: `昨日対比 ${yesterdayDelta >= 0 ? "+" : ""}${formatPoints(yesterdayDelta)}`,
+        metaTone: yesterdayDelta > 0 ? "positive" : yesterdayDelta < 0 ? "negative" : "neutral",
         tone: row.net >= 0 ? "positive" : "neutral",
       };
     });
+  }, [data.matches, data.votes, userRows]);
+
+  const recentVoteItems = useMemo<RecentVoteItem[]>(() => {
+    return [...data.votes]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 18)
+      .map((vote) => {
+        const match = data.matches.find((item) => item.id === vote.matchId);
+        return {
+          id: vote.id,
+          userName: vote.userName,
+          matchTitle: match?.title ?? "削除済み",
+          optionLabel: optionLabel(match, vote.optionId),
+          amount: vote.amount,
+          createdAt: vote.createdAt,
+        };
+      });
   }, [data.matches, data.votes]);
 
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
@@ -2264,6 +2309,9 @@ function App() {
 
       {view === "open" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} onOpenPerson={openPersonDetail} />
+      )}
+      {view === "open" && recentVoteItems.length > 0 && (
+        <RecentVoteTicker items={recentVoteItems} />
       )}
 
       <main>
@@ -3222,9 +3270,30 @@ function MotivationTicker({
             <span>
               <b>{item.name}</b>
               <strong>{item.value}</strong>
-              <em>{item.meta}</em>
+              <em className={`delta-${item.metaTone}`}>{item.meta}</em>
             </span>
           </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function RecentVoteTicker({ items }: { items: RecentVoteItem[] }) {
+  const tickerItems = [...items, ...items];
+
+  return (
+    <aside className="recent-vote-strip" aria-label="投票速報">
+      <div className="recent-vote-track">
+        {tickerItems.map((item, index) => (
+          <span className="recent-vote-chip" key={`${item.id}-${index}`}>
+            <b>{item.userName}</b>
+            <strong>{shortenName(item.optionLabel, 8)}</strong>
+            <em>{formatPoints(item.amount)}</em>
+            <small>
+              {shortenName(item.matchTitle, 12)} / {formatTokyoDateTime(item.createdAt)}
+            </small>
+          </span>
         ))}
       </div>
     </aside>
@@ -3403,7 +3472,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
             const isLastPlace = row.name === lastPlaceName;
             const mascotWidth = 54;
             const mascotHeight = 68;
-            const mascotX = plotRight + 43;
+            const mascotX = plotRight + 20;
             const mascotY = Math.min(
               Math.max(paddingY + 10, labelY - 56),
               height - mascotHeight - 26,
