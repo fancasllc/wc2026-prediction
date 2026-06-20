@@ -3237,9 +3237,8 @@ function MotivationTicker({
             onClick={() => onOpenPerson(item.name)}
             type="button"
           >
-            <small>{item.badge.replace("位", "")}</small>
             <span>
-              <b>{item.name}</b>
+              <b>{item.badge.replace("位", "")} {item.name}</b>
               <strong>{item.value}</strong>
               <em className={`delta-${item.metaTone}`}>{item.meta}</em>
             </span>
