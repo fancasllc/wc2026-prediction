@@ -2968,6 +2968,15 @@ textarea:focus {
   opacity: 1;
 }
 
+.balance-history-card.adjustment-history-card {
+  background: linear-gradient(180deg, #fff9df 0%, #fff2bd 100%);
+  border-color: #f2c638;
+  box-shadow:
+    inset 3px 0 0 #d44f5d,
+    0 8px 16px rgba(100, 67, 0, 0.12);
+  cursor: default;
+}
+
 .balance-history-card > span {
   min-width: 0;
   color: #60748b;
@@ -2993,6 +3002,16 @@ textarea:focus {
   color: #60748b;
   font-size: 0.64rem;
   font-weight: 900;
+}
+
+.balance-history-card em {
+  min-width: 0;
+  color: #a33a45;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .balance-history-card > div:last-child {
@@ -3021,6 +3040,49 @@ textarea:focus {
 
 .form-panel {
   align-content: start;
+}
+
+.point-adjustment-form,
+.point-adjustment-entries {
+  display: grid;
+  gap: 10px;
+}
+
+.point-adjustment-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, 0.45fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+  padding: 9px;
+  background: #f5fbff;
+  border: 1px solid #d7eaf6;
+  border-radius: 8px;
+}
+
+.point-adjustment-remove {
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.point-adjustment-total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
+  color: #52677d;
+  font-size: 0.82rem;
+  font-weight: 950;
+  background: #eef8ff;
+  border: 1px solid #d4e8f4;
+  border-radius: 8px;
+}
+
+.point-adjustment-total b {
+  font-size: 1rem;
+  font-weight: 950;
 }
 
 .wide {

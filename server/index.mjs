@@ -549,6 +549,21 @@ async function initializeDatabase() {
       primary key (snapshot_date, user_name)
     );
 
+    create table if not exists point_adjustments (
+      id text primary key,
+      title text not null,
+      reason text not null,
+      created_at timestamptz not null default now()
+    );
+
+    create table if not exists point_adjustment_entries (
+      id text primary key,
+      adjustment_id text not null references point_adjustments(id) on delete cascade,
+      user_name text not null references users(name) on delete restrict,
+      amount numeric(14, 2) not null check (amount <> 0),
+      sort_order integer not null default 0
+    );
+
     create table if not exists votes (
       id text primary key,
       match_id text not null references matches(id) on delete cascade,
@@ -562,6 +577,8 @@ async function initializeDatabase() {
     create index if not exists votes_user_name_idx on votes(user_name);
     create index if not exists user_point_snapshots_user_date_idx
       on user_point_snapshots (user_name, snapshot_date desc);
+    create index if not exists point_adjustment_entries_user_idx
+      on point_adjustment_entries (user_name);
 
     alter table matches
       add column if not exists notice text not null default '',
@@ -751,10 +768,20 @@ async function refreshTodayUserPointSnapshots(db = pool) {
           from matches
           join votes on votes.match_id = matches.id
           group by matches.id, matches.result_option_id
+        ),
+        adjustment_sums as (
+          select
+            point_adjustment_entries.user_name,
+            sum(point_adjustment_entries.amount) as adjustment_net
+          from point_adjustment_entries
+          join point_adjustments on point_adjustments.id = point_adjustment_entries.adjustment_id
+          cross join cutoff
+          where point_adjustments.created_at <= cutoff.cutoff_at
+          group by point_adjustment_entries.user_name
         )
         select
           users.name as "userName",
-          coalesce(sum(
+          (coalesce(sum(
             case
               when matches.result_option_id is not null
                 and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
@@ -767,8 +794,8 @@ async function refreshTodayUserPointSnapshots(db = pool) {
                 end
               else 0
             end
-          ), 0)::float as "settledNet",
-          coalesce(sum(
+          ), 0) + coalesce(adjustment_sums.adjustment_net, 0))::float as "settledNet",
+          (coalesce(sum(
             case
               when matches.result_option_id is not null
                 and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
@@ -777,13 +804,14 @@ async function refreshTodayUserPointSnapshots(db = pool) {
               then match_pools.total_pool * votes.amount / match_pools.winning_pool
               else 0
             end
-          ), 0)::float as "grossPayout"
+          ), 0) + coalesce(adjustment_sums.adjustment_net, 0))::float as "grossPayout"
         from users
         cross join cutoff
         left join votes on votes.user_name = users.name
         left join matches on matches.id = votes.match_id
         left join match_pools on match_pools.match_id = matches.id
-        group by users.name
+        left join adjustment_sums on adjustment_sums.user_name = users.name
+        group by users.name, adjustment_sums.adjustment_net
       `,
       [dateKey],
     );
@@ -857,6 +885,11 @@ function buildCsv(rows) {
     "snapshot_date",
     "snapshot_settled_net",
     "snapshot_gross_payout",
+    "adjustment_id",
+    "adjustment_title",
+    "adjustment_reason",
+    "adjustment_amount",
+    "adjustment_created_at",
   ];
 
   return [
@@ -893,7 +926,14 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
   const backupCreatedAt = new Date().toISOString();
   const run = (text, params = []) => db.query(text, params);
 
-  const [matchesResult, optionsResult, usersResult, votesResult, snapshotsResult] = await Promise.all([
+  const [
+    matchesResult,
+    optionsResult,
+    usersResult,
+    votesResult,
+    snapshotsResult,
+    adjustmentsResult,
+  ] = await Promise.all([
     run(`
       select
         id,
@@ -940,6 +980,19 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       from user_point_snapshots
       order by snapshot_date asc, user_name asc
     `),
+    run(`
+      select
+        point_adjustment_entries.id,
+        point_adjustments.id as adjustment_id,
+        point_adjustments.title,
+        point_adjustments.reason,
+        point_adjustment_entries.user_name,
+        point_adjustment_entries.amount::float as amount,
+        point_adjustments.created_at
+      from point_adjustment_entries
+      join point_adjustments on point_adjustments.id = point_adjustment_entries.adjustment_id
+      order by point_adjustments.created_at asc, point_adjustment_entries.sort_order asc
+    `),
   ]);
 
   const matches = matchesResult.rows;
@@ -947,6 +1000,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
   const users = usersResult.rows;
   const votes = votesResult.rows;
   const snapshots = snapshotsResult.rows;
+  const adjustments = adjustmentsResult.rows;
   const matchById = new Map(matches.map((match) => [match.id, match]));
   const optionById = new Map(options.map((option) => [option.id, option]));
 
@@ -1031,6 +1085,9 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
 
   for (const user of users) {
     const userVotes = votes.filter((vote) => vote.user_name === user.name);
+    const adjustmentNet = adjustments
+      .filter((adjustment) => adjustment.user_name === user.name)
+      .reduce((sum, adjustment) => sum + Number(adjustment.amount), 0);
     const summary = userVotes.reduce(
       (acc, vote) => {
         const match = matchById.get(vote.match_id);
@@ -1054,8 +1111,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       user_vote_count: summary.voteCount,
       user_total_staked: Math.round(summary.totalStaked),
       user_pending_points: Math.round(summary.pendingPoints),
-      user_gross_return: Math.round(summary.grossReturn),
-      user_settled_net: Math.round(summary.settledNet),
+      user_gross_return: Math.round(summary.grossReturn + adjustmentNet),
+      user_settled_net: Math.round(summary.settledNet + adjustmentNet),
     });
   }
 
@@ -1069,6 +1126,21 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       snapshot_date: snapshot.snapshot_date?.toISOString?.().slice(0, 10) ?? snapshot.snapshot_date,
       snapshot_settled_net: Math.round(snapshot.settled_net),
       snapshot_gross_payout: Math.round(snapshot.gross_payout),
+    });
+  }
+
+  for (const adjustment of adjustments) {
+    rows.push({
+      section: "point_adjustments",
+      backup_id: backupId,
+      backup_created_at: backupCreatedAt,
+      id: adjustment.id,
+      user_name: adjustment.user_name,
+      adjustment_id: adjustment.adjustment_id,
+      adjustment_title: adjustment.title,
+      adjustment_reason: adjustment.reason,
+      adjustment_amount: Math.round(adjustment.amount),
+      adjustment_created_at: adjustment.created_at?.toISOString?.() ?? adjustment.created_at,
     });
   }
 
@@ -1731,6 +1803,7 @@ async function getState() {
     votesResult,
     usersResult,
     userPointSnapshotsResult,
+    pointAdjustmentsResult,
     externalOddsResult,
   ] = await Promise.all([
     query(`
@@ -1780,6 +1853,19 @@ async function getState() {
       where snapshot_date = $1::date
       order by user_name asc
     `, [dateKey]),
+    query(`
+      select
+        point_adjustment_entries.id,
+        point_adjustments.id as "adjustmentId",
+        point_adjustments.title,
+        point_adjustments.reason,
+        point_adjustment_entries.user_name as "userName",
+        point_adjustment_entries.amount::float as amount,
+        point_adjustments.created_at as "createdAt"
+      from point_adjustment_entries
+      join point_adjustments on point_adjustments.id = point_adjustment_entries.adjustment_id
+      order by point_adjustments.created_at desc, point_adjustment_entries.sort_order asc
+    `),
     query(`
       select distinct on (match_id)
         match_id as "matchId",
@@ -1840,6 +1926,10 @@ async function getState() {
     userPointSnapshots: userPointSnapshotsResult.rows.filter(Boolean).map((row) => ({
       ...row,
       updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : undefined,
+    })),
+    pointAdjustments: pointAdjustmentsResult.rows.filter(Boolean).map((row) => ({
+      ...row,
+      createdAt: new Date(row.createdAt).toISOString(),
     })),
   };
 }
@@ -2554,6 +2644,99 @@ app.post("/api/admin/backups/:id/external-sync", requireAdmin, async (request, r
       externalResult,
       backups: await listDatabaseBackups(),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/point-adjustments", requireAdmin, async (request, response, next) => {
+  try {
+    const title = String(request.body?.title ?? "").trim();
+    const reason = String(request.body?.reason ?? "").trim();
+    const rawEntries = Array.isArray(request.body?.entries) ? request.body.entries : [];
+    const entries = rawEntries
+      .map((entry) => ({
+        userName: normalizeName(entry?.userName),
+        amount: Number(entry?.amount),
+      }))
+      .filter((entry) => entry.userName || Number.isFinite(entry.amount));
+
+    if (!title || !reason) {
+      response.status(400).json({ error: "Title and reason are required" });
+      return;
+    }
+
+    if (entries.length < 2) {
+      response.status(400).json({ error: "At least two adjustment entries are required" });
+      return;
+    }
+
+    if (
+      entries.some(
+        (entry) =>
+          !entry.userName ||
+          !Number.isInteger(entry.amount) ||
+          entry.amount === 0 ||
+          Math.abs(entry.amount) > 1_000_000_000,
+      )
+    ) {
+      response.status(400).json({ error: "Each adjustment needs a user name and non-zero integer amount" });
+      return;
+    }
+
+    const userNames = entries.map((entry) => entry.userName);
+    if (new Set(userNames).size !== userNames.length) {
+      response.status(400).json({ error: "Duplicate users cannot be adjusted in one entry" });
+      return;
+    }
+
+    const totalAmount = entries.reduce((sum, entry) => sum + entry.amount, 0);
+    if (totalAmount !== 0) {
+      response.status(400).json({ error: "Adjustment amounts must sum to zero" });
+      return;
+    }
+
+    const adjustmentId = createId("adjustment");
+    await withTransaction(async (client) => {
+      const usersResult = await client.query(
+        "select name from users where name = any($1::text[])",
+        [userNames],
+      );
+      const existingUsers = new Set(usersResult.rows.map((row) => row.name));
+      const missingUsers = userNames.filter((name) => !existingUsers.has(name));
+      if (missingUsers.length) {
+        const error = new Error(`Unknown user: ${missingUsers.join(", ")}`);
+        error.status = 400;
+        throw error;
+      }
+
+      await client.query(
+        `
+          insert into point_adjustments (id, title, reason)
+          values ($1, $2, $3)
+        `,
+        [adjustmentId, title, reason],
+      );
+
+      for (const [index, entry] of entries.entries()) {
+        await client.query(
+          `
+            insert into point_adjustment_entries (
+              id, adjustment_id, user_name, amount, sort_order
+            ) values ($1, $2, $3, $4, $5)
+          `,
+          [createId("adjustment-entry"), adjustmentId, entry.userName, entry.amount, index],
+        );
+      }
+    });
+
+    await refreshTodayUserPointSnapshots();
+    await writeAuditLog("point-adjustment.create", adjustmentId, {
+      title,
+      reason,
+      entries,
+    });
+    response.status(201).json({ state: await getState() });
   } catch (error) {
     next(error);
   }

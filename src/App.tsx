@@ -180,11 +180,22 @@ type UserPointSnapshot = {
   updatedAt?: string;
 };
 
+type PointAdjustmentRecord = {
+  id: string;
+  adjustmentId: string;
+  title: string;
+  reason: string;
+  userName: string;
+  amount: number;
+  createdAt: string;
+};
+
 type AppData = {
   matches: MatchRecord[];
   votes: VoteRecord[];
   knownUsers: string[];
   userPointSnapshots?: UserPointSnapshot[];
+  pointAdjustments?: PointAdjustmentRecord[];
 };
 
 type BackupRecord = {
@@ -276,6 +287,12 @@ type MatchDraft = {
   notice: string;
   handicapOptionId: string;
   handicapPoints: number;
+};
+
+type PointAdjustmentDraft = {
+  title: string;
+  reason: string;
+  entries: Array<{ userName: string; amount: string }>;
 };
 
 type MotivationItem = {
@@ -503,6 +520,15 @@ const emptyMatchDraft: MatchDraft = {
   handicapPoints: 0,
 };
 
+const emptyPointAdjustmentDraft: PointAdjustmentDraft = {
+  title: "",
+  reason: "",
+  entries: [
+    { userName: "", amount: "" },
+    { userName: "", amount: "" },
+  ],
+};
+
 const csvTemplate = `title,startsAt,closesAt,options,注意事項
 ワールドカップ優勝国,2026-06-12T04:00,2026-06-12T04:00,${worldCupWinnerLabels.join("|")},`;
 
@@ -521,7 +547,7 @@ function createId(prefix: string) {
 function loadData(): AppData {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    return { matches: defaultMatches, votes: [], knownUsers: [] };
+    return { matches: defaultMatches, votes: [], knownUsers: [], userPointSnapshots: [], pointAdjustments: [] };
   }
 
   try {
@@ -531,9 +557,10 @@ function loadData(): AppData {
       votes: parsed.votes ?? [],
       knownUsers: parsed.knownUsers ?? [],
       userPointSnapshots: parsed.userPointSnapshots ?? [],
+      pointAdjustments: parsed.pointAdjustments ?? [],
     };
   } catch {
-    return { matches: defaultMatches, votes: [], knownUsers: [], userPointSnapshots: [] };
+    return { matches: defaultMatches, votes: [], knownUsers: [], userPointSnapshots: [], pointAdjustments: [] };
   }
 }
 
@@ -1153,6 +1180,8 @@ function App() {
   const [matchDraft, setMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
   const [editMatchId, setEditMatchId] = useState("");
   const [editMatchDraft, setEditMatchDraft] = useState<MatchDraft>(emptyMatchDraft);
+  const [pointAdjustmentDraft, setPointAdjustmentDraft] = useState<PointAdjustmentDraft>(emptyPointAdjustmentDraft);
+  const [pointAdjustmentMessage, setPointAdjustmentMessage] = useState("");
   const [csvText, setCsvText] = useState(csvTemplate);
   const [importMessage, setImportMessage] = useState("");
   const [voteDrafts, setVoteDrafts] = useState<Record<string, VoteDraft>>({});
@@ -1536,6 +1565,13 @@ function App() {
     };
   }, [data.votes, pendingMatch, pendingVote]);
 
+  const adjustmentTotalsByUser = useMemo(() => {
+    return (data.pointAdjustments ?? []).reduce((map, adjustment) => {
+      map.set(adjustment.userName, (map.get(adjustment.userName) ?? 0) + adjustment.amount);
+      return map;
+    }, new Map<string, number>());
+  }, [data.pointAdjustments]);
+
   const userRows = useMemo(() => {
     const snapshotByUser = new Map(
       (data.userPointSnapshots ?? []).map((snapshot) => [snapshot.userName, snapshot]),
@@ -1557,59 +1593,29 @@ function App() {
           },
           { staked: 0, gross: 0, net: 0, pending: 0 },
         );
+        const adjustmentNet = adjustmentTotalsByUser.get(name) ?? 0;
+        const net = totals.net + adjustmentNet;
+        const gross = totals.gross + adjustmentNet;
 
         return {
           name,
           votes: votes.length,
-          yesterdayDelta: totals.net - (snapshotByUser.get(name)?.settledNet ?? 0),
+          adjustmentNet,
           ...totals,
+          gross,
+          net,
+          yesterdayDelta: net - (snapshotByUser.get(name)?.settledNet ?? 0),
         };
       })
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
-  }, [data.matches, data.votes, data.knownUsers, data.userPointSnapshots]);
+  }, [adjustmentTotalsByUser, data.matches, data.votes, data.knownUsers, data.userPointSnapshots]);
 
   const motivationItems = useMemo<MotivationItem[]>(() => {
-    const settledVoteRows = data.votes
-      .map((vote) => {
-        const match = data.matches.find((item) => item.id === vote.matchId);
-        const payout = match ? calculateVotePayout(vote, match, data.votes) : undefined;
-        return { vote, match, payout };
-      })
-      .filter(
-        (
-          row,
-        ): row is {
-          vote: VoteRecord;
-          match: MatchRecord;
-          payout: ReturnType<typeof calculateVotePayout>;
-        } => Boolean(row.match && row.payout?.settled),
-      );
-
-    if (!settledVoteRows.length) return [];
-
-    const settledUserNames = new Set(settledVoteRows.map(({ vote }) => vote.userName));
-    const byUser = new Map<string, { net: number; pending: number }>();
-    data.votes.forEach((vote) => {
-      const match = data.matches.find((item) => item.id === vote.matchId);
-      if (!match) return;
-      const payout = calculateVotePayout(vote, match, data.votes);
-      const current = byUser.get(vote.userName) ?? { net: 0, pending: 0 };
-      if (payout.settled) {
-        current.net += payout.net;
-      } else {
-        current.pending += vote.amount;
-      }
-      byUser.set(vote.userName, current);
-    });
-
-    const rankedRows = [...byUser.entries()]
-      .map(([name, row]) => ({ name, ...row }))
-      .filter((row) => settledUserNames.has(row.name))
-      .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
+    const rankedRows = userRows.filter((row) => row.votes > 0 || row.adjustmentNet !== 0);
+    if (!rankedRows.length) return [];
 
     return rankedRows.map((row, index) => {
-      const summary = userRows.find((userRow) => userRow.name === row.name);
-      const yesterdayDelta = summary?.yesterdayDelta ?? row.net;
+      const yesterdayDelta = row.yesterdayDelta;
       const displayYesterdayDelta = Math.round(yesterdayDelta);
       return {
         id: `net-rank-${row.name}-${index + 1}`,
@@ -1630,10 +1636,10 @@ function App() {
         tone: row.net >= 0 ? "positive" : "neutral",
       };
     });
-  }, [data.matches, data.votes, userRows]);
+  }, [userRows]);
 
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
-    const settledEvents = data.votes
+    const settledVoteEvents = data.votes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match ? calculateVotePayout(vote, match, data.votes) : undefined;
@@ -1647,7 +1653,14 @@ function App() {
       })
       .filter((row): row is { date: string; label: string; net: number; userName: string } =>
         Boolean(row),
-      )
+      );
+    const adjustmentEvents = (data.pointAdjustments ?? []).map((adjustment) => ({
+      date: adjustment.createdAt,
+      label: `調整: ${adjustment.title}`,
+      net: adjustment.amount,
+      userName: adjustment.userName,
+    }));
+    const settledEvents = [...settledVoteEvents, ...adjustmentEvents]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     if (!settledEvents.length) return [];
@@ -1676,15 +1689,20 @@ function App() {
         points,
       };
     });
-  }, [data.matches, data.votes, userRows]);
+  }, [data.matches, data.pointAdjustments, data.votes, userRows]);
 
   const selectedPersonVotes = useMemo(() => {
     const normalized = normalizeName(selectedPersonName);
     return data.votes.filter((vote) => vote.userName === normalized);
   }, [data.votes, selectedPersonName]);
 
+  const selectedPersonAdjustments = useMemo(() => {
+    const normalized = normalizeName(selectedPersonName);
+    return (data.pointAdjustments ?? []).filter((adjustment) => adjustment.userName === normalized);
+  }, [data.pointAdjustments, selectedPersonName]);
+
   const selectedPersonSummary = useMemo(() => {
-    return selectedPersonVotes.reduce(
+    const voteSummary = selectedPersonVotes.reduce(
       (acc, vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         if (!match) return acc;
@@ -1697,36 +1715,56 @@ function App() {
       },
       { totalStake: 0, pendingStake: 0, grossPayout: 0, net: 0 },
     );
-  }, [data.matches, data.votes, selectedPersonVotes]);
+    const adjustmentNet = selectedPersonAdjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
+    voteSummary.grossPayout += adjustmentNet;
+    voteSummary.net += adjustmentNet;
+    return voteSummary;
+  }, [data.matches, data.votes, selectedPersonAdjustments, selectedPersonVotes]);
   const selectedPersonSettledStake = Math.max(
     0,
     selectedPersonSummary.totalStake - selectedPersonSummary.pendingStake,
   );
 
   const selectedBalanceRows = useMemo(() => {
-    const settledRows = selectedPersonVotes
+    const settledVoteRows = selectedPersonVotes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match
           ? calculateVotePayout(vote, match, data.votes)
           : { gross: 0, net: 0, won: false, settled: false };
-        return { vote, match, payout };
+        return {
+          id: vote.id,
+          type: "vote" as const,
+          date: match?.settledAt ?? vote.createdAt,
+          vote,
+          match,
+          payout,
+          amount: payout.net,
+        };
       })
-      .filter((row) => row.payout.settled)
+      .filter((row) => row.payout.settled);
+    const adjustmentRows = selectedPersonAdjustments.map((adjustment) => ({
+      id: adjustment.id,
+      type: "adjustment" as const,
+      date: adjustment.createdAt,
+      adjustment,
+      amount: adjustment.amount,
+    }));
+    const settledRows = [...settledVoteRows, ...adjustmentRows]
       .sort((a, b) => {
-        const aTime = new Date(a.match?.settledAt ?? a.vote.createdAt).getTime();
-        const bTime = new Date(b.match?.settledAt ?? b.vote.createdAt).getTime();
+        const aTime = new Date(a.date).getTime();
+        const bTime = new Date(b.date).getTime();
         return aTime - bTime;
       });
 
     let balance = 0;
     return settledRows
       .map((row) => {
-        balance += row.payout.net;
+        balance += row.amount;
         return { ...row, balance };
       })
       .reverse();
-  }, [data.matches, data.votes, selectedPersonVotes]);
+  }, [data.matches, data.votes, selectedPersonAdjustments, selectedPersonVotes]);
 
   function getDraft(match: MatchRecord): VoteDraft {
     return (
@@ -1908,6 +1946,90 @@ function App() {
       setMatchDraft(emptyMatchDraft);
     } catch {
       window.alert("試合を登録できませんでした。入力内容を確認してください。");
+    }
+  }
+
+  function updatePointAdjustmentEntry(
+    index: number,
+    patch: Partial<PointAdjustmentDraft["entries"][number]>,
+  ) {
+    setPointAdjustmentDraft((current) => ({
+      ...current,
+      entries: current.entries.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, ...patch } : entry,
+      ),
+    }));
+  }
+
+  function addPointAdjustmentEntry() {
+    setPointAdjustmentDraft((current) => ({
+      ...current,
+      entries: [...current.entries, { userName: "", amount: "" }],
+    }));
+  }
+
+  function removePointAdjustmentEntry(index: number) {
+    setPointAdjustmentDraft((current) => ({
+      ...current,
+      entries: current.entries.filter((_, entryIndex) => entryIndex !== index),
+    }));
+  }
+
+  async function submitPointAdjustment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPointAdjustmentMessage("");
+
+    if (!adminToken) {
+      setPointAdjustmentMessage("先に管理者認証をしてください。");
+      return;
+    }
+
+    const entries = pointAdjustmentDraft.entries
+      .map((entry) => ({
+        userName: normalizeName(entry.userName),
+        amount: Number(entry.amount),
+      }))
+      .filter((entry) => entry.userName || entry.amount);
+
+    if (!pointAdjustmentDraft.title.trim() || !pointAdjustmentDraft.reason.trim()) {
+      setPointAdjustmentMessage("タイトルと修正理由を入力してください。");
+      return;
+    }
+
+    if (entries.length < 2) {
+      setPointAdjustmentMessage("最低2人以上のユーザーと増減額が必要です。");
+      return;
+    }
+
+    if (entries.some((entry) => !entry.userName || !Number.isInteger(entry.amount) || entry.amount === 0)) {
+      setPointAdjustmentMessage("各行にユーザー名と0以外の整数ポイントを入力してください。");
+      return;
+    }
+
+    const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+    if (total !== 0) {
+      setPointAdjustmentMessage(`増減額の合計を0にしてください。現在: ${total >= 0 ? "+" : ""}${formatPoints(total)}`);
+      return;
+    }
+
+    try {
+      await syncState(() =>
+        postState(
+          "/api/admin/point-adjustments",
+          {
+            title: pointAdjustmentDraft.title.trim(),
+            reason: pointAdjustmentDraft.reason.trim(),
+            entries,
+          },
+          "POST",
+          adminToken,
+        ),
+      );
+      setPointAdjustmentDraft(emptyPointAdjustmentDraft);
+      setPointAdjustmentMessage("ポイント調整を登録しました。個人別の収支履歴に反映済みです。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setPointAdjustmentMessage(`ポイント調整を登録できませんでした: ${message}`);
     }
   }
 
@@ -2794,6 +2916,98 @@ function App() {
                 )}
               </details>
 
+              <details className="data-panel form-panel admin-disclosure">
+                <summary className="panel-title admin-disclosure-title">
+                  <WalletCards size={18} aria-hidden />
+                  ポイント調整
+                  <span>開く</span>
+                </summary>
+                <p className="admin-help">
+                  例外対応用です。最低2人以上を同時に入力し、増減額の合計が必ず0になるようにしてください。
+                </p>
+                <form className="point-adjustment-form" onSubmit={submitPointAdjustment}>
+                  <label>
+                    <span>調整タイトル</span>
+                    <input
+                      value={pointAdjustmentDraft.title}
+                      onChange={(event) =>
+                        setPointAdjustmentDraft((current) => ({ ...current, title: event.target.value }))
+                      }
+                      placeholder="例: 入力ミス補正"
+                    />
+                  </label>
+                  <label>
+                    <span>修正理由</span>
+                    <textarea
+                      value={pointAdjustmentDraft.reason}
+                      onChange={(event) =>
+                        setPointAdjustmentDraft((current) => ({ ...current, reason: event.target.value }))
+                      }
+                      placeholder="なぜ通常の結果確定とは別に調整するのか"
+                      rows={3}
+                    />
+                  </label>
+                  <div className="point-adjustment-entries">
+                    {pointAdjustmentDraft.entries.map((entry, index) => (
+                      <div className="point-adjustment-entry" key={index}>
+                        <label>
+                          <span>ユーザー名</span>
+                          <input
+                            list="known-users"
+                            value={entry.userName}
+                            onChange={(event) => updatePointAdjustmentEntry(index, { userName: event.target.value })}
+                            placeholder="ユーザー名"
+                          />
+                        </label>
+                        <label>
+                          <span>増減pt</span>
+                          <input
+                            type="number"
+                            step="1"
+                            value={entry.amount}
+                            onChange={(event) => updatePointAdjustmentEntry(index, { amount: event.target.value })}
+                            placeholder="+100 / -100"
+                          />
+                        </label>
+                        <button
+                          className="ghost-action danger point-adjustment-remove"
+                          disabled={pointAdjustmentDraft.entries.length <= 2}
+                          onClick={() => removePointAdjustmentEntry(index)}
+                          type="button"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="point-adjustment-total">
+                    <span>合計</span>
+                    {(() => {
+                      const total = pointAdjustmentDraft.entries.reduce(
+                        (sum, entry) => sum + (Number(entry.amount) || 0),
+                        0,
+                      );
+                      return (
+                        <b className={total === 0 ? "positive" : "negative"}>
+                          {total >= 0 ? "+" : ""}
+                          {formatPoints(total)}
+                        </b>
+                      );
+                    })()}
+                  </div>
+                  <div className="button-row">
+                    <button className="ghost-action" type="button" onClick={addPointAdjustmentEntry}>
+                      行を追加
+                    </button>
+                    <button className="primary-action" disabled={!adminToken || isSyncing} type="submit">
+                      <WalletCards size={18} aria-hidden />
+                      調整を登録
+                    </button>
+                  </div>
+                  {pointAdjustmentMessage && <p className="inline-message">{pointAdjustmentMessage}</p>}
+                </form>
+              </details>
+
               <details className="data-panel admin-disclosure">
                 <summary className="panel-title admin-disclosure-title">
                   <UserRound size={18} aria-hidden />
@@ -2810,6 +3024,7 @@ function App() {
                           <th>総投票pt</th>
                           <th>未確定pt</th>
                           <th>獲得pt</th>
+                          <th>調整pt</th>
                           <th>確定収支</th>
                         </tr>
                       </thead>
@@ -2821,6 +3036,10 @@ function App() {
                             <td>{formatPoints(row.staked)}</td>
                             <td>{formatPoints(row.pending)}</td>
                             <td>{formatPoints(row.gross)}</td>
+                            <td className={row.adjustmentNet >= 0 ? "positive" : "negative"}>
+                              {row.adjustmentNet >= 0 ? "+" : ""}
+                              {formatPoints(row.adjustmentNet)}
+                            </td>
                             <td className={row.net >= 0 ? "positive" : "negative"}>
                               {row.net >= 0 ? "+" : ""}
                               {formatPoints(row.net)}
@@ -4264,12 +4483,26 @@ function PersonBalanceHistory({
   rows,
   onOpenMatch,
 }: {
-  rows: Array<{
-    vote: VoteRecord;
-    match: MatchRecord | undefined;
-    payout: { gross: number; net: number; won: boolean; settled: boolean };
-    balance: number;
-  }>;
+  rows: Array<
+    | {
+        id: string;
+        type: "vote";
+        date: string;
+        vote: VoteRecord;
+        match: MatchRecord | undefined;
+        payout: { gross: number; net: number; won: boolean; settled: boolean };
+        amount: number;
+        balance: number;
+      }
+    | {
+        id: string;
+        type: "adjustment";
+        date: string;
+        adjustment: PointAdjustmentRecord;
+        amount: number;
+        balance: number;
+      }
+  >;
   onOpenMatch: (matchId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -4279,37 +4512,67 @@ function PersonBalanceHistory({
   return (
     <>
       <div className="balance-history-list">
-        {visibleRows.map(({ vote, match, payout, balance }) => (
-          <button
-            className="balance-history-card"
-            disabled={!match}
-            key={vote.id}
-            onClick={() => {
-              if (match) onOpenMatch(match.id);
-            }}
-            type="button"
-          >
-            <div>
-              <strong>{match?.title ?? "削除済み"}</strong>
-              <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
-            </div>
-            <span><OptionLabelWithFlag label={optionLabel(match, vote.optionId)} /></span>
-            <div>
-              <b className={payout.net >= 0 ? "positive" : "negative"}>
-                {payout.net >= 0 ? "+" : ""}
-                {formatPoints(payout.net)}
-              </b>
-              <small>
-                確定収支
-                <strong className={balance >= 0 ? "positive" : "negative"}>
-                  {" "}
-                  {balance >= 0 ? "+" : ""}
-                  {formatPoints(balance)}
-                </strong>
-              </small>
-            </div>
-          </button>
-        ))}
+        {visibleRows.map((row) => {
+          if (row.type === "adjustment") {
+            return (
+              <div className="balance-history-card adjustment-history-card" key={row.id}>
+                <div>
+                  <strong>{row.adjustment.title}</strong>
+                  <span>{formatDateTime(row.adjustment.createdAt)}</span>
+                  <em>{row.adjustment.reason}</em>
+                </div>
+                <span>ポイント調整</span>
+                <div>
+                  <b className={row.amount >= 0 ? "positive" : "negative"}>
+                    {row.amount >= 0 ? "+" : ""}
+                    {formatPoints(row.amount)}
+                  </b>
+                  <small>
+                    確定収支
+                    <strong className={row.balance >= 0 ? "positive" : "negative"}>
+                      {" "}
+                      {row.balance >= 0 ? "+" : ""}
+                      {formatPoints(row.balance)}
+                    </strong>
+                  </small>
+                </div>
+              </div>
+            );
+          }
+
+          const { vote, match, payout, balance } = row;
+          return (
+            <button
+              className="balance-history-card"
+              disabled={!match}
+              key={vote.id}
+              onClick={() => {
+                if (match) onOpenMatch(match.id);
+              }}
+              type="button"
+            >
+              <div>
+                <strong>{match?.title ?? "削除済み"}</strong>
+                <span>{formatDateTime(match?.settledAt ?? vote.createdAt)}</span>
+              </div>
+              <span><OptionLabelWithFlag label={optionLabel(match, vote.optionId)} /></span>
+              <div>
+                <b className={payout.net >= 0 ? "positive" : "negative"}>
+                  {payout.net >= 0 ? "+" : ""}
+                  {formatPoints(payout.net)}
+                </b>
+                <small>
+                  確定収支
+                  <strong className={balance >= 0 ? "positive" : "negative"}>
+                    {" "}
+                    {balance >= 0 ? "+" : ""}
+                    {formatPoints(balance)}
+                  </strong>
+                </small>
+              </div>
+            </button>
+          );
+        })}
       </div>
       {canExpand && (
         <button className="list-expand-button" type="button" onClick={() => setExpanded((current) => !current)}>
