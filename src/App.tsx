@@ -641,7 +641,7 @@ function formatRelativeAge(value: string, base: Date) {
   if (diffMinutes < 1) return "たった今";
   if (diffMinutes < 60) return `${diffMinutes}分前`;
   const diffHours = Math.floor(diffMinutes / 60);
-  return `${Math.min(diffHours, 24)}時間前`;
+  return `${diffHours}時間前`;
 }
 
 function formatPercent(value: number) {
