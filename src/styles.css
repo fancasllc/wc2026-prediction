@@ -1035,9 +1035,9 @@ label span {
 
 .motivation-strip {
   min-width: 0;
-  max-height: 62px;
-  margin: -4px -2px 10px 0;
-  padding: 5px 0;
+  max-height: 52px;
+  margin: -5px -2px 8px 0;
+  padding: 4px 0;
   overflow-x: auto;
   overflow-y: hidden;
   background:
@@ -1067,11 +1067,11 @@ label span {
   appearance: none;
   position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex: 0 0 calc((100% - 22px) / 2.15);
   min-width: 0;
-  min-height: 39px;
-  padding: 4px 7px 5px 8px;
+  min-height: 34px;
+  padding: 3px 7px 4px 7px;
   color: #ffffff;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
@@ -1091,7 +1091,7 @@ label span {
 
 .motivation-chip span {
   display: grid;
-  gap: 1px;
+  gap: 0;
   min-width: 0;
   width: 100%;
   justify-items: end;
@@ -1102,10 +1102,10 @@ label span {
   min-width: 0;
   max-width: 100%;
   color: #ffffff;
-  font-size: 0.65rem;
+  font-size: 0.58rem;
   font-weight: 950;
-  line-height: 1.15;
-  margin-top: -2px;
+  line-height: 1;
+  margin-top: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1114,9 +1114,9 @@ label span {
 .motivation-chip strong {
   justify-self: end;
   color: #ffdf58;
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 950;
-  line-height: 1;
+  line-height: 0.95;
   text-align: right;
   white-space: nowrap;
 }
@@ -1136,6 +1136,118 @@ label span {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.latest-vote-strip {
+  min-width: 0;
+  height: 52px;
+  margin: 0 -2px 12px 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(235, 249, 255, 0.95));
+  border: 1px solid rgba(208, 231, 244, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(0, 18, 58, 0.16);
+}
+
+.latest-vote-track {
+  display: flex;
+  width: max-content;
+  min-width: 200%;
+  height: 100%;
+  gap: 6px;
+  padding: 5px 6px;
+  animation: latest-vote-marquee 32s linear infinite;
+}
+
+.latest-vote-strip:hover .latest-vote-track {
+  animation-play-state: paused;
+}
+
+.latest-vote-chip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "time name amount"
+    "match match pick";
+  column-gap: 5px;
+  row-gap: 1px;
+  align-content: center;
+  flex: 0 0 calc((min(100vw, 430px) - 44px) / 3);
+  min-width: 120px;
+  max-width: 132px;
+  padding: 5px 6px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid #d7e8f2;
+  border-radius: 8px;
+}
+
+.latest-vote-chip span {
+  grid-area: time;
+  color: #60748b;
+  font-size: 0.52rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.latest-vote-chip b {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  color: #004071;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.latest-vote-chip strong {
+  grid-area: pick;
+  min-width: 0;
+  overflow: hidden;
+  color: #02714e;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.latest-vote-chip small {
+  grid-area: match;
+  min-width: 0;
+  overflow: hidden;
+  color: #425a73;
+  font-size: 0.56rem;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.latest-vote-chip em {
+  grid-area: amount;
+  color: var(--red);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@keyframes latest-vote-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .motivation-chip em.delta-positive {

@@ -305,6 +305,15 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
+type LatestVoteItem = {
+  id: string;
+  time: string;
+  userName: string;
+  matchTitle: string;
+  optionLabel: string;
+  amount: string;
+};
+
 type PersonTrendRow = {
   name: string;
   net: number;
@@ -618,6 +627,11 @@ function formatStartsIn(value: string, now: Date) {
 
 function formatPoints(value: number) {
   return `${pointsFormatter.format(Math.round(value))} pt`;
+}
+
+function compactDisplayName(value: string) {
+  const chars = Array.from(value);
+  return chars.length > 3 ? `${chars.slice(0, 3).join("")}...` : value;
 }
 
 function formatPercent(value: number) {
@@ -1678,6 +1692,34 @@ function App() {
     });
   }, [userRows]);
 
+  const latestVoteItems = useMemo<LatestVoteItem[]>(() => {
+    return data.votes
+      .map((vote) => {
+        const match = data.matches.find((item) => item.id === vote.matchId);
+        if (!match) return undefined;
+        return {
+          id: vote.id,
+          time: formatDateTime(vote.createdAt),
+          userName: vote.userName,
+          matchTitle: match.title,
+          optionLabel: optionLabel(match, vote.optionId),
+          amount: formatPoints(vote.amount),
+          sortTime: new Date(vote.createdAt).getTime(),
+        };
+      })
+      .filter((item): item is LatestVoteItem & { sortTime: number } => Boolean(item))
+      .sort((a, b) => b.sortTime - a.sortTime)
+      .slice(0, 10)
+      .map((item) => ({
+        id: item.id,
+        time: item.time,
+        userName: item.userName,
+        matchTitle: item.matchTitle,
+        optionLabel: item.optionLabel,
+        amount: item.amount,
+      }));
+  }, [data.matches, data.votes]);
+
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
     const settledVoteEvents = data.votes
       .map((vote) => {
@@ -2465,6 +2507,9 @@ function App() {
 
       {view === "open" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} onOpenPerson={openPersonDetail} />
+      )}
+      {view === "open" && latestVoteItems.length > 0 && (
+        <LatestVoteTicker items={latestVoteItems} />
       )}
 
       <main>
@@ -3595,11 +3640,31 @@ function MotivationTicker({
             type="button"
           >
             <span>
-              <b>{item.badge.replace("位", "")} {item.name}</b>
+              <b>{item.badge.replace("位", "")} {compactDisplayName(item.name)}</b>
               <strong>{item.value}</strong>
               <em className={`delta-${item.metaTone}`}>{item.meta}</em>
             </span>
           </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
+  const visibleItems = items.length > 1 ? [...items, ...items] : items;
+
+  return (
+    <aside className="latest-vote-strip" aria-label="最新の投票">
+      <div className="latest-vote-track">
+        {visibleItems.map((item, index) => (
+          <div className="latest-vote-chip" key={`${item.id}-${index}`}>
+            <span>{item.time}</span>
+            <b>{compactDisplayName(item.userName)}</b>
+            <strong>{item.optionLabel}</strong>
+            <small>{item.matchTitle}</small>
+            <em>{item.amount}</em>
+          </div>
         ))}
       </div>
     </aside>
