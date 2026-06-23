@@ -2796,6 +2796,43 @@ textarea:focus {
   color: var(--ink);
 }
 
+.people-sort-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 239, 248, 0.96);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(0, 42, 103, 0.12);
+}
+
+.people-sort-control button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 4px;
+  color: #5d6f84;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.05;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+}
+
+.people-sort-control button.active {
+  color: #055b8e;
+  background: linear-gradient(180deg, #ffffff, #eefbff);
+  box-shadow: 0 4px 10px rgba(0, 55, 126, 0.12);
+}
+
+.people-sort-control span {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.54rem;
+  line-height: 1;
+}
+
 .person-row span {
   display: grid;
   gap: 2px;

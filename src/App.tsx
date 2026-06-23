@@ -1162,6 +1162,10 @@ function ReferenceMenu({ onAddClick }: { onAddClick: () => void }) {
 function App() {
   const now = useNow();
   const [view, setView] = useState<View>("open");
+  const [peopleSort, setPeopleSort] = useState<{
+    key: "net" | "return" | "win";
+    direction: "desc" | "asc";
+  }>({ key: "net", direction: "desc" });
   const [selectedMatchId, setSelectedMatchId] = useState("");
   const [selectedPersonName, setSelectedPersonName] = useState("");
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
@@ -1593,21 +1597,25 @@ function App() {
             acc.gross += payout.gross;
             acc.net += payout.settled ? payout.net : 0;
             acc.pending += payout.settled ? 0 : vote.amount;
+            acc.settledVotes += payout.settled ? 1 : 0;
+            acc.wonVotes += payout.settled && payout.won ? 1 : 0;
             return acc;
           },
-          { staked: 0, gross: 0, net: 0, pending: 0 },
+          { staked: 0, gross: 0, net: 0, pending: 0, settledVotes: 0, wonVotes: 0 },
         );
         const adjustmentNet = adjustmentTotalsByUser.get(name) ?? 0;
         const net = totals.net + adjustmentNet;
         const gross = totals.gross + adjustmentNet;
         const settledStake = Math.max(0, totals.staked - totals.pending);
         const returnRate = settledStake > 0 ? ((gross / settledStake) - 1) * 100 : null;
+        const winRate = totals.settledVotes > 0 ? (totals.wonVotes / totals.settledVotes) * 100 : null;
 
         return {
           name,
           votes: votes.length,
           adjustmentNet,
           returnRate,
+          winRate,
           ...totals,
           gross,
           net,
@@ -1616,6 +1624,31 @@ function App() {
       })
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
   }, [adjustmentTotalsByUser, data.matches, data.votes, data.knownUsers, data.userPointSnapshots]);
+
+  const sortedUserRows = useMemo(() => {
+    function valueFor(row: (typeof userRows)[number]) {
+      if (peopleSort.key === "return") return row.returnRate;
+      if (peopleSort.key === "win") return row.winRate;
+      return row.net;
+    }
+
+    return [...userRows].sort((a, b) => {
+      const aValue = valueFor(a);
+      const bValue = valueFor(b);
+      if (aValue === null && bValue === null) return a.name.localeCompare(b.name, "ja");
+      if (aValue === null) return 1;
+      if (bValue === null) return -1;
+      const diff = peopleSort.direction === "desc" ? bValue - aValue : aValue - bValue;
+      return diff || b.pending - a.pending || a.name.localeCompare(b.name, "ja");
+    });
+  }, [peopleSort.direction, peopleSort.key, userRows]);
+
+  function updatePeopleSort(key: "net" | "return" | "win") {
+    setPeopleSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "desc" ? "asc" : "desc",
+    }));
+  }
 
   const motivationItems = useMemo<MotivationItem[]>(() => {
     const rankedRows = userRows.filter((row) => row.votes > 0 || row.adjustmentNet !== 0);
@@ -2527,9 +2560,28 @@ function App() {
         {view === "people" && (
           <section className="view-stack">
             <PrizeTrendChart rows={personTrendRows} />
+            <div className="people-sort-control" aria-label="個人別一覧の並び替え">
+              {[
+                { key: "net" as const, label: "確定収支" },
+                { key: "return" as const, label: "リターン" },
+                { key: "win" as const, label: "勝率" },
+              ].map((item) => (
+                <button
+                  className={peopleSort.key === item.key ? "active" : ""}
+                  key={item.key}
+                  type="button"
+                  onClick={() => updatePeopleSort(item.key)}
+                >
+                  {item.label}
+                  {peopleSort.key === item.key && (
+                    <span>{peopleSort.direction === "desc" ? "高い順" : "低い順"}</span>
+                  )}
+                </button>
+              ))}
+            </div>
             <div className="people-list">
               {userRows.length ? (
-                userRows.map((row) => (
+                sortedUserRows.map((row) => (
                   <button
                     className="person-row"
                     key={row.name}
@@ -2550,6 +2602,9 @@ function App() {
                         {row.returnRate === null
                           ? "-"
                           : `${row.returnRate > 0 ? "+" : ""}${formatPercent(row.returnRate)}`}
+                      </small>
+                      <small className={row.winRate === null ? "" : row.winRate >= 50 ? "positive" : "negative"}>
+                        勝率 {row.winRate === null ? "-" : formatPercent(row.winRate)}
                       </small>
                       <small>投票中 {formatPoints(row.pending)}</small>
                     </span>
