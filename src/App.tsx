@@ -620,6 +620,10 @@ function formatPoints(value: number) {
   return `${pointsFormatter.format(Math.round(value))} pt`;
 }
 
+function formatPercent(value: number) {
+  return `${pointsFormatter.format(Math.round(value))}%`;
+}
+
 function formatHandicapPoints(value: number) {
   return value % 1 === 0 ? String(value) : value.toFixed(1);
 }
@@ -1711,9 +1715,11 @@ function App() {
         acc.pendingStake += payout.settled ? 0 : vote.amount;
         acc.grossPayout += payout.gross;
         acc.net += payout.settled ? payout.net : 0;
+        acc.settledVotes += payout.settled ? 1 : 0;
+        acc.wonVotes += payout.settled && payout.won ? 1 : 0;
         return acc;
       },
-      { totalStake: 0, pendingStake: 0, grossPayout: 0, net: 0 },
+      { totalStake: 0, pendingStake: 0, grossPayout: 0, net: 0, settledVotes: 0, wonVotes: 0 },
     );
     const adjustmentNet = selectedPersonAdjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
     voteSummary.grossPayout += adjustmentNet;
@@ -1724,6 +1730,14 @@ function App() {
     0,
     selectedPersonSummary.totalStake - selectedPersonSummary.pendingStake,
   );
+  const selectedPersonReturnRate =
+    selectedPersonSettledStake > 0
+      ? (selectedPersonSummary.grossPayout / selectedPersonSettledStake) * 100
+      : null;
+  const selectedPersonWinRate =
+    selectedPersonSummary.settledVotes > 0
+      ? (selectedPersonSummary.wonVotes / selectedPersonSummary.settledVotes) * 100
+      : null;
 
   const selectedBalanceRows = useMemo(() => {
     const settledVoteRows = selectedPersonVotes
@@ -2554,12 +2568,28 @@ function App() {
               <StatCard
                 label="投票ポイント"
                 value={formatPoints(selectedPersonSettledStake)}
-                icon={<WalletCards size={20} aria-hidden />}
+                icon={<WalletCards size={17} aria-hidden />}
               />
               <StatCard
                 label="獲得ポイント"
                 value={formatPoints(selectedPersonSummary.grossPayout)}
-                icon={<Trophy size={20} aria-hidden />}
+                icon={<Trophy size={17} aria-hidden />}
+              />
+              <StatCard
+                label="リターン率"
+                value={
+                  selectedPersonReturnRate === null
+                    ? "-"
+                    : `${selectedPersonReturnRate > 0 ? "+" : ""}${formatPercent(selectedPersonReturnRate)}`
+                }
+                tone={
+                  selectedPersonReturnRate === null
+                    ? undefined
+                    : selectedPersonReturnRate >= 0
+                      ? "positive"
+                      : "negative"
+                }
+                icon={<RotateCcw size={17} aria-hidden />}
               />
               <StatCard
                 label="確定収支"
@@ -2567,14 +2597,23 @@ function App() {
                   selectedPersonSummary.net,
                 )}`}
                 tone={selectedPersonSummary.net >= 0 ? "positive" : "negative"}
-                icon={<History size={20} aria-hidden />}
+                icon={<History size={17} aria-hidden />}
                 variant="net"
               />
               <StatCard
                 label="投票中ポイント"
                 value={formatPoints(selectedPersonSummary.pendingStake)}
-                icon={<Clock3 size={20} aria-hidden />}
+                icon={<Clock3 size={17} aria-hidden />}
                 variant="pending"
+              />
+              <StatCard
+                label="勝率"
+                value={
+                  selectedPersonWinRate === null
+                    ? "-"
+                    : `${formatPercent(selectedPersonWinRate)}`
+                }
+                icon={<CheckCircle2 size={17} aria-hidden />}
               />
             </div>
 
