@@ -345,6 +345,7 @@ const VOTE_AMOUNT_STEP = 100;
 const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 const VOTE_CANCEL_CLOCK_SKEW_MS = 10 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
+const hiddenUserNames = new Set(["いつき"]);
 
 function getStoredAdminToken() {
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
@@ -687,6 +688,10 @@ function minutesRemaining(closesAt: string, now: Date) {
 
 function normalizeName(name: string) {
   return name.trim().replace(/\s+/g, " ");
+}
+
+function isHiddenUserName(name: string) {
+  return hiddenUserNames.has(normalizeName(name));
 }
 
 function shortenName(name: string, maxLength: number) {
@@ -1502,6 +1507,16 @@ function App() {
     [data.matches, now],
   );
 
+  const visibleKnownUsers = useMemo(
+    () => data.knownUsers.filter((name) => !isHiddenUserName(name)),
+    [data.knownUsers],
+  );
+
+  const visibleVotes = useMemo(
+    () => data.votes.filter((vote) => !isHiddenUserName(vote.userName)),
+    [data.votes],
+  );
+
   const settleCandidateMatches = useMemo(
     () =>
       data.matches
@@ -1609,9 +1624,9 @@ function App() {
       (data.userPointSnapshots ?? []).map((snapshot) => [snapshot.userName, snapshot]),
     );
 
-    return data.knownUsers
+    return visibleKnownUsers
       .map((name) => {
-        const votes = data.votes.filter((vote) => vote.userName === name);
+        const votes = visibleVotes.filter((vote) => vote.userName === name);
         const totals = votes.reduce(
           (acc, vote) => {
             const match = data.matches.find((item) => item.id === vote.matchId);
@@ -1647,7 +1662,7 @@ function App() {
         };
       })
       .sort((a, b) => b.net - a.net || b.pending - a.pending || a.name.localeCompare(b.name, "ja"));
-  }, [adjustmentTotalsByUser, data.matches, data.votes, data.knownUsers, data.userPointSnapshots]);
+  }, [adjustmentTotalsByUser, data.matches, data.votes, data.userPointSnapshots, visibleKnownUsers, visibleVotes]);
 
   const sortedUserRows = useMemo(() => {
     function valueFor(row: (typeof userRows)[number]) {
@@ -1703,7 +1718,7 @@ function App() {
   }, [userRows]);
 
   const latestVoteItems = useMemo<LatestVoteItem[]>(() => {
-    return data.votes
+    return visibleVotes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         if (!match || !isMatchOpen(match, now)) return undefined;
@@ -1728,10 +1743,10 @@ function App() {
         optionLabel: item.optionLabel,
         amount: item.amount,
       }));
-  }, [data.matches, data.votes, now]);
+  }, [data.matches, now, visibleVotes]);
 
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
-    const settledVoteEvents = data.votes
+    const settledVoteEvents = visibleVotes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match ? calculateVotePayout(vote, match, data.votes) : undefined;
@@ -1746,12 +1761,14 @@ function App() {
       .filter((row): row is { date: string; label: string; net: number; userName: string } =>
         Boolean(row),
       );
-    const adjustmentEvents = (data.pointAdjustments ?? []).map((adjustment) => ({
-      date: adjustment.createdAt,
-      label: `調整: ${adjustment.title}`,
-      net: adjustment.amount,
-      userName: adjustment.userName,
-    }));
+    const adjustmentEvents = (data.pointAdjustments ?? [])
+      .filter((adjustment) => !isHiddenUserName(adjustment.userName))
+      .map((adjustment) => ({
+        date: adjustment.createdAt,
+        label: `調整: ${adjustment.title}`,
+        net: adjustment.amount,
+        userName: adjustment.userName,
+      }));
     const settledEvents = [...settledVoteEvents, ...adjustmentEvents]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -1781,15 +1798,17 @@ function App() {
         points,
       };
     });
-  }, [data.matches, data.pointAdjustments, data.votes, userRows]);
+  }, [data.matches, data.pointAdjustments, data.votes, userRows, visibleVotes]);
 
   const selectedPersonVotes = useMemo(() => {
     const normalized = normalizeName(selectedPersonName);
-    return data.votes.filter((vote) => vote.userName === normalized);
-  }, [data.votes, selectedPersonName]);
+    if (isHiddenUserName(normalized)) return [];
+    return visibleVotes.filter((vote) => vote.userName === normalized);
+  }, [selectedPersonName, visibleVotes]);
 
   const selectedPersonAdjustments = useMemo(() => {
     const normalized = normalizeName(selectedPersonName);
+    if (isHiddenUserName(normalized)) return [];
     return (data.pointAdjustments ?? []).filter((adjustment) => adjustment.userName === normalized);
   }, [data.pointAdjustments, selectedPersonName]);
 
@@ -2510,7 +2529,7 @@ function App() {
       </nav>
 
       <datalist id="known-users">
-        {data.knownUsers.map((name) => (
+        {visibleKnownUsers.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>
@@ -2540,7 +2559,7 @@ function App() {
                       key={match.id}
                       match={match}
                       now={now}
-                      votes={data.votes}
+                      votes={visibleVotes}
                       onOpen={() => openMatchDetail(match.id)}
                     />
                   ))}
@@ -2565,7 +2584,7 @@ function App() {
                     key={match.id}
                     match={match}
                     now={now}
-                    votes={data.votes}
+                    votes={visibleVotes}
                     onOpen={() => openMatchDetail(match.id)}
                   />
                 ))
@@ -2579,7 +2598,7 @@ function App() {
         {view === "matchDetail" && selectedMatch && (
           <section className="view-stack" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <article className="match-card detail-card">
-              <MatchHeader match={selectedMatch} now={now} votes={data.votes} showStatus={false} />
+              <MatchHeader match={selectedMatch} now={now} votes={visibleVotes} showStatus={false} />
 
               {selectedMatch.resultOptionId && (
                 <div className="result-panel">
@@ -2597,7 +2616,7 @@ function App() {
                 isSaving={isSyncing}
                 match={selectedMatch}
                 now={now}
-                votes={data.votes}
+                votes={visibleVotes}
                 onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
                 onSubmit={(event) => handleVote(selectedMatch, event)}
               />
@@ -2605,7 +2624,7 @@ function App() {
               <BettorList
                 match={selectedMatch}
                 now={now}
-                votes={data.votes}
+                votes={visibleVotes}
                 onRequestCancel={(vote) => setPendingVoteDelete({ match: selectedMatch, vote })}
               />
             </article>
@@ -3048,7 +3067,7 @@ function App() {
                           <summary>
                             <span>
                               <strong><MatchTitleWithFlags title={match.title} /></strong>
-                              <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, data.votes).length}件</small>
+                              <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, visibleVotes).length}件</small>
                             </span>
                             <b>{scoreMode ? "得点を入力" : "結果を選ぶ"}</b>
                           </summary>
@@ -3073,7 +3092,7 @@ function App() {
                             scoreDraft={scoreDraft}
                             scoreMode={scoreMode}
                             selectedOptionId={selectedOptionId}
-                            votes={data.votes}
+                            votes={visibleVotes}
                           />
                         </details>
                       );
@@ -3243,7 +3262,7 @@ function App() {
                   投票DB
                   <span>開く</span>
                 </summary>
-                {data.votes.length ? (
+                {visibleVotes.length ? (
                   <div className="responsive-table admin-votes-table">
                     <table>
                       <thead>
@@ -3260,7 +3279,7 @@ function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.votes.map((vote) => {
+                        {visibleVotes.map((vote) => {
                           const match = data.matches.find((item) => item.id === vote.matchId);
                           const payout = getVotePayout(vote, match, data.votes);
                           return (
