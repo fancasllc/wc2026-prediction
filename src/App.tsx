@@ -1600,11 +1600,14 @@ function App() {
         const adjustmentNet = adjustmentTotalsByUser.get(name) ?? 0;
         const net = totals.net + adjustmentNet;
         const gross = totals.gross + adjustmentNet;
+        const settledStake = Math.max(0, totals.staked - totals.pending);
+        const returnRate = settledStake > 0 ? ((gross / settledStake) - 1) * 100 : null;
 
         return {
           name,
           votes: votes.length,
           adjustmentNet,
+          returnRate,
           ...totals,
           gross,
           net,
@@ -1732,7 +1735,7 @@ function App() {
   );
   const selectedPersonReturnRate =
     selectedPersonSettledStake > 0
-      ? (selectedPersonSummary.grossPayout / selectedPersonSettledStake) * 100
+      ? ((selectedPersonSummary.grossPayout / selectedPersonSettledStake) - 1) * 100
       : null;
   const selectedPersonWinRate =
     selectedPersonSummary.settledVotes > 0
@@ -2542,6 +2545,12 @@ function App() {
                         確定収支 {row.net >= 0 ? "+" : ""}
                         {formatPoints(row.net)}
                       </b>
+                      <small className={row.returnRate === null ? "" : row.returnRate >= 0 ? "positive" : "negative"}>
+                        リターン率{" "}
+                        {row.returnRate === null
+                          ? "-"
+                          : `${row.returnRate > 0 ? "+" : ""}${formatPercent(row.returnRate)}`}
+                      </small>
                       <small>投票中 {formatPoints(row.pending)}</small>
                     </span>
                   </button>

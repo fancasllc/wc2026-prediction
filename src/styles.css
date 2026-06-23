@@ -2829,6 +2829,14 @@ textarea:focus {
   font-weight: 900;
 }
 
+.person-row small.positive {
+  color: #02714e;
+}
+
+.person-row small.negative {
+  color: var(--red);
+}
+
 .person-vote-card {
   appearance: none;
   display: grid;
