@@ -1140,7 +1140,7 @@ label span {
 
 .latest-vote-strip {
   min-width: 0;
-  height: 52px;
+  height: 66px;
   margin: 0 -2px 12px 0;
   overflow: hidden;
   background:
@@ -1155,9 +1155,9 @@ label span {
   width: max-content;
   min-width: 200%;
   height: 100%;
-  gap: 6px;
-  padding: 5px 6px;
-  animation: latest-vote-marquee 32s linear infinite;
+  gap: 7px;
+  padding: 6px 7px;
+  animation: latest-vote-marquee 34s linear infinite;
 }
 
 .latest-vote-strip:hover .latest-vote-track {
@@ -1166,17 +1166,13 @@ label span {
 
 .latest-vote-chip {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-areas:
-    "time name amount"
-    "match match pick";
-  column-gap: 5px;
-  row-gap: 1px;
+  grid-template-rows: auto auto auto;
+  gap: 3px;
   align-content: center;
-  flex: 0 0 calc((min(100vw, 430px) - 44px) / 3);
-  min-width: 120px;
-  max-width: 132px;
-  padding: 5px 6px;
+  flex: 0 0 calc((min(100vw, 430px) - 30px) / 2);
+  min-width: 178px;
+  max-width: 202px;
+  padding: 6px 8px;
   color: var(--ink);
   background: #ffffff;
   border: 1px solid #d7e8f2;
@@ -1184,20 +1180,24 @@ label span {
 }
 
 .latest-vote-chip span {
-  grid-area: time;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
   color: #60748b;
-  font-size: 0.52rem;
+  font-size: 0.62rem;
   font-weight: 900;
   line-height: 1;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .latest-vote-chip b {
-  grid-area: name;
   min-width: 0;
   overflow: hidden;
   color: #004071;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 950;
   line-height: 1;
   text-overflow: ellipsis;
@@ -1205,34 +1205,39 @@ label span {
 }
 
 .latest-vote-chip strong {
-  grid-area: pick;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: baseline;
   min-width: 0;
-  overflow: hidden;
   color: #02714e;
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 950;
   line-height: 1;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .latest-vote-chip small {
-  grid-area: match;
   min-width: 0;
   overflow: hidden;
   color: #425a73;
-  font-size: 0.56rem;
+  font-size: 0.64rem;
   font-weight: 900;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.latest-vote-chip i {
+  min-width: 0;
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .latest-vote-chip em {
-  grid-area: amount;
   color: var(--red);
-  font-size: 0.58rem;
+  font-size: 0.76rem;
   font-style: normal;
   font-weight: 950;
   line-height: 1;

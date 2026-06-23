@@ -307,7 +307,7 @@ type MotivationItem = {
 
 type LatestVoteItem = {
   id: string;
-  time: string;
+  age: string;
   userName: string;
   matchTitle: string;
   optionLabel: string;
@@ -632,6 +632,17 @@ function formatPoints(value: number) {
 function compactDisplayName(value: string) {
   const chars = Array.from(value);
   return chars.length > 3 ? `${chars.slice(0, 3).join("")}...` : value;
+}
+
+function formatRelativeAge(value: string, base: Date) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMinutes = Math.max(0, Math.floor((base.getTime() - date.getTime()) / 60_000));
+  if (diffMinutes < 1) return "たった今";
+  if (diffMinutes < 60) return `${diffMinutes}分前`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}時間前`;
+  return `${Math.floor(diffHours / 24)}日前`;
 }
 
 function formatPercent(value: number) {
@@ -1699,7 +1710,7 @@ function App() {
         if (!match) return undefined;
         return {
           id: vote.id,
-          time: formatDateTime(vote.createdAt),
+          age: formatRelativeAge(vote.createdAt, now),
           userName: vote.userName,
           matchTitle: match.title,
           optionLabel: optionLabel(match, vote.optionId),
@@ -1712,13 +1723,13 @@ function App() {
       .slice(0, 10)
       .map((item) => ({
         id: item.id,
-        time: item.time,
+        age: item.age,
         userName: item.userName,
         matchTitle: item.matchTitle,
         optionLabel: item.optionLabel,
         amount: item.amount,
       }));
-  }, [data.matches, data.votes]);
+  }, [data.matches, data.votes, now]);
 
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
     const settledVoteEvents = data.votes
@@ -3659,11 +3670,14 @@ function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
       <div className="latest-vote-track">
         {visibleItems.map((item, index) => (
           <div className="latest-vote-chip" key={`${item.id}-${index}`}>
-            <span>{item.time}</span>
-            <b>{compactDisplayName(item.userName)}</b>
-            <strong>{item.optionLabel}</strong>
+            <span>
+              {item.age} <b>{compactDisplayName(item.userName)}</b>
+            </span>
             <small>{item.matchTitle}</small>
-            <em>{item.amount}</em>
+            <strong>
+              <i>{item.optionLabel}</i>
+              <em>{item.amount}</em>
+            </strong>
           </div>
         ))}
       </div>
