@@ -3663,11 +3663,16 @@ function MotivationTicker({
 }
 
 function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
   const resumeTimerRef = useRef<number | null>(null);
   const visibleItems = items.length > 1 ? [...items, ...items] : items;
 
   useEffect(() => {
+    resumeTimerRef.current = window.setTimeout(() => {
+      setIsPaused(false);
+      resumeTimerRef.current = null;
+    }, 3000);
+
     return () => {
       if (resumeTimerRef.current !== null) {
         window.clearTimeout(resumeTimerRef.current);
