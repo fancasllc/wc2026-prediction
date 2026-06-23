@@ -1707,7 +1707,7 @@ function App() {
     return data.votes
       .map((vote) => {
         const match = data.matches.find((item) => item.id === vote.matchId);
-        if (!match) return undefined;
+        if (!match || !isMatchOpen(match, now)) return undefined;
         return {
           id: vote.id,
           age: formatRelativeAge(vote.createdAt, now),
