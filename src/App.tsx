@@ -305,15 +305,6 @@ type MotivationItem = {
   tone: "positive" | "neutral";
 };
 
-type LatestVoteItem = {
-  id: string;
-  age: string;
-  userName: string;
-  matchTitle: string;
-  optionLabel: string;
-  amount: string;
-};
-
 type PersonTrendRow = {
   name: string;
   net: number;
@@ -633,16 +624,6 @@ function formatPoints(value: number) {
 function compactDisplayName(value: string) {
   const chars = Array.from(value);
   return chars.length > 4 ? `${chars.slice(0, 4).join("")}...` : value;
-}
-
-function formatRelativeAge(value: string, base: Date) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const diffMinutes = Math.max(0, Math.floor((base.getTime() - date.getTime()) / 60_000));
-  if (diffMinutes < 1) return "たった今";
-  if (diffMinutes < 60) return `${diffMinutes}分前`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  return `${diffHours}時間前`;
 }
 
 function formatPercent(value: number) {
@@ -1717,34 +1698,6 @@ function App() {
     });
   }, [userRows]);
 
-  const latestVoteItems = useMemo<LatestVoteItem[]>(() => {
-    return visibleVotes
-      .map((vote) => {
-        const match = data.matches.find((item) => item.id === vote.matchId);
-        if (!match || !isMatchOpen(match, now)) return undefined;
-        return {
-          id: vote.id,
-          age: formatRelativeAge(vote.createdAt, now),
-          userName: vote.userName,
-          matchTitle: match.title,
-          optionLabel: optionLabel(match, vote.optionId),
-          amount: formatPoints(vote.amount),
-          sortTime: new Date(vote.createdAt).getTime(),
-        };
-      })
-      .filter((item): item is LatestVoteItem & { sortTime: number } => Boolean(item))
-      .sort((a, b) => b.sortTime - a.sortTime)
-      .slice(0, 10)
-      .map((item) => ({
-        id: item.id,
-        age: item.age,
-        userName: item.userName,
-        matchTitle: item.matchTitle,
-        optionLabel: item.optionLabel,
-        amount: item.amount,
-      }));
-  }, [data.matches, now, visibleVotes]);
-
   const personTrendRows = useMemo<PersonTrendRow[]>(() => {
     const settledVoteEvents = visibleVotes
       .map((vote) => {
@@ -2537,9 +2490,6 @@ function App() {
       {view === "open" && motivationItems.length > 0 && (
         <MotivationTicker items={motivationItems} onOpenPerson={openPersonDetail} />
       )}
-      {view === "open" && latestVoteItems.length > 0 && (
-        <LatestVoteTicker items={latestVoteItems} />
-      )}
 
       <main>
         {apiError && <div className="sync-banner error">{apiError}</div>}
@@ -2646,10 +2596,13 @@ function App() {
                   type="button"
                   onClick={() => updatePeopleSort(item.key)}
                 >
-                  {item.label}
-                  {peopleSort.key === item.key && (
-                    <span>{peopleSort.direction === "desc" ? "高い順" : "低い順"}</span>
-                  )}
+                  <span className={peopleSort.key === item.key && peopleSort.direction === "desc" ? "active" : ""}>
+                    ▲
+                  </span>
+                  <b>{item.label}</b>
+                  <span className={peopleSort.key === item.key && peopleSort.direction === "asc" ? "active" : ""}>
+                    ▼
+                  </span>
                 </button>
               ))}
             </div>
@@ -3674,73 +3627,6 @@ function MotivationTicker({
               <em className={`delta-${item.metaTone}`}>{item.meta}</em>
             </span>
           </button>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
-function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
-  const [isPaused, setIsPaused] = useState(true);
-  const resumeTimerRef = useRef<number | null>(null);
-  const loopItems = Array.from({ length: Math.max(8, items.length) }, (_, index) => items[index % items.length]);
-  const visibleItems = [...loopItems, ...loopItems];
-
-  useEffect(() => {
-    resumeTimerRef.current = window.setTimeout(() => {
-      setIsPaused(false);
-      resumeTimerRef.current = null;
-    }, 3000);
-
-    return () => {
-      if (resumeTimerRef.current !== null) {
-        window.clearTimeout(resumeTimerRef.current);
-      }
-    };
-  }, []);
-
-  function pauseTicker() {
-    if (resumeTimerRef.current !== null) {
-      window.clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = null;
-    }
-    setIsPaused(true);
-  }
-
-  function scheduleResume(delay = 900) {
-    if (resumeTimerRef.current !== null) {
-      window.clearTimeout(resumeTimerRef.current);
-    }
-    resumeTimerRef.current = window.setTimeout(() => {
-      setIsPaused(false);
-      resumeTimerRef.current = null;
-    }, delay);
-  }
-
-  return (
-    <aside
-      className="latest-vote-strip"
-      aria-label="最新の投票"
-      onPointerDown={pauseTicker}
-      onPointerLeave={() => scheduleResume()}
-      onPointerUp={() => scheduleResume()}
-      onScroll={() => {
-        pauseTicker();
-        scheduleResume(1200);
-      }}
-    >
-      <div className={`latest-vote-track ${isPaused ? "paused" : ""}`}>
-        {visibleItems.map((item, index) => (
-          <div className="latest-vote-chip" key={`${item.id}-${index}`}>
-            <span>
-              <b>{item.age} {compactDisplayName(item.userName)}</b>
-              <small>{item.matchTitle}</small>
-            </span>
-            <strong>
-              <i>{item.optionLabel}</i>
-              <em>{item.amount}</em>
-            </strong>
-          </div>
         ))}
       </div>
     </aside>
