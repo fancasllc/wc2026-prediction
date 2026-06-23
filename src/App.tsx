@@ -3663,11 +3663,49 @@ function MotivationTicker({
 }
 
 function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
+  const [isPaused, setIsPaused] = useState(false);
+  const resumeTimerRef = useRef<number | null>(null);
   const visibleItems = items.length > 1 ? [...items, ...items] : items;
 
+  useEffect(() => {
+    return () => {
+      if (resumeTimerRef.current !== null) {
+        window.clearTimeout(resumeTimerRef.current);
+      }
+    };
+  }, []);
+
+  function pauseTicker() {
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+    setIsPaused(true);
+  }
+
+  function scheduleResume(delay = 900) {
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+    }
+    resumeTimerRef.current = window.setTimeout(() => {
+      setIsPaused(false);
+      resumeTimerRef.current = null;
+    }, delay);
+  }
+
   return (
-    <aside className="latest-vote-strip" aria-label="最新の投票">
-      <div className="latest-vote-track">
+    <aside
+      className="latest-vote-strip"
+      aria-label="最新の投票"
+      onPointerDown={pauseTicker}
+      onPointerLeave={() => scheduleResume()}
+      onPointerUp={() => scheduleResume()}
+      onScroll={() => {
+        pauseTicker();
+        scheduleResume(1200);
+      }}
+    >
+      <div className={`latest-vote-track ${isPaused ? "paused" : ""}`}>
         {visibleItems.map((item, index) => (
           <div className="latest-vote-chip" key={`${item.id}-${index}`}>
             <span>
