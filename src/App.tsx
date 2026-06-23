@@ -631,7 +631,7 @@ function formatPoints(value: number) {
 
 function compactDisplayName(value: string) {
   const chars = Array.from(value);
-  return chars.length > 3 ? `${chars.slice(0, 3).join("")}...` : value;
+  return chars.length > 4 ? `${chars.slice(0, 4).join("")}...` : value;
 }
 
 function formatRelativeAge(value: string, base: Date) {
