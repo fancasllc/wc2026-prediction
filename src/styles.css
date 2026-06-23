@@ -1140,15 +1140,15 @@ label span {
 
 .latest-vote-strip {
   min-width: 0;
-  height: 66px;
+  height: 54px;
   margin: 0 -2px 12px 0;
   overflow-x: auto;
   overflow-y: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(235, 249, 255, 0.95));
-  border: 1px solid rgba(208, 231, 244, 0.96);
+    linear-gradient(110deg, rgba(3, 28, 77, 0.95), rgba(0, 118, 146, 0.88));
+  border: 1px solid rgba(104, 214, 228, 0.48);
   border-radius: 8px;
-  box-shadow: 0 10px 22px rgba(0, 18, 58, 0.16);
+  box-shadow: 0 10px 22px rgba(0, 18, 58, 0.18);
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
@@ -1163,8 +1163,8 @@ label span {
   width: max-content;
   min-width: 200%;
   height: 100%;
-  gap: 7px;
-  padding: 6px 7px;
+  gap: 6px;
+  padding: 5px 6px;
   animation: latest-vote-marquee 28s linear infinite;
 }
 
@@ -1174,38 +1174,35 @@ label span {
 
 .latest-vote-chip {
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto;
   gap: 3px;
   align-content: center;
   flex: 0 0 calc((min(100vw, 430px) - 30px) / 2);
   min-width: 178px;
   max-width: 202px;
-  padding: 6px 8px;
+  padding: 5px 7px;
   color: var(--ink);
-  background: #ffffff;
-  border: 1px solid #d7e8f2;
+  background: linear-gradient(180deg, #f6fffb 0%, #e6f9ff 100%);
+  border: 1px solid rgba(137, 224, 220, 0.82);
   border-radius: 8px;
+  box-shadow: inset 3px 0 0 rgba(0, 178, 145, 0.58);
 }
 
 .latest-vote-chip span {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: baseline;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
-  color: #60748b;
-  font-size: 0.62rem;
-  font-weight: 900;
   line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .latest-vote-chip b {
   min-width: 0;
   overflow: hidden;
   color: #004071;
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 950;
   line-height: 1;
   text-overflow: ellipsis;
@@ -1219,7 +1216,7 @@ label span {
   align-items: baseline;
   min-width: 0;
   color: #02714e;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 950;
   line-height: 1;
 }
@@ -1227,8 +1224,8 @@ label span {
 .latest-vote-chip small {
   min-width: 0;
   overflow: hidden;
-  color: #425a73;
-  font-size: 0.64rem;
+  color: #24516e;
+  font-size: 0.62rem;
   font-weight: 900;
   line-height: 1;
   text-overflow: ellipsis;

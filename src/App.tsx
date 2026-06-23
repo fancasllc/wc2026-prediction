@@ -641,8 +641,7 @@ function formatRelativeAge(value: string, base: Date) {
   if (diffMinutes < 1) return "たった今";
   if (diffMinutes < 60) return `${diffMinutes}分前`;
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}時間前`;
-  return `${Math.floor(diffHours / 24)}日前`;
+  return `${Math.min(diffHours, 24)}時間前`;
 }
 
 function formatPercent(value: number) {
@@ -3665,7 +3664,8 @@ function MotivationTicker({
 function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
   const [isPaused, setIsPaused] = useState(true);
   const resumeTimerRef = useRef<number | null>(null);
-  const visibleItems = items.length > 1 ? [...items, ...items] : items;
+  const loopItems = Array.from({ length: Math.max(8, items.length) }, (_, index) => items[index % items.length]);
+  const visibleItems = [...loopItems, ...loopItems];
 
   useEffect(() => {
     resumeTimerRef.current = window.setTimeout(() => {
@@ -3714,9 +3714,9 @@ function LatestVoteTicker({ items }: { items: LatestVoteItem[] }) {
         {visibleItems.map((item, index) => (
           <div className="latest-vote-chip" key={`${item.id}-${index}`}>
             <span>
-              {item.age} <b>{compactDisplayName(item.userName)}</b>
+              <b>{item.age} {compactDisplayName(item.userName)}</b>
+              <small>{item.matchTitle}</small>
             </span>
-            <small>{item.matchTitle}</small>
             <strong>
               <i>{item.optionLabel}</i>
               <em>{item.amount}</em>
