@@ -2581,35 +2581,60 @@ function App() {
             </div>
             <div className="people-list">
               {userRows.length ? (
-                sortedUserRows.map((row) => (
-                  <button
-                    className="person-row"
-                    key={row.name}
-                    type="button"
-                    onClick={() => openPersonDetail(row.name)}
-                  >
-                    <span>
-                      <strong>{row.name}</strong>
-                      <small>{row.votes}件の投票</small>
-                    </span>
-                    <span>
-                      <b className={row.net >= 0 ? "positive" : "negative"}>
-                        確定収支 {row.net >= 0 ? "+" : ""}
-                        {formatPoints(row.net)}
-                      </b>
-                      <small className={row.returnRate === null ? "" : row.returnRate >= 0 ? "positive" : "negative"}>
-                        リターン率{" "}
-                        {row.returnRate === null
-                          ? "-"
-                          : `${row.returnRate > 0 ? "+" : ""}${formatPercent(row.returnRate)}`}
-                      </small>
-                      <small className={row.winRate === null ? "" : row.winRate >= 50 ? "positive" : "negative"}>
-                        勝率 {row.winRate === null ? "-" : formatPercent(row.winRate)}
-                      </small>
-                      <small>投票中 {formatPoints(row.pending)}</small>
-                    </span>
-                  </button>
-                ))
+                sortedUserRows.map((row) => {
+                  const metrics = [
+                    {
+                      key: "net" as const,
+                      label: "確定収支",
+                      value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
+                      className: row.net >= 0 ? "positive" : "negative",
+                    },
+                    {
+                      key: "return" as const,
+                      label: "リターン率",
+                      value: row.returnRate === null
+                        ? "-"
+                        : `${row.returnRate > 0 ? "+" : ""}${formatPercent(row.returnRate)}`,
+                      className: row.returnRate === null ? "" : row.returnRate >= 0 ? "positive" : "negative",
+                    },
+                    {
+                      key: "win" as const,
+                      label: "勝率",
+                      value: row.winRate === null ? "-" : formatPercent(row.winRate),
+                      className: row.winRate === null ? "" : row.winRate >= 50 ? "positive" : "negative",
+                    },
+                  ].sort((a, b) => {
+                    if (a.key === peopleSort.key) return -1;
+                    if (b.key === peopleSort.key) return 1;
+                    return 0;
+                  });
+                  const [primaryMetric, ...secondaryMetrics] = metrics;
+
+                  return (
+                    <button
+                      className="person-row"
+                      key={row.name}
+                      type="button"
+                      onClick={() => openPersonDetail(row.name)}
+                    >
+                      <span>
+                        <strong>{row.name}</strong>
+                        <small>{row.votes}件の投票</small>
+                      </span>
+                      <span>
+                        <b className={primaryMetric.className}>
+                          {primaryMetric.label} {primaryMetric.value}
+                        </b>
+                        {secondaryMetrics.map((metric) => (
+                          <small className={metric.className} key={metric.key}>
+                            {metric.label} {metric.value}
+                          </small>
+                        ))}
+                        <small>投票中 {formatPoints(row.pending)}</small>
+                      </span>
+                    </button>
+                  );
+                })
               ) : (
                 <EmptyState title="投票者はまだ登録されていません" />
               )}
