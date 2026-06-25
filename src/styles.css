@@ -1113,9 +1113,9 @@ label span {
 
 .motivation-chip .motivation-chip-body {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 31px minmax(0, 1fr);
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -1131,12 +1131,21 @@ label span {
 
 .motivation-chip strong {
   justify-self: end;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
   color: #ffdf58;
-  font-size: 1.14rem;
+  font-size: 1.02rem;
   font-weight: 950;
   line-height: 1;
   text-align: right;
   white-space: nowrap;
+}
+
+.motivation-chip strong small {
+  font-size: 0.68em;
+  font-weight: 950;
+  letter-spacing: 0;
 }
 
 .motivation-chip.neutral strong {

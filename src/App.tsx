@@ -3643,6 +3643,16 @@ function MotivationTicker({
     }
   }
 
+  function renderPointValue(value: string) {
+    const pointValue = value.replace(/\s*pt$/, "");
+    return (
+      <>
+        <span>{pointValue}</span>
+        <small>pt</small>
+      </>
+    );
+  }
+
   return (
     <aside
       className="motivation-strip"
@@ -3671,7 +3681,7 @@ function MotivationTicker({
                   />
                 )}
                 <span>
-                  <strong>{item.value}</strong>
+                  <strong>{renderPointValue(item.value)}</strong>
                   <em className={`delta-${item.metaTone}`}>{item.meta}</em>
                 </span>
               </span>
