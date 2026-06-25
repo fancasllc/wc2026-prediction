@@ -2858,9 +2858,16 @@ textarea:focus {
 
 .person-row-person {
   align-self: stretch;
-  align-content: start;
+  grid-template-rows: auto 1fr;
   justify-items: start;
-  gap: 8px;
+  gap: 4px;
+}
+
+.person-row-icon-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 60px;
 }
 
 .person-row-icon {
@@ -2886,9 +2893,12 @@ textarea:focus {
   font-size: 1rem;
 }
 
-.person-row span:last-child {
+.person-row-metrics {
+  align-self: start;
   justify-items: end;
+  gap: 4px;
   text-align: right;
+  transform: translateY(-2px);
 }
 
 .person-row small {

@@ -2673,16 +2673,18 @@ function App() {
                     >
                       <span className="person-row-person">
                         <strong>{row.name}</strong>
-                        {personIconSrc && (
-                          <img
-                            alt=""
-                            className="person-row-icon"
-                            loading="lazy"
-                            src={personIconSrc}
-                          />
-                        )}
+                        <span className="person-row-icon-slot">
+                          {personIconSrc && (
+                            <img
+                              alt=""
+                              className="person-row-icon"
+                              loading="lazy"
+                              src={personIconSrc}
+                            />
+                          )}
+                        </span>
                       </span>
-                      <span>
+                      <span className="person-row-metrics">
                         <b className={primaryMetric.className}>
                           {primaryMetric.label} {primaryMetric.value}
                         </b>
