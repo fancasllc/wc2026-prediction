@@ -1071,7 +1071,7 @@ label span {
   flex: 0 0 calc((100% - 22px) / 2.15);
   min-width: 0;
   min-height: 46px;
-  padding: 5px 8px 6px 8px;
+  padding: 5px 7px 6px 7px;
   color: #ffffff;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
@@ -1094,7 +1094,7 @@ label span {
   gap: 1px;
   min-width: 0;
   width: 100%;
-  justify-items: end;
+  justify-items: stretch;
 }
 
 .motivation-chip b {
@@ -1111,10 +1111,28 @@ label span {
   white-space: nowrap;
 }
 
+.motivation-chip .motivation-chip-body {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.motivation-chip .motivation-chip-body > span {
+  justify-items: end;
+}
+
+.motivation-chip-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
 .motivation-chip strong {
   justify-self: end;
   color: #ffdf58;
-  font-size: 1.28rem;
+  font-size: 1.14rem;
   font-weight: 950;
   line-height: 1;
   text-align: right;
@@ -1129,7 +1147,7 @@ label span {
   justify-self: end;
   overflow: hidden;
   color: #b9d5ff;
-  font-size: 0.66rem;
+  font-size: 0.6rem;
   font-style: normal;
   font-weight: 900;
   line-height: 1.15;

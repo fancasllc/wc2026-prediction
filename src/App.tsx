@@ -297,8 +297,8 @@ type PointAdjustmentDraft = {
 
 type MotivationItem = {
   id: string;
-  badge: string;
   name: string;
+  iconSrc: string | null;
   value: string;
   meta: string;
   metaTone: "positive" | "negative" | "neutral";
@@ -649,7 +649,7 @@ function getPersonIconSrc(name: string) {
   const normalized = normalizeName(name);
   const fileName = personIconAliases[normalized] ?? normalized;
   if (!personIconFileNames.has(fileName)) return null;
-  return `/people-icons/${encodeURIComponent(fileName)}.png`;
+  return `/people-icons-small/${encodeURIComponent(fileName)}.png`;
 }
 
 function formatPercent(value: number) {
@@ -1705,8 +1705,8 @@ function App() {
       const displayYesterdayDelta = Math.round(yesterdayDelta);
       return {
         id: `net-rank-${row.name}-${index + 1}`,
-        badge: `${index + 1}位`,
         name: row.name,
+        iconSrc: getPersonIconSrc(row.name),
         value: `${row.net >= 0 ? "+" : ""}${formatPoints(row.net)}`,
         meta: displayYesterdayDelta === 0
           ? "昨日対比 ー"
@@ -2678,6 +2678,7 @@ function App() {
                             <img
                               alt=""
                               className="person-row-icon"
+                              decoding="async"
                               loading="lazy"
                               src={personIconSrc}
                             />
@@ -3658,9 +3659,22 @@ function MotivationTicker({
             type="button"
           >
             <span>
-              <b>{item.badge.replace("位", "")} {compactDisplayName(item.name)}</b>
-              <strong>{item.value}</strong>
-              <em className={`delta-${item.metaTone}`}>{item.meta}</em>
+              <b>{compactDisplayName(item.name)}</b>
+              <span className="motivation-chip-body">
+                {item.iconSrc && (
+                  <img
+                    alt=""
+                    className="motivation-chip-icon"
+                    decoding="async"
+                    loading="lazy"
+                    src={item.iconSrc}
+                  />
+                )}
+                <span>
+                  <strong>{item.value}</strong>
+                  <em className={`delta-${item.metaTone}`}>{item.meta}</em>
+                </span>
+              </span>
             </span>
           </button>
         ))}
