@@ -2792,7 +2792,7 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  align-items: center;
+  align-items: start;
   color: var(--ink);
 }
 
@@ -2856,6 +2856,19 @@ textarea:focus {
   min-width: 0;
 }
 
+.person-row-person {
+  align-self: stretch;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+}
+
+.person-row-icon {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
 .person-row strong,
 .person-row b {
   min-width: 0;
@@ -2865,6 +2878,7 @@ textarea:focus {
 
 .person-row strong {
   font-size: 1.1rem;
+  line-height: 1.1;
 }
 
 .person-row b {

@@ -337,6 +337,25 @@ const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 const VOTE_CANCEL_CLOCK_SKEW_MS = 10 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 const hiddenUserNames = new Set(["いつき"]);
+const personIconFileNames = new Set([
+  "あずみ",
+  "あらい",
+  "いまい",
+  "おうくら",
+  "おおたに",
+  "キング",
+  "しおん",
+  "たいら",
+  "ひらき",
+  "ひろた",
+  "ふるたにくん",
+  "みやなか",
+  "もえか",
+  "刃霧要",
+]);
+const personIconAliases: Record<string, string> = {
+  あづみ: "あずみ",
+};
 
 function getStoredAdminToken() {
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
@@ -624,6 +643,13 @@ function formatPoints(value: number) {
 function compactDisplayName(value: string) {
   const chars = Array.from(value);
   return chars.length > 4 ? `${chars.slice(0, 4).join("")}...` : value;
+}
+
+function getPersonIconSrc(name: string) {
+  const normalized = normalizeName(name);
+  const fileName = personIconAliases[normalized] ?? normalized;
+  if (!personIconFileNames.has(fileName)) return null;
+  return `/people-icons/${encodeURIComponent(fileName)}.png`;
 }
 
 function formatPercent(value: number) {
@@ -2636,6 +2662,7 @@ function App() {
                     return 0;
                   });
                   const [primaryMetric, ...secondaryMetrics] = metrics;
+                  const personIconSrc = getPersonIconSrc(row.name);
 
                   return (
                     <button
@@ -2644,9 +2671,16 @@ function App() {
                       type="button"
                       onClick={() => openPersonDetail(row.name)}
                     >
-                      <span>
+                      <span className="person-row-person">
                         <strong>{row.name}</strong>
-                        <small>{row.votes}件の投票</small>
+                        {personIconSrc && (
+                          <img
+                            alt=""
+                            className="person-row-icon"
+                            loading="lazy"
+                            src={personIconSrc}
+                          />
+                        )}
                       </span>
                       <span>
                         <b className={primaryMetric.className}>
