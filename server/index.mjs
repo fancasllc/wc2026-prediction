@@ -14,6 +14,7 @@ const appVersion = process.env.RENDER_GIT_COMMIT ?? process.env.COMMIT_SHA ?? "l
 const adminPassword = process.env.ADMIN_PASSWORD ?? "";
 const adminSessionSecret =
   process.env.ADMIN_SESSION_SECRET ?? process.env.SESSION_SECRET ?? "";
+const settingsPassword = process.env.SETTINGS_PASSWORD ?? "3256";
 const requiresAdminAuth = Boolean(process.env.RENDER || adminPassword);
 const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.RENDER);
 const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
@@ -32,6 +33,27 @@ const youtubeRefreshIntervalMs = Math.max(
   5 * 60 * 1000,
   Number(process.env.YOUTUBE_REFRESH_MINUTES ?? 30) * 60 * 1000,
 );
+const autoBetUserName = normalizeName(process.env.AUTO_BET_USER_NAME ?? "ひろた");
+const autoBetDefaultMaxAmount = Math.max(
+  100,
+  Number(process.env.AUTO_BET_DEFAULT_MAX_AMOUNT ?? 5000),
+);
+const autoBetMinExpectedValue = Math.max(
+  0,
+  Number(process.env.AUTO_BET_MIN_EXPECTED_VALUE ?? 25),
+);
+const autoBetMinExpectedRate = Math.max(
+  0,
+  Number(process.env.AUTO_BET_MIN_EXPECTED_RATE ?? 0.02),
+);
+const autoBetIntervalMs = Math.max(
+  30 * 1000,
+  Number(process.env.AUTO_BET_CHECK_SECONDS ?? 60) * 1000,
+);
+const openaiApiKey = process.env.OPENAI_API_KEY ?? "";
+const openaiModel = process.env.OPENAI_MODEL ?? "gpt-5.5";
+const openaiWebSearchToolType = process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ?? "web_search";
+const openaiReasoningEffort = process.env.OPENAI_REASONING_EFFORT ?? "high";
 const betChannelMatchesUrl = "https://bet-channel.com/matches?ct=10037";
 const betChannelApiUrl = "https://bet-channel.com/matches/api/matchlist?ct=10037&limit=300";
 const daznJapanChannelId = process.env.YOUTUBE_CHANNEL_ID ?? "UCoFLB_Gw_AoxUuuzKjXrc_Q";
@@ -71,6 +93,8 @@ let youtubeLatestVideoTimer = null;
 let youtubeLatestVideoInProgress = false;
 let userPointSnapshotTimer = null;
 let userPointSnapshotInProgress = false;
+let autoBetTimer = null;
+let autoBetInProgress = false;
 
 const englishCountryToJapanese = new Map(
   Object.entries({
@@ -640,6 +664,24 @@ async function initializeDatabase() {
 
     create index if not exists external_odds_match_source_fetched_idx
       on external_odds (match_id, source, fetched_at desc);
+
+    create table if not exists auto_bet_reservations (
+      id text primary key,
+      match_id text not null references matches(id) on delete cascade,
+      user_name text not null default 'ひろた',
+      execute_at timestamptz not null,
+      max_amount numeric(14, 2) not null check (max_amount >= 100),
+      status text not null default 'pending',
+      recommendation jsonb not null default '{}'::jsonb,
+      analysis jsonb not null default '{}'::jsonb,
+      error text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      executed_at timestamptz
+    );
+
+    create index if not exists auto_bet_reservations_due_idx
+      on auto_bet_reservations (status, execute_at);
   `);
 
   await refreshTodayUserPointSnapshots();
@@ -648,6 +690,7 @@ async function initializeDatabase() {
   startBackupScheduler();
   startExternalOddsScheduler();
   startYoutubeLatestVideoScheduler();
+  startAutoBetScheduler();
 }
 
 function signAdminToken(expiresAt) {
@@ -723,8 +766,24 @@ function requireAdmin(request, response, next) {
   next();
 }
 
-async function writeAuditLog(action, targetId, detail = {}) {
-  await query(
+function requireSettingsAuth(request, response, next) {
+  const password = String(request.get("x-settings-password") ?? request.body?.settingsPassword ?? "");
+  const passwordBuffer = Buffer.from(password);
+  const expectedBuffer = Buffer.from(settingsPassword);
+  const passwordMatches =
+    passwordBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(passwordBuffer, expectedBuffer);
+
+  if (!passwordMatches) {
+    response.status(401).json({ error: "Settings password is required" });
+    return;
+  }
+
+  next();
+}
+
+async function writeAuditLog(action, targetId, detail = {}, db = pool) {
+  await db.query(
     `
       insert into admin_audit_logs (id, action, target_id, detail)
       values ($1, $2, $3, $4)
@@ -1628,6 +1687,636 @@ function startExternalOddsScheduler() {
   externalOddsTimer = setInterval(() => {
     refreshExternalOdds("scheduled");
   }, externalOddsRefreshIntervalMs);
+}
+
+function formatOptionOdds(totalPool, optionTotal) {
+  return optionTotal > 0 ? totalPool / optionTotal : null;
+}
+
+function buildStakeCandidates(maxAmount) {
+  const safeMax = Math.max(100, Math.min(1_000_000_000, Math.floor(Number(maxAmount) || 0)));
+  const values = new Set([100, safeMax]);
+  let step = safeMax <= 20_000 ? 100 : safeMax <= 100_000 ? 500 : 2_500;
+  for (let amount = 100; amount <= safeMax; amount += step) {
+    values.add(Math.min(safeMax, amount));
+  }
+  return [...values]
+    .filter((value) => value >= 100 && value <= safeMax)
+    .map((value) => Math.floor(value / 100) * 100)
+    .filter((value) => value >= 100)
+    .sort((a, b) => a - b);
+}
+
+async function loadAutoBetSnapshot(matchId, db = pool) {
+  const [matchResult, optionsResult, votesResult, oddsResult] = await Promise.all([
+    db.query(
+      `
+        select
+          id,
+          title,
+          stage,
+          venue,
+          starts_at as "startsAt",
+          closes_at as "closesAt",
+          result_option_id as "resultOptionId",
+          handicap_option_id as "handicapOptionId",
+          handicap_points::float as "handicapPoints"
+        from matches
+        where id = $1
+      `,
+      [matchId],
+    ),
+    db.query(
+      `
+        select id, label
+        from match_options
+        where match_id = $1
+        order by sort_order asc, label asc
+      `,
+      [matchId],
+    ),
+    db.query(
+      `
+        select
+          id,
+          match_id as "matchId",
+          option_id as "optionId",
+          user_name as "userName",
+          amount::float as amount,
+          created_at as "createdAt"
+        from votes
+        where match_id = $1
+        order by created_at desc
+      `,
+      [matchId],
+    ),
+    db.query(
+      `
+        select distinct on (match_id)
+          source,
+          source_url as "sourceUrl",
+          home_label as "homeLabel",
+          away_label as "awayLabel",
+          home_odds::float as "homeOdds",
+          draw_odds::float as "drawOdds",
+          away_odds::float as "awayOdds",
+          fetched_at as "fetchedAt"
+        from external_odds
+        where match_id = $1
+        order by match_id, (draw_odds is not null) desc, fetched_at desc
+      `,
+      [matchId],
+    ),
+  ]);
+
+  const match = matchResult.rows[0];
+  if (!match) {
+    const error = new Error("Match not found");
+    error.status = 404;
+    throw error;
+  }
+
+  const options = optionsResult.rows.map((option) => ({
+    id: option.id,
+    label: option.label,
+  }));
+  const votes = votesResult.rows.map((vote) => ({
+    ...vote,
+    createdAt: new Date(vote.createdAt).toISOString(),
+  }));
+  const totalPool = votes.reduce((sum, vote) => sum + Number(vote.amount), 0);
+  const optionTotals = new Map(options.map((option) => [option.id, 0]));
+  for (const vote of votes) {
+    optionTotals.set(vote.optionId, (optionTotals.get(vote.optionId) ?? 0) + Number(vote.amount));
+  }
+
+  const optionRows = options.map((option) => {
+    const amount = optionTotals.get(option.id) ?? 0;
+    return {
+      optionId: option.id,
+      label: option.label,
+      total: amount,
+      odds: formatOptionOdds(totalPool, amount),
+    };
+  });
+  const hirotaVotes = votes
+    .filter((vote) => normalizeName(vote.userName) === autoBetUserName)
+    .map((vote) => ({
+      id: vote.id,
+      optionId: vote.optionId,
+      optionLabel: optionRows.find((option) => option.optionId === vote.optionId)?.label ?? vote.optionId,
+      amount: Number(vote.amount),
+      createdAt: vote.createdAt,
+    }));
+
+  return {
+    match: {
+      ...match,
+      startsAt: toIsoLike(match.startsAt),
+      closesAt: toIsoLike(match.closesAt),
+      resultOptionId: match.resultOptionId ?? undefined,
+      handicapOptionId: match.handicapOptionId ?? undefined,
+      handicapPoints: Number(match.handicapPoints ?? 0),
+      options,
+    },
+    totalPool,
+    options: optionRows,
+    votes,
+    hirotaVotes,
+    externalOdds: oddsResult.rows[0]
+      ? {
+          source: oddsResult.rows[0].source,
+          sourceUrl: oddsResult.rows[0].sourceUrl,
+          homeLabel: oddsResult.rows[0].homeLabel,
+          awayLabel: oddsResult.rows[0].awayLabel,
+          homeOdds: oddsResult.rows[0].homeOdds == null ? undefined : Number(oddsResult.rows[0].homeOdds),
+          drawOdds: oddsResult.rows[0].drawOdds == null ? undefined : Number(oddsResult.rows[0].drawOdds),
+          awayOdds: oddsResult.rows[0].awayOdds == null ? undefined : Number(oddsResult.rows[0].awayOdds),
+          fetchedAt: new Date(oddsResult.rows[0].fetchedAt).toISOString(),
+        }
+      : null,
+  };
+}
+
+function extractResponseText(payload) {
+  if (typeof payload?.output_text === "string") return payload.output_text;
+  const parts = [];
+  for (const item of payload?.output ?? []) {
+    for (const content of item?.content ?? []) {
+      if (typeof content?.text === "string") parts.push(content.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+function extractJsonObject(text) {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) throw new Error("AI response was empty");
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("AI response did not include JSON");
+    return JSON.parse(match[0]);
+  }
+}
+
+function normalizeAiProbabilities(aiResult, options) {
+  const rows = Array.isArray(aiResult?.probabilities) ? aiResult.probabilities : [];
+  const probabilityById = new Map();
+  for (const option of options) {
+    const row = rows.find(
+      (item) =>
+        String(item?.optionId ?? "") === option.optionId ||
+        normalizeFixtureText(item?.label) === normalizeFixtureText(option.label),
+    );
+    let probability = Number(row?.probability);
+    if (probability > 1) probability /= 100;
+    if (!Number.isFinite(probability) || probability < 0) probability = 0;
+    probabilityById.set(option.optionId, probability);
+  }
+
+  const sum = [...probabilityById.values()].reduce((total, probability) => total + probability, 0);
+  if (sum <= 0) {
+    const error = new Error("AI probabilities were not usable");
+    error.status = 502;
+    throw error;
+  }
+
+  return options.map((option) => {
+    const probability = (probabilityById.get(option.optionId) ?? 0) / sum;
+    return {
+      ...option,
+      aiProbability: probability,
+      fairOdds: probability > 0 ? 1 / probability : null,
+      aiRationale:
+        rows.find(
+          (item) =>
+            String(item?.optionId ?? "") === option.optionId ||
+            normalizeFixtureText(item?.label) === normalizeFixtureText(option.label),
+        )?.rationale ?? "",
+    };
+  });
+}
+
+function calculateExpectedUserNet(snapshot, probabilityRows, additionalOptionId = "", additionalAmount = 0) {
+  const currentStake = snapshot.hirotaVotes.reduce((sum, vote) => sum + vote.amount, 0);
+  const totalPoolAfter = snapshot.totalPool + additionalAmount;
+  const currentOptionTotals = new Map(snapshot.options.map((option) => [option.optionId, option.total]));
+  const userOptionTotals = new Map(snapshot.options.map((option) => [option.optionId, 0]));
+
+  for (const vote of snapshot.hirotaVotes) {
+    userOptionTotals.set(vote.optionId, (userOptionTotals.get(vote.optionId) ?? 0) + vote.amount);
+  }
+
+  if (additionalOptionId && additionalAmount > 0) {
+    currentOptionTotals.set(
+      additionalOptionId,
+      (currentOptionTotals.get(additionalOptionId) ?? 0) + additionalAmount,
+    );
+    userOptionTotals.set(
+      additionalOptionId,
+      (userOptionTotals.get(additionalOptionId) ?? 0) + additionalAmount,
+    );
+  }
+
+  const totalUserStake = currentStake + additionalAmount;
+  return probabilityRows.reduce((expected, option) => {
+    const optionPool = currentOptionTotals.get(option.optionId) ?? 0;
+    const userAmount = userOptionTotals.get(option.optionId) ?? 0;
+    const gross = optionPool > 0 ? (totalPoolAfter * userAmount) / optionPool : 0;
+    return expected + option.aiProbability * (gross - totalUserStake);
+  }, 0);
+}
+
+function optimizeAutoBet(snapshot, probabilityRows, maxAmount) {
+  const baseExpectedNet = calculateExpectedUserNet(snapshot, probabilityRows);
+  const candidates = buildStakeCandidates(maxAmount);
+  let best = {
+    shouldBet: false,
+    optionId: "",
+    optionLabel: "",
+    amount: 0,
+    expectedValue: 0,
+    expectedValueRate: 0,
+    expectedNetAfter: baseExpectedNet,
+    reason: "現在のプールとAI推定確率では、上限内に十分な期待値の歪みはありません。",
+  };
+
+  for (const option of probabilityRows) {
+    for (const amount of candidates) {
+      const expectedNetAfter = calculateExpectedUserNet(snapshot, probabilityRows, option.optionId, amount);
+      const expectedValue = expectedNetAfter - baseExpectedNet;
+      const expectedValueRate = amount > 0 ? expectedValue / amount : 0;
+      if (
+        expectedValue > best.expectedValue ||
+        (expectedValue === best.expectedValue && amount < best.amount)
+      ) {
+        best = {
+          shouldBet: false,
+          optionId: option.optionId,
+          optionLabel: option.label,
+          amount,
+          expectedValue,
+          expectedValueRate,
+          expectedNetAfter,
+          reason: `${option.label}への追加投票が最も期待値の高い候補です。`,
+        };
+      }
+    }
+  }
+
+  const minimumEdge = Math.max(autoBetMinExpectedValue, best.amount * autoBetMinExpectedRate);
+  best.shouldBet = best.amount >= 100 && best.expectedValue >= minimumEdge;
+  if (!best.shouldBet) {
+    best.reason = "候補はありますが、期待値が最低基準を超えないため自動投票は推奨しません。";
+  }
+
+  return {
+    ...best,
+    expectedValue: Math.round(best.expectedValue),
+    expectedValueRate: Number((best.expectedValueRate * 100).toFixed(1)),
+    expectedNetAfter: Math.round(best.expectedNetAfter),
+  };
+}
+
+function buildAutoBetPrompt(snapshot, maxAmount) {
+  return [
+    "あなたはサッカー国際大会の試合予測とパリミューチュエル型プールの期待値評価を補助する分析者です。",
+    "最新ニュース、怪我、先発予想、チーム状態、対戦文脈をウェブ検索で確認し、各選択肢の現時点の実力確率を推定してください。",
+    "投票の最終判断はアプリ側で期待値計算します。あなたは確率推定と根拠に集中してください。",
+    "出力は必ずJSONだけにしてください。説明文やMarkdownをJSONの外に出さないでください。",
+    "",
+    "JSON形式:",
+    '{"summary":"短い総括","marketNotes":"プールや参考オッズへのコメント","probabilities":[{"optionId":"選択肢ID","label":"選択肢名","probability":0.5,"rationale":"根拠"}],"riskNotes":["不確実性"],"sources":[{"title":"出典名","url":"URL"}]}',
+    "",
+    "分析対象:",
+    JSON.stringify(
+      {
+        userName: autoBetUserName,
+        maxAdditionalAmount: maxAmount,
+        match: snapshot.match,
+        currentPool: {
+          total: snapshot.totalPool,
+          options: snapshot.options,
+        },
+        userExistingVotes: snapshot.hirotaVotes,
+        externalOdds: snapshot.externalOdds,
+        generatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  ].join("\n");
+}
+
+async function callOpenAiForAutoBet(snapshot, maxAmount) {
+  if (!openaiApiKey) {
+    const error = new Error("OPENAI_API_KEY is not configured");
+    error.status = 503;
+    throw error;
+  }
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${openaiApiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: openaiModel,
+      tools: [{ type: openaiWebSearchToolType }],
+      reasoning: { effort: openaiReasoningEffort },
+      input: [
+        {
+          role: "system",
+          content:
+            "Return only valid JSON. Use web search when current team news or context may affect the probabilities.",
+        },
+        {
+          role: "user",
+          content: buildAutoBetPrompt(snapshot, maxAmount),
+        },
+      ],
+      max_output_tokens: 4000,
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message ?? `OpenAI API failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  const text = extractResponseText(payload);
+  return {
+    rawText: text,
+    parsed: extractJsonObject(text),
+  };
+}
+
+async function createAutoBetAnalysis(matchId, maxAmount = autoBetDefaultMaxAmount) {
+  const safeMaxAmount = Math.max(100, Math.min(1_000_000_000, Math.floor(Number(maxAmount) || autoBetDefaultMaxAmount)));
+  const snapshot = await loadAutoBetSnapshot(matchId);
+  if (snapshot.match.resultOptionId || new Date(snapshot.match.closesAt).getTime() <= Date.now()) {
+    const error = new Error("Voting is closed");
+    error.status = 409;
+    throw error;
+  }
+
+  const aiResult = await callOpenAiForAutoBet(snapshot, safeMaxAmount);
+  const probabilityRows = normalizeAiProbabilities(aiResult.parsed, snapshot.options);
+  const recommendation = optimizeAutoBet(snapshot, probabilityRows, safeMaxAmount);
+  const options = probabilityRows.map((option) => ({
+    ...option,
+    aiProbabilityPercent: Number((option.aiProbability * 100).toFixed(1)),
+    fairOdds: option.fairOdds == null ? null : Number(option.fairOdds.toFixed(2)),
+    edge:
+      option.odds && option.fairOdds
+        ? Number((((option.odds / option.fairOdds) - 1) * 100).toFixed(1))
+        : null,
+  }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    model: openaiModel,
+    webSearchTool: openaiWebSearchToolType,
+    userName: autoBetUserName,
+    maxAmount: safeMaxAmount,
+    match: snapshot.match,
+    currentPool: {
+      total: snapshot.totalPool,
+      options,
+    },
+    hirotaVotes: snapshot.hirotaVotes,
+    externalOdds: snapshot.externalOdds,
+    ai: {
+      summary: String(aiResult.parsed?.summary ?? "").slice(0, 1200),
+      marketNotes: String(aiResult.parsed?.marketNotes ?? "").slice(0, 1200),
+      riskNotes: Array.isArray(aiResult.parsed?.riskNotes)
+        ? aiResult.parsed.riskNotes.map((note) => String(note).slice(0, 240)).slice(0, 6)
+        : [],
+      sources: Array.isArray(aiResult.parsed?.sources)
+        ? aiResult.parsed.sources
+            .map((source) => ({
+              title: String(source?.title ?? "").slice(0, 120),
+              url: String(source?.url ?? "").slice(0, 500),
+            }))
+            .filter((source) => source.title || source.url)
+            .slice(0, 8)
+        : [],
+    },
+    recommendation,
+  };
+}
+
+async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = pool) {
+  const userName = autoBetUserName;
+  const safeAmount = Number(amount);
+  if (!matchId || !optionId || !Number.isInteger(safeAmount) || safeAmount < 100) {
+    const error = new Error("Invalid auto bet vote payload");
+    error.status = 400;
+    throw error;
+  }
+
+  await db.query(
+    `
+      insert into users (name, updated_at)
+      values ($1, now())
+      on conflict (name) do update set updated_at = now()
+    `,
+    [userName],
+  );
+
+  const matchResult = await db.query(
+    `
+      select id, closes_at, result_option_id
+      from matches
+      where id = $1
+      for update
+    `,
+    [matchId],
+  );
+  const match = matchResult.rows[0];
+  if (!match) {
+    const error = new Error("Match not found");
+    error.status = 404;
+    throw error;
+  }
+  if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
+    const error = new Error("Voting is closed");
+    error.status = 409;
+    throw error;
+  }
+
+  const optionResult = await db.query(
+    "select id, label from match_options where id = $1 and match_id = $2",
+    [optionId, matchId],
+  );
+  if (!optionResult.rowCount) {
+    const error = new Error("Option not found");
+    error.status = 404;
+    throw error;
+  }
+
+  const voteId = createId("vote");
+  await db.query(
+    `
+      insert into votes (id, match_id, option_id, user_name, amount)
+      values ($1, $2, $3, $4, $5)
+    `,
+    [voteId, matchId, optionId, userName, safeAmount],
+  );
+  await writeAuditLog("auto-bet.vote", voteId, {
+    matchId,
+    optionId,
+    optionLabel: optionResult.rows[0].label,
+    userName,
+    amount: safeAmount,
+    reason,
+  }, db);
+  return {
+    id: voteId,
+    matchId,
+    optionId,
+    optionLabel: optionResult.rows[0].label,
+    userName,
+    amount: safeAmount,
+  };
+}
+
+async function listAutoBetReservations() {
+  const result = await query(
+    `
+      select
+        auto_bet_reservations.id,
+        auto_bet_reservations.match_id as "matchId",
+        matches.title as "matchTitle",
+        auto_bet_reservations.user_name as "userName",
+        auto_bet_reservations.execute_at as "executeAt",
+        auto_bet_reservations.max_amount::float as "maxAmount",
+        auto_bet_reservations.status,
+        auto_bet_reservations.recommendation,
+        auto_bet_reservations.analysis,
+        auto_bet_reservations.error,
+        auto_bet_reservations.created_at as "createdAt",
+        auto_bet_reservations.updated_at as "updatedAt",
+        auto_bet_reservations.executed_at as "executedAt"
+      from auto_bet_reservations
+      join matches on matches.id = auto_bet_reservations.match_id
+      order by auto_bet_reservations.execute_at desc, auto_bet_reservations.created_at desc
+      limit 40
+    `,
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    executeAt: new Date(row.executeAt).toISOString(),
+    createdAt: new Date(row.createdAt).toISOString(),
+    updatedAt: new Date(row.updatedAt).toISOString(),
+    executedAt: row.executedAt ? new Date(row.executedAt).toISOString() : null,
+  }));
+}
+
+async function processDueAutoBetReservations() {
+  if (!pool || autoBetInProgress) return;
+  autoBetInProgress = true;
+  try {
+    const dueResult = await query(
+      `
+        select id, match_id as "matchId", max_amount::float as "maxAmount"
+        from auto_bet_reservations
+        where status = 'pending'
+          and execute_at <= now()
+        order by execute_at asc
+        limit 3
+      `,
+    );
+
+    for (const reservation of dueResult.rows) {
+      const claimed = await query(
+        `
+          update auto_bet_reservations
+          set status = 'processing', updated_at = now()
+          where id = $1 and status = 'pending'
+          returning id
+        `,
+        [reservation.id],
+      );
+      if (!claimed.rowCount) continue;
+
+      try {
+        const analysis = await createAutoBetAnalysis(reservation.matchId, reservation.maxAmount);
+        let vote = null;
+        if (analysis.recommendation.shouldBet) {
+          await withTransaction(async (client) => {
+            vote = await insertAutoBetVote(
+              {
+                matchId: reservation.matchId,
+                optionId: analysis.recommendation.optionId,
+                amount: analysis.recommendation.amount,
+                reason: `reservation:${reservation.id}`,
+              },
+              client,
+            );
+          });
+        }
+
+        await query(
+          `
+            update auto_bet_reservations
+            set status = $2,
+                recommendation = $3::jsonb,
+                analysis = $4::jsonb,
+                error = null,
+                executed_at = now(),
+                updated_at = now()
+            where id = $1
+          `,
+          [
+            reservation.id,
+            vote ? "executed" : "skipped",
+            JSON.stringify({ ...analysis.recommendation, vote }),
+            JSON.stringify(analysis),
+          ],
+        );
+        await writeAuditLog("auto-bet.reservation.run", reservation.id, {
+          status: vote ? "executed" : "skipped",
+          vote,
+          recommendation: analysis.recommendation,
+        });
+      } catch (error) {
+        await query(
+          `
+            update auto_bet_reservations
+            set status = 'failed',
+                error = $2,
+                executed_at = now(),
+                updated_at = now()
+            where id = $1
+          `,
+          [reservation.id, String(error?.message ?? error).slice(0, 1000)],
+        );
+        await writeAuditLog("auto-bet.reservation.failed", reservation.id, {
+          error: String(error?.message ?? error),
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Failed to process auto bet reservations", error);
+  } finally {
+    autoBetInProgress = false;
+  }
+}
+
+function startAutoBetScheduler() {
+  if (!pool || autoBetTimer) return;
+  setTimeout(() => {
+    processDueAutoBetReservations();
+  }, 10 * 1000);
+  autoBetTimer = setInterval(() => {
+    processDueAutoBetReservations();
+  }, autoBetIntervalMs);
 }
 
 function decodeXmlEntities(value = "") {
@@ -2737,6 +3426,153 @@ app.post("/api/admin/point-adjustments", requireAdmin, async (request, response,
       entries,
     });
     response.status(201).json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/auto-bet", requireAdmin, requireSettingsAuth, async (_request, response, next) => {
+  try {
+    response.json({
+      config: {
+        userName: autoBetUserName,
+        openaiConfigured: Boolean(openaiApiKey),
+        model: openaiModel,
+        webSearchTool: openaiWebSearchToolType,
+        defaultMaxAmount: autoBetDefaultMaxAmount,
+        minExpectedValue: autoBetMinExpectedValue,
+        minExpectedRate: autoBetMinExpectedRate,
+      },
+      reservations: await listAutoBetReservations(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/auto-bet/analyze", requireAdmin, requireSettingsAuth, async (request, response, next) => {
+  try {
+    const matchId = String(request.body?.matchId ?? "");
+    const maxAmount = Number(request.body?.maxAmount ?? autoBetDefaultMaxAmount);
+    if (!matchId) {
+      response.status(400).json({ error: "Match ID is required" });
+      return;
+    }
+
+    const analysis = await createAutoBetAnalysis(matchId, maxAmount);
+    await writeAuditLog("auto-bet.analyze", matchId, {
+      maxAmount: analysis.maxAmount,
+      recommendation: analysis.recommendation,
+    });
+    response.json({ analysis });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/auto-bet/accept", requireAdmin, requireSettingsAuth, async (request, response, next) => {
+  try {
+    const matchId = String(request.body?.matchId ?? "");
+    const optionId = String(request.body?.optionId ?? "");
+    const amount = Number(request.body?.amount);
+    const reason = String(request.body?.reason ?? "manual-accept").slice(0, 120);
+    if (!matchId || !optionId || !Number.isInteger(amount) || amount < 100) {
+      response.status(400).json({ error: "Invalid accepted recommendation" });
+      return;
+    }
+
+    let vote = null;
+    await withTransaction(async (client) => {
+      vote = await insertAutoBetVote({ matchId, optionId, amount, reason }, client);
+    });
+    response.status(201).json({
+      vote,
+      state: await getState(),
+      reservations: await listAutoBetReservations(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, async (request, response, next) => {
+  try {
+    const matchId = String(request.body?.matchId ?? "");
+    const executeAt = String(request.body?.executeAt ?? "");
+    const maxAmount = Number(request.body?.maxAmount);
+    const executeDate = new Date(executeAt);
+
+    if (
+      !matchId ||
+      Number.isNaN(executeDate.getTime()) ||
+      executeDate.getTime() <= Date.now() ||
+      !Number.isInteger(maxAmount) ||
+      maxAmount < 100 ||
+      maxAmount > 1_000_000_000
+    ) {
+      response.status(400).json({ error: "Invalid reservation payload" });
+      return;
+    }
+
+    const matchResult = await query(
+      `
+        select id, closes_at, result_option_id
+        from matches
+        where id = $1
+      `,
+      [matchId],
+    );
+    const match = matchResult.rows[0];
+    if (!match) {
+      response.status(404).json({ error: "Match not found" });
+      return;
+    }
+    if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
+      response.status(409).json({ error: "Voting is closed" });
+      return;
+    }
+    if (executeDate.getTime() >= new Date(match.closes_at).getTime()) {
+      response.status(409).json({ error: "予約時刻は投票締切より前にしてください。" });
+      return;
+    }
+
+    const reservationId = createId("auto-bet");
+    await query(
+      `
+        insert into auto_bet_reservations (
+          id, match_id, user_name, execute_at, max_amount
+        ) values ($1, $2, $3, $4, $5)
+      `,
+      [reservationId, matchId, autoBetUserName, executeDate.toISOString(), maxAmount],
+    );
+    await writeAuditLog("auto-bet.reservation.create", reservationId, {
+      matchId,
+      executeAt: executeDate.toISOString(),
+      maxAmount,
+    });
+    response.status(201).json({ reservations: await listAutoBetReservations() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/admin/auto-bet/reservations/:id", requireAdmin, requireSettingsAuth, async (request, response, next) => {
+  try {
+    const result = await query(
+      `
+        update auto_bet_reservations
+        set status = 'cancelled', updated_at = now()
+        where id = $1 and status = 'pending'
+        returning id
+      `,
+      [request.params.id],
+    );
+    if (!result.rowCount) {
+      response.status(409).json({ error: "予約はキャンセルできない状態です。" });
+      return;
+    }
+    await writeAuditLog("auto-bet.reservation.cancel", request.params.id);
+    response.json({ reservations: await listAutoBetReservations() });
   } catch (error) {
     next(error);
   }

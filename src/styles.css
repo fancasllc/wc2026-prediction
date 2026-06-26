@@ -3581,6 +3581,304 @@ th {
   justify-self: stretch;
 }
 
+.settings-page {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-auth-panel {
+  max-width: 520px;
+}
+
+.settings-status-panel {
+  align-content: start;
+}
+
+.settings-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-status-grid span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  background: #eef8ff;
+  border: 1px solid #d6e8f5;
+  border-radius: 8px;
+}
+
+.settings-status-grid small,
+.settings-limit-control span,
+.auto-bet-reservation-fields span {
+  color: #60748b;
+  font-size: 0.75rem;
+  font-weight: 950;
+}
+
+.settings-status-grid b {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.settings-limit-control {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-match-list {
+  display: grid;
+  gap: 12px;
+}
+
+.auto-bet-card {
+  gap: 12px;
+}
+
+.auto-bet-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.auto-bet-card-head > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.auto-bet-card-head strong {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 1.04rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.auto-bet-card-head small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.primary-action.compact {
+  min-height: 42px;
+  padding: 8px 12px;
+  font-size: 0.86rem;
+}
+
+.auto-bet-options {
+  display: grid;
+  gap: 6px;
+}
+
+.auto-bet-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: #f5fbff;
+  border: 1px solid #dce9f1;
+  border-radius: 8px;
+}
+
+.auto-bet-option-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.auto-bet-option-row b,
+.auto-bet-option-row strong {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.auto-bet-option-row small {
+  color: #087b62;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.auto-bet-option-row em {
+  color: #0a5da8;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.auto-bet-analysis,
+.auto-bet-reservation-box {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: #f7fcff;
+  border: 1px solid #d8eaf5;
+  border-radius: 8px;
+}
+
+.auto-bet-analysis-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.auto-bet-analysis p,
+.auto-bet-recommend p {
+  margin: 0;
+  color: #52677d;
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.auto-bet-analysis-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-bet-analysis-grid span {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  background: #ffffff;
+  border: 1px solid #dce9f1;
+  border-radius: 8px;
+}
+
+.auto-bet-analysis-grid small,
+.auto-bet-analysis-grid em {
+  color: #60748b;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.auto-bet-analysis-grid b {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.auto-bet-analysis-grid i {
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.auto-bet-recommend {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.positive-panel {
+  background: #eafff7;
+  border: 1px solid #aeeed8;
+}
+
+.neutral-panel {
+  background: #f1f6fb;
+  border: 1px solid #dce9f1;
+}
+
+.auto-bet-recommend strong {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.auto-bet-recommend small {
+  color: #087b62;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.auto-bet-notes,
+.auto-bet-sources {
+  display: grid;
+  gap: 5px;
+}
+
+.auto-bet-notes small {
+  color: #8a5200;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.auto-bet-sources a {
+  min-width: 0;
+  color: #075eb5;
+  font-size: 0.76rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.auto-bet-reservation-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-bet-reservation-fields label {
+  display: grid;
+  gap: 5px;
+}
+
+.auto-bet-reservations-panel {
+  margin-bottom: 18px;
+}
+
+.auto-bet-reservation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-bet-reservation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: #f6fbff;
+  border: 1px solid #dce9f1;
+  border-radius: 8px;
+}
+
+.auto-bet-reservation-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.auto-bet-reservation-row strong {
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.auto-bet-reservation-row small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.settings-entry-panel {
+  margin-top: 2px;
+  border-color: #bfe7f8;
+}
+
 @media (min-width: 700px) {
   body {
     padding: 18px 0;

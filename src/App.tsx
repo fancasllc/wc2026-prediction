@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
+  Bot,
+  BrainCircuit,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -13,7 +15,9 @@ import {
   Menu,
   Play,
   RotateCcw,
+  Settings,
   ShieldCheck,
+  Sparkles,
   Trophy,
   Trash2,
   Upload,
@@ -22,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 
-type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin";
+type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin" | "settings";
 
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
 const FIFA_STANDINGS_URL = "https://www.flashscore.co.jp/soccer/world/world-championship/standings/SbLsX4y7/standings/";
@@ -222,6 +226,82 @@ type BackupStorageStatus = {
   prefix: string;
 };
 
+type AutoBetConfig = {
+  userName: string;
+  openaiConfigured: boolean;
+  model: string;
+  webSearchTool: string;
+  defaultMaxAmount: number;
+  minExpectedValue: number;
+  minExpectedRate: number;
+};
+
+type AutoBetAnalysisOption = {
+  optionId: string;
+  label: string;
+  total: number;
+  odds: number | null;
+  aiProbability: number;
+  aiProbabilityPercent: number;
+  fairOdds: number | null;
+  edge: number | null;
+  aiRationale?: string;
+};
+
+type AutoBetAnalysis = {
+  generatedAt: string;
+  model: string;
+  webSearchTool: string;
+  userName: string;
+  maxAmount: number;
+  match: MatchRecord;
+  currentPool: {
+    total: number;
+    options: AutoBetAnalysisOption[];
+  };
+  hirotaVotes: Array<{
+    id: string;
+    optionId: string;
+    optionLabel: string;
+    amount: number;
+    createdAt: string;
+  }>;
+  externalOdds: ExternalOddsRecord | null;
+  ai: {
+    summary: string;
+    marketNotes: string;
+    riskNotes: string[];
+    sources: Array<{ title: string; url: string }>;
+  };
+  recommendation: {
+    shouldBet: boolean;
+    optionId: string;
+    optionLabel: string;
+    amount: number;
+    expectedValue: number;
+    expectedValueRate: number;
+    expectedNetAfter: number;
+    reason: string;
+    vote?: VoteRecord | null;
+  };
+};
+
+type AutoBetReservation = {
+  id: string;
+  matchId: string;
+  matchTitle: string;
+  userName: string;
+  executeAt: string;
+  maxAmount: number;
+  status: "pending" | "processing" | "executed" | "skipped" | "failed" | "cancelled" | string;
+  recommendation?: AutoBetAnalysis["recommendation"];
+  analysis?: AutoBetAnalysis;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  executedAt?: string | null;
+};
+
 type VoteDraft = {
   name: string;
   amount: string;
@@ -331,6 +411,7 @@ type ApiErrorBody = {
 const STORAGE_KEY = "wc2026-prediction-pool:data:v3";
 const LAST_NAME_KEY = "wc2026-prediction-pool:last-name";
 const ADMIN_TOKEN_KEY = "wc2026-prediction-pool:admin-token";
+const SETTINGS_PASSWORD_KEY = "wc2026-prediction-pool:settings-password";
 const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
 const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
@@ -461,6 +542,77 @@ async function syncBackupExternally(adminToken: string, backupId: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${adminToken}` },
   });
+}
+
+function settingsHeaders(adminToken: string, settingsPassword: string) {
+  return {
+    Authorization: `Bearer ${adminToken}`,
+    "X-Settings-Password": settingsPassword,
+  };
+}
+
+async function requestAutoBetSettings(adminToken: string, settingsPassword: string) {
+  return apiRequest<{
+    config: AutoBetConfig;
+    reservations: AutoBetReservation[];
+  }>("/api/admin/auto-bet", {
+    headers: settingsHeaders(adminToken, settingsPassword),
+  });
+}
+
+async function requestAutoBetAnalysis(
+  adminToken: string,
+  settingsPassword: string,
+  matchId: string,
+  maxAmount: number,
+) {
+  return apiRequest<{ analysis: AutoBetAnalysis }>("/api/admin/auto-bet/analyze", {
+    method: "POST",
+    headers: settingsHeaders(adminToken, settingsPassword),
+    body: JSON.stringify({ matchId, maxAmount }),
+  });
+}
+
+async function acceptAutoBetRecommendation(
+  adminToken: string,
+  settingsPassword: string,
+  recommendation: { matchId: string; optionId: string; amount: number; reason: string },
+) {
+  return apiRequest<{
+    vote: VoteRecord;
+    state: AppData;
+    reservations: AutoBetReservation[];
+  }>("/api/admin/auto-bet/accept", {
+    method: "POST",
+    headers: settingsHeaders(adminToken, settingsPassword),
+    body: JSON.stringify(recommendation),
+  });
+}
+
+async function createAutoBetReservation(
+  adminToken: string,
+  settingsPassword: string,
+  reservation: { matchId: string; executeAt: string; maxAmount: number },
+) {
+  return apiRequest<{ reservations: AutoBetReservation[] }>("/api/admin/auto-bet/reservations", {
+    method: "POST",
+    headers: settingsHeaders(adminToken, settingsPassword),
+    body: JSON.stringify(reservation),
+  });
+}
+
+async function cancelAutoBetReservation(
+  adminToken: string,
+  settingsPassword: string,
+  reservationId: string,
+) {
+  return apiRequest<{ reservations: AutoBetReservation[] }>(
+    `/api/admin/auto-bet/reservations/${reservationId}`,
+    {
+      method: "DELETE",
+      headers: settingsHeaders(adminToken, settingsPassword),
+    },
+  );
 }
 
 const worldCupWinnerLabels = [
@@ -618,6 +770,13 @@ function formatTokyoDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function toDateTimeLocalValue(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function formatStartsIn(value: string, now: Date) {
@@ -1217,6 +1376,20 @@ function App() {
   );
   const [adminPassword, setAdminPassword] = useState("");
   const [adminMessage, setAdminMessage] = useState("");
+  const [settingsPassword, setSettingsPassword] = useState(
+    () => sessionStorage.getItem(SETTINGS_PASSWORD_KEY) ?? "",
+  );
+  const [settingsPasswordInput, setSettingsPasswordInput] = useState("");
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [autoBetConfig, setAutoBetConfig] = useState<AutoBetConfig | null>(null);
+  const [autoBetReservations, setAutoBetReservations] = useState<AutoBetReservation[]>([]);
+  const [autoBetAnalyses, setAutoBetAnalyses] = useState<Record<string, AutoBetAnalysis>>({});
+  const [autoBetLoadingMatchId, setAutoBetLoadingMatchId] = useState("");
+  const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
+  const [autoBetMaxAmount, setAutoBetMaxAmount] = useState("5000");
+  const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
+    Record<string, { executeAt: string; maxAmount: string }>
+  >({});
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupStorage, setBackupStorage] = useState<BackupStorageStatus | null>(null);
   const [backupMessage, setBackupMessage] = useState("");
@@ -1308,6 +1481,11 @@ function App() {
     refreshBackups(adminToken);
   }, [adminToken]);
 
+  useEffect(() => {
+    if (view !== "settings" || !adminToken || !settingsPassword) return;
+    refreshAutoBetSettings(settingsPassword);
+  }, [adminToken, settingsPassword, view]);
+
   async function syncState(action: () => Promise<AppData>) {
     setIsSyncing(true);
     setApiError("");
@@ -1349,10 +1527,16 @@ function App() {
 
   function logoutAdmin() {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    sessionStorage.removeItem(SETTINGS_PASSWORD_KEY);
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken("");
+    setSettingsPassword("");
+    setSettingsPasswordInput("");
     setBackups([]);
     setBackupStorage(null);
+    setAutoBetConfig(null);
+    setAutoBetReservations([]);
+    setAutoBetAnalyses({});
     setAdminMessage("管理者認証を解除しました。");
   }
 
@@ -1369,6 +1553,158 @@ function App() {
       setBackupMessage(`バックアップ一覧を取得できませんでした: ${message}`);
     } finally {
       setIsBackupLoading(false);
+    }
+  }
+
+  async function refreshAutoBetSettings(password = settingsPassword) {
+    if (!adminToken || !password) return;
+    setSettingsMessage("");
+    try {
+      const result = await requestAutoBetSettings(adminToken, password);
+      setAutoBetConfig(result.config);
+      setAutoBetReservations(result.reservations);
+      setAutoBetMaxAmount(String(result.config.defaultMaxAmount));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`設定情報を取得できませんでした: ${message}`);
+    }
+  }
+
+  async function unlockSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!adminToken) {
+      setSettingsMessage("先に管理画面で認証してください。");
+      return;
+    }
+    const password = settingsPasswordInput.trim();
+    setSettingsMessage("");
+    try {
+      const result = await requestAutoBetSettings(adminToken, password);
+      sessionStorage.setItem(SETTINGS_PASSWORD_KEY, password);
+      setSettingsPassword(password);
+      setSettingsPasswordInput("");
+      setAutoBetConfig(result.config);
+      setAutoBetReservations(result.reservations);
+      setAutoBetMaxAmount(String(result.config.defaultMaxAmount));
+      setSettingsMessage("設定画面を開きました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`設定パスワードを確認できませんでした: ${message}`);
+    }
+  }
+
+  async function analyzeAutoBetMatch(match: MatchRecord) {
+    if (!adminToken || !settingsPassword) return;
+    const maxAmount = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
+    setAutoBetLoadingMatchId(match.id);
+    setSettingsMessage("");
+    try {
+      const result = await requestAutoBetAnalysis(adminToken, settingsPassword, match.id, maxAmount);
+      setAutoBetAnalyses((current) => ({ ...current, [match.id]: result.analysis }));
+      setSettingsMessage(`${match.title} のAI分析を更新しました。`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`AI分析に失敗しました: ${message}`);
+    } finally {
+      setAutoBetLoadingMatchId("");
+    }
+  }
+
+  async function acceptAutoBet(match: MatchRecord, analysis: AutoBetAnalysis) {
+    if (!analysis.recommendation.shouldBet) return;
+    const confirmed = window.confirm(
+      [
+        "この提案を受け入れて投票しますか？",
+        "",
+        match.title,
+        `${analysis.recommendation.optionLabel} / ${formatPoints(analysis.recommendation.amount)}`,
+        `期待値 ${analysis.recommendation.expectedValue >= 0 ? "+" : ""}${formatPoints(
+          analysis.recommendation.expectedValue,
+        )}`,
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setAutoBetActionMatchId(match.id);
+    setSettingsMessage("");
+    try {
+      const result = await acceptAutoBetRecommendation(adminToken, settingsPassword, {
+        matchId: match.id,
+        optionId: analysis.recommendation.optionId,
+        amount: analysis.recommendation.amount,
+        reason: `analysis:${analysis.generatedAt}`,
+      });
+      setData(result.state);
+      setAutoBetReservations(result.reservations);
+      setToastMessage("自動投票の提案を反映しました。");
+      setSettingsMessage("投票データベースに反映しました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`提案を反映できませんでした: ${message}`);
+    } finally {
+      setAutoBetActionMatchId("");
+    }
+  }
+
+  function getReservationDraft(match: MatchRecord) {
+    const existing = autoBetReservationDrafts[match.id];
+    if (existing) return existing;
+    const closesAt = new Date(match.closesAt);
+    const defaultTime = Number.isNaN(closesAt.getTime())
+      ? new Date(Date.now() + 60 * 60 * 1000)
+      : new Date(Math.max(Date.now() + 10 * 60 * 1000, closesAt.getTime() - 60 * 60 * 1000));
+    return {
+      executeAt: toDateTimeLocalValue(defaultTime),
+      maxAmount: autoBetMaxAmount,
+    };
+  }
+
+  function updateReservationDraft(matchId: string, patch: Partial<{ executeAt: string; maxAmount: string }>) {
+    setAutoBetReservationDrafts((current) => ({
+      ...current,
+      [matchId]: {
+        executeAt: current[matchId]?.executeAt ?? "",
+        maxAmount: current[matchId]?.maxAmount ?? autoBetMaxAmount,
+        ...patch,
+      },
+    }));
+  }
+
+  async function reserveAutoBet(match: MatchRecord) {
+    const draft = getReservationDraft(match);
+    const maxAmount = Math.max(100, Math.floor(Number(draft.maxAmount) || 0));
+    if (!draft.executeAt || maxAmount < 100) {
+      setSettingsMessage("予約時刻と上限ptを入力してください。");
+      return;
+    }
+
+    setAutoBetActionMatchId(match.id);
+    setSettingsMessage("");
+    try {
+      const result = await createAutoBetReservation(adminToken, settingsPassword, {
+        matchId: match.id,
+        executeAt: new Date(draft.executeAt).toISOString(),
+        maxAmount,
+      });
+      setAutoBetReservations(result.reservations);
+      setSettingsMessage("自動投票の予約を登録しました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`予約を登録できませんでした: ${message}`);
+    } finally {
+      setAutoBetActionMatchId("");
+    }
+  }
+
+  async function cancelReservation(reservation: AutoBetReservation) {
+    setSettingsMessage("");
+    try {
+      const result = await cancelAutoBetReservation(adminToken, settingsPassword, reservation.id);
+      setAutoBetReservations(result.reservations);
+      setSettingsMessage("予約をキャンセルしました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setSettingsMessage(`予約をキャンセルできませんでした: ${message}`);
     }
   }
 
@@ -2459,7 +2795,7 @@ function App() {
 
   return (
     <div
-      className={`app-shell ${view === "admin" ? "admin-shell" : ""}`}
+      className={`app-shell ${view === "admin" || view === "settings" ? "admin-shell" : ""}`}
       onTouchStart={handlePullStart}
       onTouchMove={handlePullMove}
       onTouchEnd={handlePullEnd}
@@ -2788,6 +3124,302 @@ function App() {
               allVotes={data.votes}
               onOpenMatch={openMatchDetail}
             />
+          </section>
+        )}
+
+        {view === "settings" && (
+          <section className="settings-page">
+            <button className="back-action" type="button" onClick={() => setView("admin")}>
+              管理画面へ戻る
+            </button>
+
+            <div className="section-heading">
+              <div>
+                <h2>設定</h2>
+              </div>
+            </div>
+
+            {!settingsPassword ? (
+              <form className="data-panel form-panel settings-auth-panel" onSubmit={unlockSettings}>
+                <div className="panel-title">
+                  <Settings size={18} aria-hidden />
+                  設定パスワード
+                </div>
+                <label>
+                  <span>パスワード</span>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    value={settingsPasswordInput}
+                    onChange={(event) => setSettingsPasswordInput(event.target.value)}
+                    placeholder="3256"
+                  />
+                </label>
+                <button className="primary-action" disabled={!adminToken} type="submit">
+                  <Settings size={18} aria-hidden />
+                  設定画面を開く
+                </button>
+                {!adminToken && <p className="inline-message">先に管理者認証を行ってください。</p>}
+                {settingsMessage && <p className="inline-message">{settingsMessage}</p>}
+              </form>
+            ) : (
+              <>
+                <div className="data-panel settings-status-panel">
+                  <div className="panel-title">
+                    <Bot size={18} aria-hidden />
+                    自動投票設定
+                  </div>
+                  <div className="settings-status-grid">
+                    <span>
+                      <small>対象ユーザー</small>
+                      <b>{autoBetConfig?.userName ?? "ひろた"}</b>
+                    </span>
+                    <span>
+                      <small>OpenAI API</small>
+                      <b className={autoBetConfig?.openaiConfigured ? "positive" : "negative"}>
+                        {autoBetConfig?.openaiConfigured ? "設定済み" : "未設定"}
+                      </b>
+                    </span>
+                    <span>
+                      <small>モデル</small>
+                      <b>{autoBetConfig?.model ?? "gpt-5.5"}</b>
+                    </span>
+                    <span>
+                      <small>Web検索</small>
+                      <b>{autoBetConfig?.webSearchTool ?? "web_search"}</b>
+                    </span>
+                  </div>
+                  <label className="settings-limit-control">
+                    <span>AI分析時の追加投票上限pt</span>
+                    <input
+                      type="number"
+                      min={100}
+                      step={100}
+                      value={autoBetMaxAmount}
+                      onChange={(event) => setAutoBetMaxAmount(event.target.value)}
+                    />
+                  </label>
+                  <div className="button-row">
+                    <button className="ghost-action" type="button" onClick={() => refreshAutoBetSettings()}>
+                      <RotateCcw size={18} aria-hidden />
+                      更新
+                    </button>
+                    <button
+                      className="ghost-action danger"
+                      type="button"
+                      onClick={() => {
+                        sessionStorage.removeItem(SETTINGS_PASSWORD_KEY);
+                        setSettingsPassword("");
+                        setAutoBetConfig(null);
+                        setAutoBetReservations([]);
+                        setAutoBetAnalyses({});
+                      }}
+                    >
+                      <X size={18} aria-hidden />
+                      設定を閉じる
+                    </button>
+                  </div>
+                  {settingsMessage && <p className="inline-message">{settingsMessage}</p>}
+                </div>
+
+                <div className="settings-match-list">
+                  {openMatches.length ? (
+                    openMatches.map((match) => {
+                      const matchVotes = getMatchVotes(match, visibleVotes);
+                      const totalPool = getMatchTotal(match, visibleVotes);
+                      const analysis = autoBetAnalyses[match.id];
+                      const draft = getReservationDraft(match);
+                      const pendingReservation = autoBetReservations.find(
+                        (reservation) => reservation.matchId === match.id && reservation.status === "pending",
+                      );
+
+                      return (
+                        <article className="data-panel auto-bet-card" key={match.id}>
+                          <div className="auto-bet-card-head">
+                            <span>
+                              <strong><MatchTitleWithFlags title={match.title} /></strong>
+                              <small>
+                                締切 {formatDateTime(match.closesAt)} / 総プール {formatPoints(totalPool)}
+                              </small>
+                            </span>
+                            <button
+                              className="primary-action compact"
+                              disabled={autoBetLoadingMatchId === match.id || !autoBetConfig?.openaiConfigured}
+                              type="button"
+                              onClick={() => analyzeAutoBetMatch(match)}
+                            >
+                              <Sparkles size={17} aria-hidden />
+                              {autoBetLoadingMatchId === match.id ? "分析中" : "AI分析"}
+                            </button>
+                          </div>
+
+                          <div className="auto-bet-options">
+                            {match.options.map((option) => {
+                              const optionTotal = getOptionTotal(match, visibleVotes, option.id);
+                              const odds = optionTotal > 0 && totalPool > 0 ? totalPool / optionTotal : null;
+                              const hirotaTotal = matchVotes
+                                .filter((vote) => normalizeName(vote.userName) === "ひろた" && vote.optionId === option.id)
+                                .reduce((sum, vote) => sum + vote.amount, 0);
+                              return (
+                                <div className="auto-bet-option-row" key={option.id}>
+                                  <span>
+                                    <b><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></b>
+                                    {hirotaTotal > 0 && <small>ひろた {formatPoints(hirotaTotal)}</small>}
+                                  </span>
+                                  <strong>{formatPoints(optionTotal)}</strong>
+                                  <em>{odds ? `${odds.toFixed(2)}x` : "-"}</em>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {analysis && (
+                            <div className="auto-bet-analysis">
+                              <div className="auto-bet-analysis-title">
+                                <BrainCircuit size={17} aria-hidden />
+                                分析結果 {formatDateTime(analysis.generatedAt)}
+                              </div>
+                              <p>{analysis.ai.summary || "AI分析の要約はありません。"}</p>
+                              {analysis.ai.marketNotes && <p>{analysis.ai.marketNotes}</p>}
+                              <div className="auto-bet-analysis-grid">
+                                {analysis.currentPool.options.map((option) => (
+                                  <span key={option.optionId}>
+                                    <small>{option.label}</small>
+                                    <b>{option.aiProbabilityPercent}%</b>
+                                    <em>
+                                      適正 {option.fairOdds ? `${option.fairOdds.toFixed(2)}x` : "-"} / 現在{" "}
+                                      {option.odds ? `${option.odds.toFixed(2)}x` : "-"}
+                                    </em>
+                                    {option.edge !== null && (
+                                      <i className={option.edge >= 0 ? "positive" : "negative"}>
+                                        歪み {option.edge >= 0 ? "+" : ""}{option.edge}%
+                                      </i>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                              <div className={analysis.recommendation.shouldBet ? "auto-bet-recommend positive-panel" : "auto-bet-recommend neutral-panel"}>
+                                <strong>
+                                  {analysis.recommendation.shouldBet
+                                    ? `${analysis.recommendation.optionLabel} に ${formatPoints(
+                                        analysis.recommendation.amount,
+                                      )}`
+                                    : "投票見送り"}
+                                </strong>
+                                <small>
+                                  期待値 {analysis.recommendation.expectedValue >= 0 ? "+" : ""}
+                                  {formatPoints(analysis.recommendation.expectedValue)} /{" "}
+                                  {analysis.recommendation.expectedValueRate >= 0 ? "+" : ""}
+                                  {analysis.recommendation.expectedValueRate}%
+                                </small>
+                                <p>{analysis.recommendation.reason}</p>
+                              </div>
+                              {analysis.ai.riskNotes.length > 0 && (
+                                <div className="auto-bet-notes">
+                                  {analysis.ai.riskNotes.map((note) => (
+                                    <small key={note}>{note}</small>
+                                  ))}
+                                </div>
+                              )}
+                              {analysis.ai.sources.length > 0 && (
+                                <div className="auto-bet-sources">
+                                  {analysis.ai.sources.map((source) => (
+                                    <a key={`${source.title}-${source.url}`} href={source.url} target="_blank" rel="noreferrer">
+                                      {source.title || source.url}
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                              <button
+                                className="primary-action"
+                                disabled={!analysis.recommendation.shouldBet || autoBetActionMatchId === match.id}
+                                type="button"
+                                onClick={() => acceptAutoBet(match, analysis)}
+                              >
+                                <CheckCircle2 size={18} aria-hidden />
+                                提案を受け入れる
+                              </button>
+                            </div>
+                          )}
+
+                          <div className="auto-bet-reservation-box">
+                            <div className="auto-bet-analysis-title">
+                              <Clock3 size={17} aria-hidden />
+                              提案を受け入れて予約する
+                            </div>
+                            <div className="auto-bet-reservation-fields">
+                              <label>
+                                <span>投票予定日時</span>
+                                <input
+                                  type="datetime-local"
+                                  value={draft.executeAt}
+                                  onChange={(event) => updateReservationDraft(match.id, { executeAt: event.target.value })}
+                                />
+                              </label>
+                              <label>
+                                <span>投票上限pt</span>
+                                <input
+                                  type="number"
+                                  min={100}
+                                  step={100}
+                                  value={draft.maxAmount}
+                                  onChange={(event) => updateReservationDraft(match.id, { maxAmount: event.target.value })}
+                                />
+                              </label>
+                            </div>
+                            <button
+                              className="ghost-action"
+                              disabled={autoBetActionMatchId === match.id || Boolean(pendingReservation)}
+                              type="button"
+                              onClick={() => reserveAutoBet(match)}
+                            >
+                              <CalendarClock size={18} aria-hidden />
+                              {pendingReservation ? "予約済み" : "予約する"}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <EmptyState title="受付中の試合はありません" />
+                  )}
+                </div>
+
+                <div className="data-panel auto-bet-reservations-panel">
+                  <div className="panel-title">
+                    <CalendarClock size={18} aria-hidden />
+                    自動投票予約
+                  </div>
+                  {autoBetReservations.length ? (
+                    <div className="auto-bet-reservation-list">
+                      {autoBetReservations.map((reservation) => (
+                        <div className="auto-bet-reservation-row" key={reservation.id}>
+                          <span>
+                            <strong>{reservation.matchTitle}</strong>
+                            <small>
+                              {formatDateTime(reservation.executeAt)} / 上限 {formatPoints(reservation.maxAmount)} / {reservation.status}
+                            </small>
+                            {reservation.recommendation?.optionLabel && (
+                              <small>
+                                {reservation.recommendation.optionLabel} {formatPoints(reservation.recommendation.amount)}
+                              </small>
+                            )}
+                            {reservation.error && <small className="negative">{reservation.error}</small>}
+                          </span>
+                          {reservation.status === "pending" && (
+                            <button className="ghost-action danger" type="button" onClick={() => cancelReservation(reservation)}>
+                              取消
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState title="自動投票予約はありません" />
+                  )}
+                </div>
+              </>
+            )}
           </section>
         )}
 
@@ -3452,13 +4084,27 @@ function App() {
                   </form>
                 )}
               </details>
+
+              <div className="data-panel settings-entry-panel">
+                <div className="panel-title">
+                  <Settings size={18} aria-hidden />
+                  設定
+                </div>
+                <p className="admin-help">
+                  自動投票の分析と予約を行う専用ページへ移動します。
+                </p>
+                <button className="ghost-action" type="button" onClick={() => setView("settings")}>
+                  <Settings size={18} aria-hidden />
+                  設定画面を開く
+                </button>
+              </div>
             </div>
               </>
             )}
           </section>
         )}
       </main>
-      {view !== "admin" && (
+      {view !== "admin" && view !== "settings" && (
         <button className="admin-link-bottom" type="button" onClick={() => setView("admin")}>
           管理画面
         </button>
