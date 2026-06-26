@@ -1891,12 +1891,28 @@ async function loadAutoBetSnapshot(matchId, db = pool) {
   };
 }
 
+function stringifyResponseTextValue(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    if (typeof value.value === "string") return value.value;
+    if (typeof value.text === "string") return value.text;
+  }
+  return "";
+}
+
 function extractResponseText(payload) {
-  if (typeof payload?.output_text === "string") return payload.output_text;
+  const directText = stringifyResponseTextValue(payload?.output_text);
+  if (directText) return directText.trim();
+
   const parts = [];
   for (const item of payload?.output ?? []) {
+    const itemText = stringifyResponseTextValue(item?.text) || stringifyResponseTextValue(item?.output_text);
+    if (itemText) parts.push(itemText);
     for (const content of item?.content ?? []) {
-      if (typeof content?.text === "string") parts.push(content.text);
+      const contentText =
+        stringifyResponseTextValue(content?.text) ||
+        stringifyResponseTextValue(content?.output_text);
+      if (contentText) parts.push(contentText);
     }
   }
   return parts.join("\n").trim();

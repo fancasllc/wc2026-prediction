@@ -1604,6 +1604,13 @@ function App() {
     try {
       const result = await requestAutoBetAnalysis(adminToken, settingsPassword, match.id, maxAmount);
       setAutoBetAnalyses((current) => ({ ...current, [match.id]: result.analysis }));
+      setAutoBetReservationDrafts((current) => ({
+        ...current,
+        [match.id]: {
+          executeAt: current[match.id]?.executeAt ?? getReservationDraft(match).executeAt,
+          maxAmount: String(result.analysis.maxAmount),
+        },
+      }));
       setSettingsMessage(`${match.title} のAI分析を更新しました。`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -3233,6 +3240,8 @@ function App() {
                       const totalPool = getMatchTotal(match, visibleVotes);
                       const analysis = autoBetAnalyses[match.id];
                       const draft = getReservationDraft(match);
+                      const currentAnalysisLimit = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
+                      const isAnalysisLimitStale = Boolean(analysis && analysis.maxAmount !== currentAnalysisLimit);
                       const pendingReservation = autoBetReservations.find(
                         (reservation) => reservation.matchId === match.id && reservation.status === "pending",
                       );
@@ -3257,6 +3266,11 @@ function App() {
                             </button>
                           </div>
 
+                          <div className="auto-bet-current-label">
+                            <span>現在の投票状況</span>
+                            <small>提案はAI分析後に表示されます</small>
+                          </div>
+
                           <div className="auto-bet-options">
                             {match.options.map((option) => {
                               const optionTotal = getOptionTotal(match, visibleVotes, option.id);
@@ -3278,11 +3292,18 @@ function App() {
                           </div>
 
                           {analysis && (
-                            <div className="auto-bet-analysis">
+                            <>
+                              <div className="auto-bet-analysis">
                               <div className="auto-bet-analysis-title">
                                 <BrainCircuit size={17} aria-hidden />
                                 分析結果 {formatDateTime(analysis.generatedAt)}
+                                <span className="auto-bet-limit-pill">上限 {formatPoints(analysis.maxAmount)}</span>
                               </div>
+                              {isAnalysisLimitStale && (
+                                <p className="auto-bet-stale-warning">
+                                  上限ptが分析時から変更されています。現在の上限で提案するには再度AI分析してください。
+                                </p>
+                              )}
                               <p>{analysis.ai.summary || "AI分析の要約はありません。"}</p>
                               {analysis.ai.scorePrediction && <p>{analysis.ai.scorePrediction}</p>}
                               {analysis.ai.groupContext && <p>{analysis.ai.groupContext}</p>}
@@ -3339,51 +3360,63 @@ function App() {
                               )}
                               <button
                                 className="primary-action"
-                                disabled={!analysis.recommendation.shouldBet || autoBetActionMatchId === match.id}
+                                disabled={
+                                  !analysis.recommendation.shouldBet ||
+                                  isAnalysisLimitStale ||
+                                  autoBetActionMatchId === match.id
+                                }
                                 type="button"
                                 onClick={() => acceptAutoBet(match, analysis)}
                               >
                                 <CheckCircle2 size={18} aria-hidden />
                                 提案を受け入れる
                               </button>
-                            </div>
-                          )}
+                              </div>
 
-                          <div className="auto-bet-reservation-box">
-                            <div className="auto-bet-analysis-title">
-                              <Clock3 size={17} aria-hidden />
-                              提案を受け入れて予約する
-                            </div>
-                            <div className="auto-bet-reservation-fields">
-                              <label>
-                                <span>投票予定日時</span>
-                                <input
-                                  type="datetime-local"
-                                  value={draft.executeAt}
-                                  onChange={(event) => updateReservationDraft(match.id, { executeAt: event.target.value })}
-                                />
-                              </label>
-                              <label>
-                                <span>投票上限pt</span>
-                                <input
-                                  type="number"
-                                  min={100}
-                                  step={100}
-                                  value={draft.maxAmount}
-                                  onChange={(event) => updateReservationDraft(match.id, { maxAmount: event.target.value })}
-                                />
-                              </label>
-                            </div>
-                            <button
-                              className="ghost-action"
-                              disabled={autoBetActionMatchId === match.id || Boolean(pendingReservation)}
-                              type="button"
-                              onClick={() => reserveAutoBet(match)}
-                            >
-                              <CalendarClock size={18} aria-hidden />
-                              {pendingReservation ? "予約済み" : "予約する"}
-                            </button>
-                          </div>
+                              <div className="auto-bet-reservation-box">
+                                <div className="auto-bet-analysis-title">
+                                  <Clock3 size={17} aria-hidden />
+                                  提案を受け入れて予約する
+                                </div>
+                                <p className="auto-bet-reservation-help">
+                                  予約時刻に再分析し、上限pt以内で期待値がある場合だけ投票します。
+                                </p>
+                                <div className="auto-bet-reservation-fields">
+                                  <label>
+                                    <span>投票予定日時</span>
+                                    <input
+                                      type="datetime-local"
+                                      value={draft.executeAt}
+                                      onChange={(event) => updateReservationDraft(match.id, { executeAt: event.target.value })}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>投票上限pt</span>
+                                    <input
+                                      type="number"
+                                      min={100}
+                                      step={100}
+                                      value={draft.maxAmount}
+                                      onChange={(event) => updateReservationDraft(match.id, { maxAmount: event.target.value })}
+                                    />
+                                  </label>
+                                </div>
+                                <button
+                                  className="ghost-action"
+                                  disabled={
+                                    isAnalysisLimitStale ||
+                                    autoBetActionMatchId === match.id ||
+                                    Boolean(pendingReservation)
+                                  }
+                                  type="button"
+                                  onClick={() => reserveAutoBet(match)}
+                                >
+                                  <CalendarClock size={18} aria-hidden />
+                                  {pendingReservation ? "予約済み" : "予約する"}
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </article>
                       );
                     })
