@@ -248,6 +248,20 @@ type AutoBetAnalysisOption = {
   aiRationale?: string;
 };
 
+type AutoBetRecommendation = {
+  shouldBet: boolean;
+  optionId: string;
+  optionLabel: string;
+  amount: number;
+  expectedValue: number;
+  expectedValueRate: number;
+  expectedNetAfter: number;
+  reason: string;
+  vote?: VoteRecord | null;
+  votes?: VoteRecord[];
+  recommendations?: AutoBetRecommendation[];
+};
+
 type AutoBetAnalysis = {
   generatedAt: string;
   model: string;
@@ -276,17 +290,8 @@ type AutoBetAnalysis = {
     riskNotes: string[];
     sources: Array<{ title: string; url: string }>;
   };
-  recommendation: {
-    shouldBet: boolean;
-    optionId: string;
-    optionLabel: string;
-    amount: number;
-    expectedValue: number;
-    expectedValueRate: number;
-    expectedNetAfter: number;
-    reason: string;
-    vote?: VoteRecord | null;
-  };
+  recommendation: AutoBetRecommendation;
+  recommendations?: AutoBetRecommendation[];
 };
 
 type AutoBetReservation = {
@@ -297,7 +302,7 @@ type AutoBetReservation = {
   executeAt: string;
   maxAmount: number;
   status: "pending" | "processing" | "executed" | "skipped" | "failed" | "cancelled" | string;
-  recommendation?: AutoBetAnalysis["recommendation"];
+  recommendation?: AutoBetRecommendation;
   analysis?: AutoBetAnalysis;
   error?: string | null;
   createdAt: string;
@@ -579,10 +584,17 @@ async function requestAutoBetAnalysis(
 async function acceptAutoBetRecommendation(
   adminToken: string,
   settingsPassword: string,
-  recommendation: { matchId: string; optionId: string; amount: number; reason: string },
+  recommendation: {
+    matchId: string;
+    optionId?: string;
+    amount?: number;
+    votes?: Array<{ optionId: string; amount: number }>;
+    reason: string;
+  },
 ) {
   return apiRequest<{
-    vote: VoteRecord;
+    vote: VoteRecord | null;
+    votes: VoteRecord[];
     state: AppData;
     reservations: AutoBetReservation[];
   }>("/api/admin/auto-bet/accept", {
@@ -1625,16 +1637,27 @@ function App() {
   }
 
   async function acceptAutoBet(match: MatchRecord, analysis: AutoBetAnalysis) {
-    if (!analysis.recommendation.shouldBet) return;
+    const recommendations = analysis.recommendations?.length
+      ? analysis.recommendations
+      : analysis.recommendation.shouldBet
+        ? [analysis.recommendation]
+        : [];
+    if (!recommendations.length) return;
+    const totalAmount = recommendations.reduce((sum, recommendation) => sum + recommendation.amount, 0);
+    const totalExpectedValue = recommendations.reduce(
+      (sum, recommendation) => sum + recommendation.expectedValue,
+      0,
+    );
     const confirmed = window.confirm(
       [
         "この提案を受け入れて投票しますか？",
         "",
         match.title,
-        `${analysis.recommendation.optionLabel} / ${formatPoints(analysis.recommendation.amount)}`,
-        `期待値 ${analysis.recommendation.expectedValue >= 0 ? "+" : ""}${formatPoints(
-          analysis.recommendation.expectedValue,
-        )}`,
+        ...recommendations.map(
+          (recommendation) => `${recommendation.optionLabel} / ${formatPoints(recommendation.amount)}`,
+        ),
+        `合計 ${formatPoints(totalAmount)}`,
+        `期待値 ${totalExpectedValue >= 0 ? "+" : ""}${formatPoints(totalExpectedValue)}`,
       ].join("\n"),
     );
     if (!confirmed) return;
@@ -1644,8 +1667,10 @@ function App() {
     try {
       const result = await acceptAutoBetRecommendation(adminToken, settingsPassword, {
         matchId: match.id,
-        optionId: analysis.recommendation.optionId,
-        amount: analysis.recommendation.amount,
+        votes: recommendations.map((recommendation) => ({
+          optionId: recommendation.optionId,
+          amount: recommendation.amount,
+        })),
         reason: `analysis:${analysis.generatedAt}`,
       });
       setData(result.state);
@@ -3247,6 +3272,11 @@ function App() {
                       const currentAnalysisLimit = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
                       const isAnalysisLimitStale = Boolean(analysis && analysis.maxAmount !== currentAnalysisLimit);
                       const isAnalyzing = Boolean(autoBetLoadingMatchIds[match.id]);
+                      const recommendations = analysis?.recommendations?.length
+                        ? analysis.recommendations
+                        : analysis?.recommendation.shouldBet
+                          ? [analysis.recommendation]
+                          : [];
                       const pendingReservation = autoBetReservations.find(
                         (reservation) => reservation.matchId === match.id && reservation.status === "pending",
                       );
@@ -3331,21 +3361,36 @@ function App() {
                                   </span>
                                 ))}
                               </div>
-                              <div className={analysis.recommendation.shouldBet ? "auto-bet-recommend positive-panel" : "auto-bet-recommend neutral-panel"}>
-                                <strong>
-                                  {analysis.recommendation.shouldBet
-                                    ? `${analysis.recommendation.optionLabel} に ${formatPoints(
-                                        analysis.recommendation.amount,
-                                      )}`
-                                    : "投票見送り"}
-                                </strong>
-                                <small>
-                                  期待値 {analysis.recommendation.expectedValue >= 0 ? "+" : ""}
-                                  {formatPoints(analysis.recommendation.expectedValue)} /{" "}
-                                  {analysis.recommendation.expectedValueRate >= 0 ? "+" : ""}
-                                  {analysis.recommendation.expectedValueRate}%
-                                </small>
-                                <p>{analysis.recommendation.reason}</p>
+                              <div className={recommendations.length ? "auto-bet-recommend positive-panel" : "auto-bet-recommend neutral-panel"}>
+                                <strong>{recommendations.length ? "投票提案" : "投票見送り"}</strong>
+                                {recommendations.length ? (
+                                  <div className="auto-bet-recommend-list">
+                                    {recommendations.map((recommendation) => (
+                                      <span key={recommendation.optionId}>
+                                        <b>
+                                          {recommendation.optionLabel} に {formatPoints(recommendation.amount)}
+                                        </b>
+                                        <small>
+                                          期待値 {recommendation.expectedValue >= 0 ? "+" : ""}
+                                          {formatPoints(recommendation.expectedValue)} /{" "}
+                                          {recommendation.expectedValueRate >= 0 ? "+" : ""}
+                                          {recommendation.expectedValueRate}%
+                                        </small>
+                                        <em>{recommendation.reason}</em>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <>
+                                    <small>
+                                      期待値 {analysis.recommendation.expectedValue >= 0 ? "+" : ""}
+                                      {formatPoints(analysis.recommendation.expectedValue)} /{" "}
+                                      {analysis.recommendation.expectedValueRate >= 0 ? "+" : ""}
+                                      {analysis.recommendation.expectedValueRate}%
+                                    </small>
+                                    <p>{analysis.recommendation.reason}</p>
+                                  </>
+                                )}
                               </div>
                               {analysis.ai.riskNotes.length > 0 && (
                                 <div className="auto-bet-notes">
@@ -3366,7 +3411,7 @@ function App() {
                               <button
                                 className="primary-action"
                                 disabled={
-                                  !analysis.recommendation.shouldBet ||
+                                  !recommendations.length ||
                                   isAnalysisLimitStale ||
                                   autoBetActionMatchId === match.id
                                 }
@@ -3444,11 +3489,17 @@ function App() {
                             <small>
                               {formatDateTime(reservation.executeAt)} / 上限 {formatPoints(reservation.maxAmount)} / {reservation.status}
                             </small>
-                            {reservation.recommendation?.optionLabel && (
+                            {reservation.recommendation?.optionLabel &&
+                              !reservation.recommendation?.recommendations?.length && (
                               <small>
                                 {reservation.recommendation.optionLabel} {formatPoints(reservation.recommendation.amount)}
                               </small>
                             )}
+                            {reservation.recommendation?.recommendations?.map((recommendation) => (
+                              <small key={recommendation.optionId}>
+                                {recommendation.optionLabel} {formatPoints(recommendation.amount)}
+                              </small>
+                            ))}
                             {reservation.error && <small className="negative">{reservation.error}</small>}
                           </span>
                           {reservation.status === "pending" && (

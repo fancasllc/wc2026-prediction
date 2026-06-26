@@ -44,7 +44,7 @@ const autoBetMinExpectedValue = Math.max(
 );
 const autoBetMinExpectedRate = Math.max(
   0,
-  Number(process.env.AUTO_BET_MIN_EXPECTED_RATE ?? 0.02),
+  Number(process.env.AUTO_BET_MIN_EXPECTED_RATE ?? 0.2),
 );
 const autoBetIntervalMs = Math.max(
   30 * 1000,
@@ -2018,8 +2018,78 @@ function calculateExpectedUserNet(snapshot, probabilityRows, additionalOptionId 
 
 function optimizeAutoBet(snapshot, probabilityRows, maxAmount) {
   const baseExpectedNet = calculateExpectedUserNet(snapshot, probabilityRows);
-  const candidates = buildStakeCandidates(maxAmount);
-  let best = {
+  const safeMax = Math.max(100, Math.floor(Number(maxAmount) || 0));
+  const positiveOptions = probabilityRows
+    .map((option) => {
+      const marketExpectedRate = option.odds ? (option.aiProbability * option.odds) - 1 : -1;
+      return {
+        ...option,
+        marketExpectedRate,
+      };
+    })
+    .filter((option) => option.marketExpectedRate >= autoBetMinExpectedRate)
+    .sort((a, b) => b.marketExpectedRate - a.marketExpectedRate);
+
+  if (!positiveOptions.length) {
+    return {
+      shouldBet: false,
+      optionId: "",
+      optionLabel: "",
+      amount: 0,
+      expectedValue: 0,
+      expectedValueRate: 0,
+      expectedNetAfter: Math.round(baseExpectedNet),
+      recommendations: [],
+      reason: `AI推定勝率と現在オッズの比較で、期待値+${Math.round(
+        autoBetMinExpectedRate * 100,
+      )}%以上の投票先がないため見送ります。`,
+    };
+  }
+
+  const totalWeight = positiveOptions.reduce((sum, option) => sum + option.marketExpectedRate, 0);
+  let remaining = safeMax;
+  const recommendations = positiveOptions
+    .map((option, index) => {
+      const rawAmount =
+        index === positiveOptions.length - 1
+          ? remaining
+          : Math.floor(((safeMax * option.marketExpectedRate) / totalWeight) / 100) * 100;
+      const amount = Math.max(0, Math.min(remaining, Math.floor(rawAmount / 100) * 100));
+      remaining -= amount;
+      return { option, amount };
+    })
+    .filter((row) => row.amount >= 100)
+    .map(({ option, amount }) => {
+      const expectedValue = amount * option.marketExpectedRate;
+      return {
+        shouldBet: true,
+        optionId: option.optionId,
+        optionLabel: option.label,
+        amount,
+        expectedValue: Math.round(expectedValue),
+        expectedValueRate: Number((option.marketExpectedRate * 100).toFixed(1)),
+        expectedNetAfter: Math.round(baseExpectedNet + expectedValue),
+        reason: `${option.label}はAI推定勝率${(option.aiProbability * 100).toFixed(1)}%に対して現在オッズ${
+          option.odds ? option.odds.toFixed(2) : "-"
+        }xのため、期待値が+${(option.marketExpectedRate * 100).toFixed(1)}%あります。`,
+      };
+    });
+
+  if (!recommendations.length) {
+    return {
+      shouldBet: false,
+      optionId: "",
+      optionLabel: "",
+      amount: 0,
+      expectedValue: 0,
+      expectedValueRate: 0,
+      expectedNetAfter: Math.round(baseExpectedNet),
+      recommendations: [],
+      reason: "期待値条件は満たしましたが、100pt単位の上限配分では有効な追加投票額になりませんでした。",
+    };
+  }
+
+  const best = recommendations[0] ?? {
     shouldBet: false,
     optionId: "",
     optionLabel: "",
@@ -2027,43 +2097,28 @@ function optimizeAutoBet(snapshot, probabilityRows, maxAmount) {
     expectedValue: 0,
     expectedValueRate: 0,
     expectedNetAfter: baseExpectedNet,
-    reason: "現在のプールとAI推定確率では、上限内に十分な期待値の歪みはありません。",
+    reason: "",
   };
-
-  for (const option of probabilityRows) {
-    for (const amount of candidates) {
-      const expectedNetAfter = calculateExpectedUserNet(snapshot, probabilityRows, option.optionId, amount);
-      const expectedValue = expectedNetAfter - baseExpectedNet;
-      const expectedValueRate = amount > 0 ? expectedValue / amount : 0;
-      if (
-        expectedValue > best.expectedValue ||
-        (expectedValue === best.expectedValue && amount < best.amount)
-      ) {
-        best = {
-          shouldBet: false,
-          optionId: option.optionId,
-          optionLabel: option.label,
-          amount,
-          expectedValue,
-          expectedValueRate,
-          expectedNetAfter,
-          reason: `${option.label}への追加投票が最も期待値の高い候補です。`,
-        };
-      }
-    }
-  }
-
-  const minimumEdge = Math.max(autoBetMinExpectedValue, best.amount * autoBetMinExpectedRate);
-  best.shouldBet = best.amount >= 100 && best.expectedValue >= minimumEdge;
-  if (!best.shouldBet) {
-    best.reason = "候補はありますが、期待値が最低基準を超えないため自動投票は推奨しません。";
-  }
 
   return {
     ...best,
-    expectedValue: Math.round(best.expectedValue),
-    expectedValueRate: Number((best.expectedValueRate * 100).toFixed(1)),
-    expectedNetAfter: Math.round(best.expectedNetAfter),
+    amount: recommendations.reduce((sum, recommendation) => sum + recommendation.amount, 0),
+    expectedValue: recommendations.reduce((sum, recommendation) => sum + recommendation.expectedValue, 0),
+    expectedValueRate: Number(
+      (
+        recommendations.reduce(
+          (sum, recommendation) => sum + recommendation.expectedValueRate * recommendation.amount,
+          0,
+        ) / recommendations.reduce((sum, recommendation) => sum + recommendation.amount, 0)
+      ).toFixed(1),
+    ),
+    expectedNetAfter:
+      Math.round(baseExpectedNet) + recommendations.reduce((sum, recommendation) => sum + recommendation.expectedValue, 0),
+    recommendations,
+    reason:
+      recommendations.length > 1
+        ? `期待値+${Math.round(autoBetMinExpectedRate * 100)}%以上の投票先が複数あるため、上限内で按分します。`
+        : recommendations[0].reason,
   };
 }
 
@@ -2088,6 +2143,7 @@ function buildAutoBetPrompt(snapshot, maxAmount) {
     "5. 投票の最終判断と追加投票額の期待値計算はアプリ側で行います。あなたは最新情報に基づく確率推定、点差予想、想定ベッティングオッズ、根拠に集中してください。",
     "6. ハンデ付き選択肢がある場合は、表示ラベルとルールを踏まえてその選択肢が的中する確率を推定してください。",
     "7. 出力は必ずJSONだけにしてください。説明文やMarkdownをJSONの外に出さないでください。",
+    "8. 各文章は短くしてください。summary、scorePrediction、groupContext、tournamentTrend、marketNotesは各200字以内、riskNotesは最大4件、sourcesは最大5件にしてください。",
     "",
     "JSON形式:",
     '{"summary":"短い総括","scorePrediction":"点差を含む予想スコア、勝敗シナリオ","groupContext":"予選順位、突破条件、次戦、勝ちたい/引き分けでよい等の思惑","tournamentTrend":"今大会ここまでの試合傾向","marketNotes":"想定スポーツベッティングオッズ、現在プールや参考オッズへのコメント","probabilities":[{"optionId":"選択肢ID","label":"選択肢名","probability":0.5,"projectedOdds":2.0,"rationale":"根拠"}],"riskNotes":["不確実性"],"sources":[{"title":"出典名","url":"URL"}]}',
@@ -2149,7 +2205,7 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
           content: buildAutoBetPrompt(snapshot, maxAmount),
         },
       ],
-      max_output_tokens: 8000,
+      max_output_tokens: 12000,
     }),
   });
 
@@ -2252,6 +2308,7 @@ async function createAutoBetAnalysis(matchId, maxAmount = autoBetDefaultMaxAmoun
         : [],
     },
     recommendation,
+    recommendations: recommendation.recommendations ?? [],
   };
 }
 
@@ -2391,18 +2448,26 @@ async function processDueAutoBetReservations() {
 
       try {
         const analysis = await createAutoBetAnalysis(reservation.matchId, reservation.maxAmount);
-        let vote = null;
-        if (analysis.recommendation.shouldBet) {
+        let votes = [];
+        const recommendations = analysis.recommendation.recommendations?.length
+          ? analysis.recommendation.recommendations
+          : analysis.recommendation.shouldBet
+            ? [analysis.recommendation]
+            : [];
+        if (recommendations.length) {
           await withTransaction(async (client) => {
-            vote = await insertAutoBetVote(
-              {
-                matchId: reservation.matchId,
-                optionId: analysis.recommendation.optionId,
-                amount: analysis.recommendation.amount,
-                reason: `reservation:${reservation.id}`,
-              },
-              client,
-            );
+            for (const recommendation of recommendations) {
+              const vote = await insertAutoBetVote(
+                {
+                  matchId: reservation.matchId,
+                  optionId: recommendation.optionId,
+                  amount: recommendation.amount,
+                  reason: `reservation:${reservation.id}`,
+                },
+                client,
+              );
+              votes.push(vote);
+            }
           });
         }
 
@@ -2419,14 +2484,14 @@ async function processDueAutoBetReservations() {
           `,
           [
             reservation.id,
-            vote ? "executed" : "skipped",
-            JSON.stringify({ ...analysis.recommendation, vote }),
+            votes.length ? "executed" : "skipped",
+            JSON.stringify({ ...analysis.recommendation, votes }),
             JSON.stringify(analysis),
           ],
         );
         await writeAuditLog("auto-bet.reservation.run", reservation.id, {
-          status: vote ? "executed" : "skipped",
-          vote,
+          status: votes.length ? "executed" : "skipped",
+          votes,
           recommendation: analysis.recommendation,
         });
       } catch (error) {
@@ -3617,20 +3682,33 @@ app.post("/api/admin/auto-bet/analyze", requireAdmin, requireSettingsAuth, async
 app.post("/api/admin/auto-bet/accept", requireAdmin, requireSettingsAuth, async (request, response, next) => {
   try {
     const matchId = String(request.body?.matchId ?? "");
-    const optionId = String(request.body?.optionId ?? "");
-    const amount = Number(request.body?.amount);
     const reason = String(request.body?.reason ?? "manual-accept").slice(0, 120);
-    if (!matchId || !optionId || !Number.isInteger(amount) || amount < 100) {
+    const requestedVotes = Array.isArray(request.body?.votes)
+      ? request.body.votes
+      : [{ optionId: request.body?.optionId, amount: request.body?.amount }];
+    const votesToInsert = requestedVotes.map((vote) => ({
+      optionId: String(vote?.optionId ?? ""),
+      amount: Number(vote?.amount),
+    }));
+
+    if (
+      !matchId ||
+      !votesToInsert.length ||
+      votesToInsert.some((vote) => !vote.optionId || !Number.isInteger(vote.amount) || vote.amount < 100)
+    ) {
       response.status(400).json({ error: "Invalid accepted recommendation" });
       return;
     }
 
-    let vote = null;
+    const votes = [];
     await withTransaction(async (client) => {
-      vote = await insertAutoBetVote({ matchId, optionId, amount, reason }, client);
+      for (const vote of votesToInsert) {
+        votes.push(await insertAutoBetVote({ matchId, ...vote, reason }, client));
+      }
     });
     response.status(201).json({
-      vote,
+      vote: votes[0] ?? null,
+      votes,
       state: await getState(),
       reservations: await listAutoBetReservations(),
     });

@@ -3841,6 +3841,32 @@ th {
   font-weight: 950;
 }
 
+.auto-bet-recommend-list {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-bet-recommend-list span {
+  display: grid;
+  gap: 3px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(8, 123, 98, 0.18);
+}
+
+.auto-bet-recommend-list b {
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.auto-bet-recommend-list em {
+  color: #52677d;
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
 .auto-bet-notes,
 .auto-bet-sources {
   display: grid;
