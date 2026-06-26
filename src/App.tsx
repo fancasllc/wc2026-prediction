@@ -4978,7 +4978,7 @@ function BettorList({
     <div className="bettor-list">
       <div className="bettor-heading">
         <div className="small-heading">投票状況</div>
-        {matchVotes.length > 1 && (
+        {matchVotes.length > 0 && (
           <div className="sort-control" aria-label="投票状況の並び替え">
             <button
               className={sortMode === "person" ? "active" : ""}
