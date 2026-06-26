@@ -3153,9 +3153,10 @@ function App() {
                   <input
                     type="password"
                     inputMode="numeric"
+                    autoComplete="off"
                     value={settingsPasswordInput}
                     onChange={(event) => setSettingsPasswordInput(event.target.value)}
-                    placeholder="3256"
+                    placeholder="••••"
                   />
                 </label>
                 <button className="primary-action" disabled={!adminToken} type="submit">

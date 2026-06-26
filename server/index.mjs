@@ -65,6 +65,59 @@ const youtubeThumbnailQualities = new Map([
   ["sddefault", "sddefault.jpg"],
   ["hqdefault", "hqdefault.jpg"],
 ]);
+const autoBetAnalysisJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "summary",
+    "scorePrediction",
+    "groupContext",
+    "tournamentTrend",
+    "marketNotes",
+    "probabilities",
+    "riskNotes",
+    "sources",
+  ],
+  properties: {
+    summary: { type: "string" },
+    scorePrediction: { type: "string" },
+    groupContext: { type: "string" },
+    tournamentTrend: { type: "string" },
+    marketNotes: { type: "string" },
+    probabilities: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["optionId", "label", "probability", "projectedOdds", "rationale"],
+        properties: {
+          optionId: { type: "string" },
+          label: { type: "string" },
+          probability: { type: "number" },
+          projectedOdds: { type: ["number", "null"] },
+          rationale: { type: "string" },
+        },
+      },
+    },
+    riskNotes: {
+      type: "array",
+      items: { type: "string" },
+    },
+    sources: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "url"],
+        properties: {
+          title: { type: "string" },
+          url: { type: "string" },
+        },
+      },
+    },
+  },
+};
 const backupStorageBucket = process.env.DB_BACKUP_S3_BUCKET ?? "";
 const backupStoragePrefix = (process.env.DB_BACKUP_S3_PREFIX ?? "wc2026-prediction-db-backups")
   .replace(/^\/+|\/+$/g, "");
@@ -1851,13 +1904,31 @@ function extractResponseText(payload) {
 
 function extractJsonObject(text) {
   const trimmed = String(text ?? "").trim();
-  if (!trimmed) throw new Error("AI response was empty");
+  if (!trimmed) {
+    const error = new Error("AI response was empty");
+    error.status = 502;
+    error.publicMessage = "AI分析結果が空でした。もう一度お試しください。";
+    throw error;
+  }
   try {
     return JSON.parse(trimmed);
   } catch {
     const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("AI response did not include JSON");
-    return JSON.parse(match[0]);
+    if (!match) {
+      const error = new Error("AI response did not include JSON");
+      error.status = 502;
+      error.publicMessage = "AI分析結果の形式が不正でした。もう一度お試しください。";
+      throw error;
+    }
+    try {
+      return JSON.parse(match[0]);
+    } catch (parseError) {
+      const error = new Error("AI response JSON could not be parsed");
+      error.status = 502;
+      error.detail = parseError instanceof Error ? parseError.message : String(parseError);
+      error.publicMessage = "AI分析結果のJSON解析に失敗しました。もう一度お試しください。";
+      throw error;
+    }
   }
 }
 
@@ -2029,6 +2100,7 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
   if (!openaiApiKey) {
     const error = new Error("OPENAI_API_KEY is not configured");
     error.status = 503;
+    error.publicMessage = "OPENAI_API_KEY が設定されていません。Renderの環境変数を確認してください。";
     throw error;
   }
 
@@ -2042,6 +2114,14 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
       model: openaiModel,
       tools: [{ type: openaiWebSearchToolType }],
       reasoning: { effort: openaiReasoningEffort },
+      text: {
+        format: {
+          type: "json_schema",
+          name: "auto_bet_analysis",
+          schema: autoBetAnalysisJsonSchema,
+          strict: true,
+        },
+      },
       input: [
         {
           role: "system",
@@ -2060,7 +2140,9 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const error = new Error(payload?.error?.message ?? `OpenAI API failed: ${response.status}`);
-    error.status = response.status;
+    error.status = response.status >= 500 ? 502 : response.status;
+    error.detail = payload?.error?.type ?? payload?.error?.code ?? "";
+    error.publicMessage = `OpenAI APIエラー: ${error.message}`;
     throw error;
   }
 
@@ -3652,7 +3734,9 @@ app.use((error, request, response, _next) => {
   const status = error.status || 500;
   console.error(error);
   const details = getErrorDetails(error);
-  const publicMessage = status >= 500 && !exposeErrorDetails
+  const publicMessage = error.publicMessage
+    ? error.publicMessage
+    : status >= 500 && !exposeErrorDetails
     ? "Internal server error"
     : error.message || "Internal server error";
 
