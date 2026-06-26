@@ -2149,7 +2149,7 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
           content: buildAutoBetPrompt(snapshot, maxAmount),
         },
       ],
-      max_output_tokens: 4000,
+      max_output_tokens: 8000,
     }),
   });
 
@@ -2162,7 +2162,35 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
     throw error;
   }
 
+  if (payload?.status === "incomplete") {
+    const reason = payload?.incomplete_details?.reason ?? "unknown";
+    const error = new Error(`OpenAI response was incomplete: ${reason}`);
+    error.status = 502;
+    error.detail = reason;
+    error.publicMessage =
+      reason === "max_output_tokens"
+        ? "AI分析が長すぎて出力上限に達しました。もう一度お試しください。"
+        : `AI分析が途中で停止しました: ${reason}`;
+    throw error;
+  }
+
   const text = extractResponseText(payload);
+  if (!text) {
+    console.warn(
+      "OpenAI auto-bet response did not include text",
+      JSON.stringify({
+        id: payload?.id,
+        status: payload?.status,
+        outputTypes: Array.isArray(payload?.output)
+          ? payload.output.map((item) => ({
+              type: item?.type,
+              role: item?.role,
+              contentTypes: Array.isArray(item?.content) ? item.content.map((content) => content?.type) : [],
+            }))
+          : [],
+      }),
+    );
+  }
   return {
     rawText: text,
     parsed: extractJsonObject(text),

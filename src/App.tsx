@@ -1387,7 +1387,7 @@ function App() {
   const [autoBetConfig, setAutoBetConfig] = useState<AutoBetConfig | null>(null);
   const [autoBetReservations, setAutoBetReservations] = useState<AutoBetReservation[]>([]);
   const [autoBetAnalyses, setAutoBetAnalyses] = useState<Record<string, AutoBetAnalysis>>({});
-  const [autoBetLoadingMatchId, setAutoBetLoadingMatchId] = useState("");
+  const [autoBetLoadingMatchIds, setAutoBetLoadingMatchIds] = useState<Record<string, boolean>>({});
   const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
   const [autoBetMaxAmount, setAutoBetMaxAmount] = useState("5000");
   const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
@@ -1599,7 +1599,7 @@ function App() {
   async function analyzeAutoBetMatch(match: MatchRecord) {
     if (!adminToken || !settingsPassword) return;
     const maxAmount = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
-    setAutoBetLoadingMatchId(match.id);
+    setAutoBetLoadingMatchIds((current) => ({ ...current, [match.id]: true }));
     setSettingsMessage("");
     try {
       const result = await requestAutoBetAnalysis(adminToken, settingsPassword, match.id, maxAmount);
@@ -1616,7 +1616,11 @@ function App() {
       const message = error instanceof Error ? error.message : "Unknown error";
       setSettingsMessage(`AI分析に失敗しました: ${message}`);
     } finally {
-      setAutoBetLoadingMatchId("");
+      setAutoBetLoadingMatchIds((current) => {
+        const next = { ...current };
+        delete next[match.id];
+        return next;
+      });
     }
   }
 
@@ -3242,6 +3246,7 @@ function App() {
                       const draft = getReservationDraft(match);
                       const currentAnalysisLimit = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
                       const isAnalysisLimitStale = Boolean(analysis && analysis.maxAmount !== currentAnalysisLimit);
+                      const isAnalyzing = Boolean(autoBetLoadingMatchIds[match.id]);
                       const pendingReservation = autoBetReservations.find(
                         (reservation) => reservation.matchId === match.id && reservation.status === "pending",
                       );
@@ -3257,12 +3262,12 @@ function App() {
                             </span>
                             <button
                               className="primary-action compact"
-                              disabled={autoBetLoadingMatchId === match.id || !autoBetConfig?.openaiConfigured}
+                              disabled={isAnalyzing || !autoBetConfig?.openaiConfigured}
                               type="button"
                               onClick={() => analyzeAutoBetMatch(match)}
                             >
                               <Sparkles size={17} aria-hidden />
-                              {autoBetLoadingMatchId === match.id ? "分析中" : "AI分析"}
+                              {isAnalyzing ? "分析中" : "AI分析"}
                             </button>
                           </div>
 
