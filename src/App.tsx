@@ -3,7 +3,6 @@ import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
   Bot,
-  BrainCircuit,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -17,7 +16,6 @@ import {
   RotateCcw,
   Settings,
   ShieldCheck,
-  Sparkles,
   Trophy,
   Trash2,
   Upload,
@@ -228,70 +226,38 @@ type BackupStorageStatus = {
 
 type AutoBetConfig = {
   userName: string;
-  openaiConfigured: boolean;
-  model: string;
-  webSearchTool: string;
   defaultMaxAmount: number;
-  minExpectedValue: number;
-  minExpectedRate: number;
+  executeOffsetMinutes: number;
 };
 
-type AutoBetAnalysisOption = {
-  optionId: string;
-  label: string;
-  total: number;
-  odds: number | null;
-  aiProbability: number;
-  aiProbabilityPercent: number;
-  fairOdds: number | null;
-  edge: number | null;
-  aiRationale?: string;
-};
-
-type AutoBetRecommendation = {
-  shouldBet: boolean;
+type ConditionalBetRule = {
   optionId: string;
   optionLabel: string;
-  amount: number;
-  expectedValue: number;
-  expectedValueRate: number;
-  expectedNetAfter: number;
-  reason: string;
-  vote?: VoteRecord | null;
-  votes?: VoteRecord[];
-  recommendations?: AutoBetRecommendation[];
+  priority: number;
+  minOdds: number;
+  maxAmount: number;
 };
 
-type AutoBetAnalysis = {
-  generatedAt: string;
-  model: string;
-  webSearchTool: string;
-  userName: string;
-  maxAmount: number;
-  match: MatchRecord;
-  currentPool: {
-    total: number;
-    options: AutoBetAnalysisOption[];
-  };
-  hirotaVotes: Array<{
-    id: string;
-    optionId: string;
-    optionLabel: string;
-    amount: number;
-    createdAt: string;
-  }>;
-  externalOdds: ExternalOddsRecord | null;
-  ai: {
-    summary: string;
-    scorePrediction?: string;
-    groupContext?: string;
-    tournamentTrend?: string;
-    marketNotes: string;
-    riskNotes: string[];
-    sources: Array<{ title: string; url: string }>;
-  };
-  recommendation: AutoBetRecommendation;
-  recommendations?: AutoBetRecommendation[];
+type ConditionalBetStrategy = {
+  type: "conditional" | string;
+  executeOffsetMinutes?: number;
+  rules?: ConditionalBetRule[];
+};
+
+type AutoBetReservationResult = {
+  optionLabel?: string;
+  amount?: number;
+  recommendations?: AutoBetReservationResult[];
+  rules?: Array<
+    ConditionalBetRule & {
+      beforeOdds?: number | null;
+      amount?: number;
+      afterOdds?: number | null;
+      skipped?: boolean;
+      reason?: string;
+    }
+  >;
+  votes?: VoteRecord[];
 };
 
 type AutoBetReservation = {
@@ -302,8 +268,9 @@ type AutoBetReservation = {
   executeAt: string;
   maxAmount: number;
   status: "pending" | "processing" | "executed" | "skipped" | "failed" | "cancelled" | string;
-  recommendation?: AutoBetRecommendation;
-  analysis?: AutoBetAnalysis;
+  strategy?: ConditionalBetStrategy;
+  recommendation?: AutoBetReservationResult;
+  analysis?: unknown;
   error?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -568,46 +535,10 @@ async function requestAutoBetSettings(adminToken: string, settingsPassword: stri
   });
 }
 
-async function requestAutoBetAnalysis(
-  adminToken: string,
-  settingsPassword: string,
-  matchId: string,
-  maxAmount: number,
-) {
-  return apiRequest<{ analysis: AutoBetAnalysis }>("/api/admin/auto-bet/analyze", {
-    method: "POST",
-    headers: settingsHeaders(adminToken, settingsPassword),
-    body: JSON.stringify({ matchId, maxAmount }),
-  });
-}
-
-async function acceptAutoBetRecommendation(
-  adminToken: string,
-  settingsPassword: string,
-  recommendation: {
-    matchId: string;
-    optionId?: string;
-    amount?: number;
-    votes?: Array<{ optionId: string; amount: number }>;
-    reason: string;
-  },
-) {
-  return apiRequest<{
-    vote: VoteRecord | null;
-    votes: VoteRecord[];
-    state: AppData;
-    reservations: AutoBetReservation[];
-  }>("/api/admin/auto-bet/accept", {
-    method: "POST",
-    headers: settingsHeaders(adminToken, settingsPassword),
-    body: JSON.stringify(recommendation),
-  });
-}
-
 async function createAutoBetReservation(
   adminToken: string,
   settingsPassword: string,
-  reservation: { matchId: string; executeAt: string; maxAmount: number },
+  reservation: { matchId: string; rules: Array<{ optionId: string; priority: number; minOdds: number; maxAmount: number }> },
 ) {
   return apiRequest<{ reservations: AutoBetReservation[] }>("/api/admin/auto-bet/reservations", {
     method: "POST",
@@ -785,13 +716,6 @@ function formatTokyoDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
-}
-
-function toDateTimeLocalValue(value: Date | string) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
 }
 
 function formatStartsIn(value: string, now: Date) {
@@ -1398,12 +1322,9 @@ function App() {
   const [settingsMessage, setSettingsMessage] = useState("");
   const [autoBetConfig, setAutoBetConfig] = useState<AutoBetConfig | null>(null);
   const [autoBetReservations, setAutoBetReservations] = useState<AutoBetReservation[]>([]);
-  const [autoBetAnalyses, setAutoBetAnalyses] = useState<Record<string, AutoBetAnalysis>>({});
-  const [autoBetLoadingMatchIds, setAutoBetLoadingMatchIds] = useState<Record<string, boolean>>({});
   const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
-  const [autoBetMaxAmount, setAutoBetMaxAmount] = useState("5000");
   const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
-    Record<string, { executeAt: string; maxAmount: string }>
+    Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; maxAmount: string }>>
   >({});
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupStorage, setBackupStorage] = useState<BackupStorageStatus | null>(null);
@@ -1551,7 +1472,6 @@ function App() {
     setBackupStorage(null);
     setAutoBetConfig(null);
     setAutoBetReservations([]);
-    setAutoBetAnalyses({});
     setAdminMessage("管理者認証を解除しました。");
   }
 
@@ -1578,7 +1498,6 @@ function App() {
       const result = await requestAutoBetSettings(adminToken, password);
       setAutoBetConfig(result.config);
       setAutoBetReservations(result.reservations);
-      setAutoBetMaxAmount(String(result.config.defaultMaxAmount));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setSettingsMessage(`設定情報を取得できませんでした: ${message}`);
@@ -1600,7 +1519,6 @@ function App() {
       setSettingsPasswordInput("");
       setAutoBetConfig(result.config);
       setAutoBetReservations(result.reservations);
-      setAutoBetMaxAmount(String(result.config.defaultMaxAmount));
       setSettingsMessage("設定画面を開きました。");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -1608,112 +1526,97 @@ function App() {
     }
   }
 
-  async function analyzeAutoBetMatch(match: MatchRecord) {
-    if (!adminToken || !settingsPassword) return;
-    const maxAmount = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
-    setAutoBetLoadingMatchIds((current) => ({ ...current, [match.id]: true }));
-    setSettingsMessage("");
-    try {
-      const result = await requestAutoBetAnalysis(adminToken, settingsPassword, match.id, maxAmount);
-      setAutoBetAnalyses((current) => ({ ...current, [match.id]: result.analysis }));
-      setAutoBetReservationDrafts((current) => ({
-        ...current,
-        [match.id]: {
-          executeAt: current[match.id]?.executeAt ?? getReservationDraft(match).executeAt,
-          maxAmount: String(result.analysis.maxAmount),
-        },
-      }));
-      setSettingsMessage(`${match.title} のAI分析を更新しました。`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setSettingsMessage(`AI分析に失敗しました: ${message}`);
-    } finally {
-      setAutoBetLoadingMatchIds((current) => {
-        const next = { ...current };
-        delete next[match.id];
-        return next;
-      });
-    }
-  }
-
-  async function acceptAutoBet(match: MatchRecord, analysis: AutoBetAnalysis) {
-    const recommendations = analysis.recommendations?.length
-      ? analysis.recommendations
-      : analysis.recommendation.shouldBet
-        ? [analysis.recommendation]
-        : [];
-    if (!recommendations.length) return;
-    const totalAmount = recommendations.reduce((sum, recommendation) => sum + recommendation.amount, 0);
-    const totalExpectedValue = recommendations.reduce(
-      (sum, recommendation) => sum + recommendation.expectedValue,
-      0,
-    );
-    const confirmed = window.confirm(
-      [
-        "この提案を受け入れて投票しますか？",
-        "",
-        match.title,
-        ...recommendations.map(
-          (recommendation) => `${recommendation.optionLabel} / ${formatPoints(recommendation.amount)}`,
-        ),
-        `合計 ${formatPoints(totalAmount)}`,
-        `期待値 ${totalExpectedValue >= 0 ? "+" : ""}${formatPoints(totalExpectedValue)}`,
-      ].join("\n"),
-    );
-    if (!confirmed) return;
-
-    setAutoBetActionMatchId(match.id);
-    setSettingsMessage("");
-    try {
-      const result = await acceptAutoBetRecommendation(adminToken, settingsPassword, {
-        matchId: match.id,
-        votes: recommendations.map((recommendation) => ({
-          optionId: recommendation.optionId,
-          amount: recommendation.amount,
-        })),
-        reason: `analysis:${analysis.generatedAt}`,
-      });
-      setData(result.state);
-      setAutoBetReservations(result.reservations);
-      setToastMessage("自動投票の提案を反映しました。");
-      setSettingsMessage("投票データベースに反映しました。");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setSettingsMessage(`提案を反映できませんでした: ${message}`);
-    } finally {
-      setAutoBetActionMatchId("");
-    }
-  }
-
   function getReservationDraft(match: MatchRecord) {
     const existing = autoBetReservationDrafts[match.id];
     if (existing) return existing;
-    const closesAt = new Date(match.closesAt);
-    const defaultTime = Number.isNaN(closesAt.getTime())
-      ? new Date(Date.now() + 60 * 60 * 1000)
-      : new Date(Math.max(Date.now() + 10 * 60 * 1000, closesAt.getTime() - 60 * 60 * 1000));
-    return {
-      executeAt: toDateTimeLocalValue(defaultTime),
-      maxAmount: autoBetMaxAmount,
-    };
+    return createEmptyReservationDraft(match);
   }
 
-  function updateReservationDraft(matchId: string, patch: Partial<{ executeAt: string; maxAmount: string }>) {
+  function createEmptyReservationDraft(match: MatchRecord) {
+    return Object.fromEntries(
+      match.options.map((option, index) => [
+        option.id,
+        {
+          enabled: false,
+          priority: String(index + 1),
+          minOdds: "",
+          maxAmount: "",
+        },
+      ]),
+    );
+  }
+
+  function updateReservationDraft(
+    match: MatchRecord,
+    optionId: string,
+    patch: Partial<{ enabled: boolean; priority: string; minOdds: string; maxAmount: string }>,
+  ) {
     setAutoBetReservationDrafts((current) => ({
       ...current,
-      [matchId]: {
-        executeAt: current[matchId]?.executeAt ?? "",
-        maxAmount: current[matchId]?.maxAmount ?? autoBetMaxAmount,
-        ...patch,
+      [match.id]: {
+        ...(current[match.id] ?? createEmptyReservationDraft(match)),
+        [optionId]: {
+          ...(current[match.id] ?? createEmptyReservationDraft(match))[optionId],
+          ...patch,
+        },
       },
     }));
   }
 
-  async function reserveAutoBet(match: MatchRecord) {
+  function getReservationRules(match: MatchRecord) {
     const draft = getReservationDraft(match);
-    const maxAmount = Math.max(100, Math.floor(Number(draft.maxAmount) || 0));
-    if (!draft.executeAt || maxAmount < 100) {
-      setSettingsMessage("予約時刻と上限ptを入力してください。");
+    return match.options
+      .map((option, index) => {
+        const row = draft[option.id];
+        return {
+          optionId: option.id,
+          optionLabel: optionDisplayLabel(match, option),
+          priority: Math.max(1, Math.floor(Number(row?.priority) || index + 1)),
+          minOdds: Number(row?.minOdds),
+          maxAmount: Math.floor(Number(row?.maxAmount) / 100) * 100,
+          enabled: Boolean(row?.enabled),
+        };
+      })
+      .filter(
+        (rule) =>
+          rule.enabled &&
+          Number.isFinite(rule.minOdds) &&
+          rule.minOdds > 1 &&
+          Number.isInteger(rule.maxAmount) &&
+          rule.maxAmount >= 100,
+      )
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  function getConditionalBetPreview(match: MatchRecord, votes: VoteRecord[]) {
+    const rules = getReservationRules(match);
+    let totalPool = getMatchTotal(match, votes);
+    const optionPools = new Map(match.options.map((option) => [option.id, getOptionTotal(match, votes, option.id)]));
+    return rules.map((rule) => {
+      const optionPool = optionPools.get(rule.optionId) ?? 0;
+      const beforeOdds = optionPool > 0 && totalPool > 0 ? totalPool / optionPool : null;
+      const numerator = totalPool - rule.minOdds * optionPool;
+      const maxByOdds =
+        rule.minOdds > 1 ? Math.floor((numerator / (rule.minOdds - 1)) / 100) * 100 : 0;
+      const amount = Math.max(0, Math.min(rule.maxAmount, maxByOdds));
+      const safeAmount = Math.floor(amount / 100) * 100;
+      const afterOdds =
+        optionPool + safeAmount > 0 ? (totalPool + safeAmount) / (optionPool + safeAmount) : null;
+      totalPool += safeAmount;
+      optionPools.set(rule.optionId, optionPool + safeAmount);
+      return {
+        ...rule,
+        beforeOdds,
+        amount: safeAmount,
+        afterOdds,
+      };
+    });
+  }
+
+  async function reserveAutoBet(match: MatchRecord) {
+    const rules = getReservationRules(match);
+    if (!rules.length) {
+      setSettingsMessage("有効な投票条件を1件以上入力してください。");
       return;
     }
 
@@ -1722,11 +1625,15 @@ function App() {
     try {
       const result = await createAutoBetReservation(adminToken, settingsPassword, {
         matchId: match.id,
-        executeAt: new Date(draft.executeAt).toISOString(),
-        maxAmount,
+        rules: rules.map(({ optionId, priority, minOdds, maxAmount }) => ({
+          optionId,
+          priority,
+          minOdds,
+          maxAmount,
+        })),
       });
       setAutoBetReservations(result.reservations);
-      setSettingsMessage("自動投票の予約を登録しました。");
+      setSettingsMessage("条件付き予約投票を登録しました。");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       setSettingsMessage(`予約を登録できませんでした: ${message}`);
@@ -3215,30 +3122,10 @@ function App() {
                       <b>{autoBetConfig?.userName ?? "ひろた"}</b>
                     </span>
                     <span>
-                      <small>OpenAI API</small>
-                      <b className={autoBetConfig?.openaiConfigured ? "positive" : "negative"}>
-                        {autoBetConfig?.openaiConfigured ? "設定済み" : "未設定"}
-                      </b>
-                    </span>
-                    <span>
-                      <small>モデル</small>
-                      <b>{autoBetConfig?.model ?? "gpt-5.5"}</b>
-                    </span>
-                    <span>
-                      <small>Web検索</small>
-                      <b>{autoBetConfig?.webSearchTool ?? "web_search"}</b>
+                      <small>実行タイミング</small>
+                      <b>締切 {autoBetConfig?.executeOffsetMinutes ?? 10}分前</b>
                     </span>
                   </div>
-                  <label className="settings-limit-control">
-                    <span>AI分析時の追加投票上限pt</span>
-                    <input
-                      type="number"
-                      min={100}
-                      step={100}
-                      value={autoBetMaxAmount}
-                      onChange={(event) => setAutoBetMaxAmount(event.target.value)}
-                    />
-                  </label>
                   <div className="button-row">
                     <button className="ghost-action" type="button" onClick={() => refreshAutoBetSettings()}>
                       <RotateCcw size={18} aria-hidden />
@@ -3252,7 +3139,6 @@ function App() {
                         setSettingsPassword("");
                         setAutoBetConfig(null);
                         setAutoBetReservations([]);
-                        setAutoBetAnalyses({});
                       }}
                     >
                       <X size={18} aria-hidden />
@@ -3267,19 +3153,12 @@ function App() {
                     openMatches.map((match) => {
                       const matchVotes = getMatchVotes(match, visibleVotes);
                       const totalPool = getMatchTotal(match, visibleVotes);
-                      const analysis = autoBetAnalyses[match.id];
                       const draft = getReservationDraft(match);
-                      const currentAnalysisLimit = Math.max(100, Math.floor(Number(autoBetMaxAmount) || 0));
-                      const isAnalysisLimitStale = Boolean(analysis && analysis.maxAmount !== currentAnalysisLimit);
-                      const isAnalyzing = Boolean(autoBetLoadingMatchIds[match.id]);
-                      const recommendations = analysis?.recommendations?.length
-                        ? analysis.recommendations
-                        : analysis?.recommendation.shouldBet
-                          ? [analysis.recommendation]
-                          : [];
+                      const previewRows = getConditionalBetPreview(match, visibleVotes);
                       const pendingReservation = autoBetReservations.find(
                         (reservation) => reservation.matchId === match.id && reservation.status === "pending",
                       );
+                      const executeAt = new Date(new Date(match.closesAt).getTime() - 10 * 60 * 1000);
 
                       return (
                         <article className="data-panel auto-bet-card" key={match.id}>
@@ -3290,20 +3169,14 @@ function App() {
                                 締切 {formatDateTime(match.closesAt)} / 総プール {formatPoints(totalPool)}
                               </small>
                             </span>
-                            <button
-                              className="primary-action compact"
-                              disabled={isAnalyzing || !autoBetConfig?.openaiConfigured}
-                              type="button"
-                              onClick={() => analyzeAutoBetMatch(match)}
-                            >
-                              <Sparkles size={17} aria-hidden />
-                              {isAnalyzing ? "分析中" : "AI分析"}
-                            </button>
+                            <small className="auto-bet-execute-time">
+                              実行 {Number.isNaN(executeAt.getTime()) ? "-" : formatDateTime(executeAt)}
+                            </small>
                           </div>
 
                           <div className="auto-bet-current-label">
-                            <span>現在の投票状況</span>
-                            <small>提案はAI分析後に表示されます</small>
+                            <span>予約条件</span>
+                            <small>締切10分前の最新プールで再計算します</small>
                           </div>
 
                           <div className="auto-bet-options">
@@ -3313,160 +3186,84 @@ function App() {
                               const hirotaTotal = matchVotes
                                 .filter((vote) => normalizeName(vote.userName) === "ひろた" && vote.optionId === option.id)
                                 .reduce((sum, vote) => sum + vote.amount, 0);
+                              const row = draft[option.id];
+                              const preview = previewRows.find((item) => item.optionId === option.id);
                               return (
-                                <div className="auto-bet-option-row" key={option.id}>
-                                  <span>
-                                    <b><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></b>
-                                    {hirotaTotal > 0 && <small>ひろた {formatPoints(hirotaTotal)}</small>}
-                                  </span>
-                                  <strong>{formatPoints(optionTotal)}</strong>
-                                  <em>{odds ? `${odds.toFixed(2)}x` : "-"}</em>
+                                <div className="auto-bet-option-row conditional-rule-row" key={option.id}>
+                                  <label className="conditional-rule-toggle">
+                                    <input
+                                      checked={Boolean(row?.enabled)}
+                                      type="checkbox"
+                                      onChange={(event) =>
+                                        updateReservationDraft(match, option.id, { enabled: event.target.checked })
+                                      }
+                                    />
+                                    <span>
+                                      <b><OptionLabelWithFlag label={optionDisplayLabel(match, option)} /></b>
+                                      <small>
+                                        現在 {odds ? `${odds.toFixed(2)}x` : "-"} / プール {formatPoints(optionTotal)}
+                                        {hirotaTotal > 0 ? ` / ひろた ${formatPoints(hirotaTotal)}` : ""}
+                                      </small>
+                                    </span>
+                                  </label>
+                                  <div className="conditional-rule-fields">
+                                    <label>
+                                      <span>優先</span>
+                                      <input
+                                        min={1}
+                                        step={1}
+                                        type="number"
+                                        value={row?.priority ?? ""}
+                                        onChange={(event) =>
+                                          updateReservationDraft(match, option.id, { priority: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label>
+                                      <span>最低オッズ</span>
+                                      <input
+                                        min={1.01}
+                                        step={0.01}
+                                        type="number"
+                                        value={row?.minOdds ?? ""}
+                                        onChange={(event) =>
+                                          updateReservationDraft(match, option.id, { minOdds: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label>
+                                      <span>最大pt</span>
+                                      <input
+                                        min={100}
+                                        step={100}
+                                        type="number"
+                                        value={row?.maxAmount ?? ""}
+                                        onChange={(event) =>
+                                          updateReservationDraft(match, option.id, { maxAmount: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                  </div>
+                                  {row?.enabled && (
+                                    <small className={preview?.amount ? "conditional-rule-preview positive" : "conditional-rule-preview negative"}>
+                                      現時点試算: {preview?.amount ? formatPoints(preview.amount) : "投票なし"}
+                                      {preview?.afterOdds ? ` / 投票後 ${preview.afterOdds.toFixed(2)}x` : ""}
+                                    </small>
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
 
-                          {analysis && (
-                            <>
-                              <div className="auto-bet-analysis">
-                              <div className="auto-bet-analysis-title">
-                                <BrainCircuit size={17} aria-hidden />
-                                分析結果 {formatDateTime(analysis.generatedAt)}
-                                <span className="auto-bet-limit-pill">上限 {formatPoints(analysis.maxAmount)}</span>
-                              </div>
-                              {isAnalysisLimitStale && (
-                                <p className="auto-bet-stale-warning">
-                                  上限ptが分析時から変更されています。現在の上限で提案するには再度AI分析してください。
-                                </p>
-                              )}
-                              <p>{analysis.ai.summary || "AI分析の要約はありません。"}</p>
-                              {analysis.ai.scorePrediction && <p>{analysis.ai.scorePrediction}</p>}
-                              {analysis.ai.groupContext && <p>{analysis.ai.groupContext}</p>}
-                              {analysis.ai.tournamentTrend && <p>{analysis.ai.tournamentTrend}</p>}
-                              {analysis.ai.marketNotes && <p>{analysis.ai.marketNotes}</p>}
-                              <div className="auto-bet-analysis-grid">
-                                {analysis.currentPool.options.map((option) => (
-                                  <span key={option.optionId}>
-                                    <small>{option.label}</small>
-                                    <b>{option.aiProbabilityPercent}%</b>
-                                    <em>
-                                      適正 {option.fairOdds ? `${option.fairOdds.toFixed(2)}x` : "-"} / 現在{" "}
-                                      {option.odds ? `${option.odds.toFixed(2)}x` : "-"}
-                                    </em>
-                                    {option.edge !== null && (
-                                      <i className={option.edge >= 0 ? "positive" : "negative"}>
-                                        歪み {option.edge >= 0 ? "+" : ""}{option.edge}%
-                                      </i>
-                                    )}
-                                  </span>
-                                ))}
-                              </div>
-                              <div className={recommendations.length ? "auto-bet-recommend positive-panel" : "auto-bet-recommend neutral-panel"}>
-                                <strong>{recommendations.length ? "投票提案" : "投票見送り"}</strong>
-                                {recommendations.length ? (
-                                  <div className="auto-bet-recommend-list">
-                                    {recommendations.map((recommendation) => (
-                                      <span key={recommendation.optionId}>
-                                        <b>
-                                          {recommendation.optionLabel} に {formatPoints(recommendation.amount)}
-                                        </b>
-                                        <small>
-                                          期待値 {recommendation.expectedValue >= 0 ? "+" : ""}
-                                          {formatPoints(recommendation.expectedValue)} /{" "}
-                                          {recommendation.expectedValueRate >= 0 ? "+" : ""}
-                                          {recommendation.expectedValueRate}%
-                                        </small>
-                                        <em>{recommendation.reason}</em>
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <>
-                                    <small>
-                                      期待値 {analysis.recommendation.expectedValue >= 0 ? "+" : ""}
-                                      {formatPoints(analysis.recommendation.expectedValue)} /{" "}
-                                      {analysis.recommendation.expectedValueRate >= 0 ? "+" : ""}
-                                      {analysis.recommendation.expectedValueRate}%
-                                    </small>
-                                    <p>{analysis.recommendation.reason}</p>
-                                  </>
-                                )}
-                              </div>
-                              {analysis.ai.riskNotes.length > 0 && (
-                                <div className="auto-bet-notes">
-                                  {analysis.ai.riskNotes.map((note) => (
-                                    <small key={note}>{note}</small>
-                                  ))}
-                                </div>
-                              )}
-                              {analysis.ai.sources.length > 0 && (
-                                <div className="auto-bet-sources">
-                                  {analysis.ai.sources.map((source) => (
-                                    <a key={`${source.title}-${source.url}`} href={source.url} target="_blank" rel="noreferrer">
-                                      {source.title || source.url}
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                              <button
-                                className="primary-action"
-                                disabled={
-                                  !recommendations.length ||
-                                  isAnalysisLimitStale ||
-                                  autoBetActionMatchId === match.id
-                                }
-                                type="button"
-                                onClick={() => acceptAutoBet(match, analysis)}
-                              >
-                                <CheckCircle2 size={18} aria-hidden />
-                                提案を受け入れる
-                              </button>
-                              </div>
-
-                              <div className="auto-bet-reservation-box">
-                                <div className="auto-bet-analysis-title">
-                                  <Clock3 size={17} aria-hidden />
-                                  提案を受け入れて予約する
-                                </div>
-                                <p className="auto-bet-reservation-help">
-                                  予約時刻に再分析し、上限pt以内で期待値がある場合だけ投票します。
-                                </p>
-                                <div className="auto-bet-reservation-fields">
-                                  <label>
-                                    <span>投票予定日時</span>
-                                    <input
-                                      type="datetime-local"
-                                      value={draft.executeAt}
-                                      onChange={(event) => updateReservationDraft(match.id, { executeAt: event.target.value })}
-                                    />
-                                  </label>
-                                  <label>
-                                    <span>投票上限pt</span>
-                                    <input
-                                      type="number"
-                                      min={100}
-                                      step={100}
-                                      value={draft.maxAmount}
-                                      onChange={(event) => updateReservationDraft(match.id, { maxAmount: event.target.value })}
-                                    />
-                                  </label>
-                                </div>
-                                <button
-                                  className="ghost-action"
-                                  disabled={
-                                    isAnalysisLimitStale ||
-                                    autoBetActionMatchId === match.id ||
-                                    Boolean(pendingReservation)
-                                  }
-                                  type="button"
-                                  onClick={() => reserveAutoBet(match)}
-                                >
-                                  <CalendarClock size={18} aria-hidden />
-                                  {pendingReservation ? "予約済み" : "予約する"}
-                                </button>
-                              </div>
-                            </>
-                          )}
+                          <button
+                            className="primary-action compact"
+                            disabled={autoBetActionMatchId === match.id || Boolean(pendingReservation)}
+                            type="button"
+                            onClick={() => reserveAutoBet(match)}
+                          >
+                            <CalendarClock size={18} aria-hidden />
+                            {pendingReservation ? "予約済み" : "締切10分前に予約する"}
+                          </button>
                         </article>
                       );
                     })
@@ -3489,8 +3286,20 @@ function App() {
                             <small>
                               {formatDateTime(reservation.executeAt)} / 上限 {formatPoints(reservation.maxAmount)} / {reservation.status}
                             </small>
+                            {reservation.strategy?.rules?.map((rule) => (
+                              <small key={`${reservation.id}-${rule.optionId}`}>
+                                優先{rule.priority} {rule.optionLabel} / 最低{rule.minOdds.toFixed(2)}x / 最大{formatPoints(rule.maxAmount)}
+                              </small>
+                            ))}
+                            {reservation.recommendation?.rules?.map((rule) => (
+                              <small key={`${reservation.id}-result-${rule.optionId}`}>
+                                結果 {rule.optionLabel} {rule.amount ? formatPoints(rule.amount) : "見送り"}
+                                {rule.afterOdds ? ` / 投票後 ${rule.afterOdds.toFixed(2)}x` : ""}
+                              </small>
+                            ))}
                             {reservation.recommendation?.optionLabel &&
-                              !reservation.recommendation?.recommendations?.length && (
+                              !reservation.recommendation?.recommendations?.length &&
+                              !reservation.recommendation?.rules?.length && (
                               <small>
                                 {reservation.recommendation.optionLabel} {formatPoints(reservation.recommendation.amount)}
                               </small>

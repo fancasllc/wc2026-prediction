@@ -3666,6 +3666,15 @@ th {
   font-weight: 900;
 }
 
+.auto-bet-execute-time {
+  justify-self: start;
+  padding: 6px 10px;
+  color: #075eb5 !important;
+  background: #e8f4ff;
+  border: 1px solid #cfe4f8;
+  border-radius: 999px;
+}
+
 .primary-action.compact {
   min-height: 42px;
   padding: 8px 12px;
@@ -3727,6 +3736,54 @@ th {
 .auto-bet-option-row em {
   color: #0a5da8;
   font-style: normal;
+  font-weight: 950;
+}
+
+.conditional-rule-row {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.conditional-rule-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.conditional-rule-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #0b7f68;
+}
+
+.conditional-rule-fields {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr 1fr;
+  gap: 8px;
+}
+
+.conditional-rule-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.conditional-rule-fields span {
+  color: #60748b;
+  font-size: 0.7rem;
+  font-weight: 950;
+}
+
+.conditional-rule-fields input {
+  min-height: 38px;
+  padding: 8px 9px;
+  font-size: 0.9rem;
+}
+
+.conditional-rule-preview {
+  font-size: 0.78rem;
   font-weight: 950;
 }
 

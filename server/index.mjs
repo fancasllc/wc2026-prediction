@@ -725,6 +725,7 @@ async function initializeDatabase() {
       execute_at timestamptz not null,
       max_amount numeric(14, 2) not null check (max_amount >= 100),
       status text not null default 'pending',
+      strategy jsonb not null default '{}'::jsonb,
       recommendation jsonb not null default '{}'::jsonb,
       analysis jsonb not null default '{}'::jsonb,
       error text,
@@ -737,6 +738,7 @@ async function initializeDatabase() {
       on auto_bet_reservations (status, execute_at);
   `);
 
+  await query("alter table auto_bet_reservations add column if not exists strategy jsonb not null default '{}'::jsonb");
   await refreshTodayUserPointSnapshots();
   await ensureDailyBackup();
   startUserPointSnapshotScheduler();
@@ -2387,6 +2389,125 @@ async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = poo
   };
 }
 
+function normalizeConditionalRules(rawRules, options = []) {
+  const optionIds = new Set(options.map((option) => option.id ?? option.optionId));
+  return (Array.isArray(rawRules) ? rawRules : [])
+    .map((rule, index) => ({
+      optionId: String(rule?.optionId ?? ""),
+      optionLabel: String(rule?.optionLabel ?? ""),
+      priority: Math.max(1, Math.floor(Number(rule?.priority) || index + 1)),
+      minOdds: Number(rule?.minOdds),
+      maxAmount: Math.floor(Number(rule?.maxAmount) / 100) * 100,
+    }))
+    .filter(
+      (rule) =>
+        rule.optionId &&
+        (!optionIds.size || optionIds.has(rule.optionId)) &&
+        Number.isFinite(rule.minOdds) &&
+        rule.minOdds > 1 &&
+        Number.isInteger(rule.maxAmount) &&
+        rule.maxAmount >= 100,
+    )
+    .sort((a, b) => a.priority - b.priority);
+}
+
+function calculateOddsAfterBet(totalPool, optionPool, amount) {
+  const totalAfter = totalPool + amount;
+  const optionAfter = optionPool + amount;
+  return optionAfter > 0 ? totalAfter / optionAfter : null;
+}
+
+function calculateMaxBetForMinimumOdds(totalPool, optionPool, minOdds, maxAmount) {
+  const safeMax = Math.floor(Number(maxAmount) / 100) * 100;
+  if (!Number.isFinite(minOdds) || minOdds <= 1 || safeMax < 100) return 0;
+
+  const numerator = totalPool - minOdds * optionPool;
+  if (numerator < 100 * (minOdds - 1)) return 0;
+  const maxByOdds = Math.floor((numerator / (minOdds - 1)) / 100) * 100;
+  return Math.max(0, Math.min(safeMax, maxByOdds));
+}
+
+async function runConditionalBetReservation(reservation, db = pool) {
+  const snapshot = await loadAutoBetSnapshot(reservation.matchId, db);
+  if (snapshot.match.resultOptionId || new Date(snapshot.match.closesAt).getTime() <= Date.now()) {
+    const error = new Error("Voting is closed");
+    error.status = 409;
+    throw error;
+  }
+
+  const rules = normalizeConditionalRules(reservation.strategy?.rules, snapshot.options);
+  if (!rules.length) {
+    return {
+      status: "skipped",
+      votes: [],
+      result: {
+        type: "conditional",
+        reason: "有効な予約投票条件がありません。",
+        rules: [],
+      },
+    };
+  }
+
+  let totalPool = snapshot.totalPool;
+  const optionPools = new Map(snapshot.options.map((option) => [option.optionId, option.total]));
+  const votes = [];
+  const results = [];
+
+  for (const rule of rules) {
+    const option = snapshot.options.find((row) => row.optionId === rule.optionId);
+    if (!option) continue;
+    const optionPool = optionPools.get(rule.optionId) ?? 0;
+    const beforeOdds = optionPool > 0 ? totalPool / optionPool : null;
+    const amount = calculateMaxBetForMinimumOdds(totalPool, optionPool, rule.minOdds, rule.maxAmount);
+
+    if (amount < 100) {
+      results.push({
+        ...rule,
+        optionLabel: option.label,
+        beforeOdds,
+        amount: 0,
+        afterOdds: beforeOdds,
+        skipped: true,
+        reason: `最低オッズ${rule.minOdds.toFixed(2)}xを維持できないため見送り`,
+      });
+      continue;
+    }
+
+    const afterOdds = calculateOddsAfterBet(totalPool, optionPool, amount);
+    const vote = await insertAutoBetVote(
+      {
+        matchId: reservation.matchId,
+        optionId: rule.optionId,
+        amount,
+        reason: `conditional-reservation:${reservation.id}`,
+      },
+      db,
+    );
+    votes.push(vote);
+    results.push({
+      ...rule,
+      optionLabel: option.label,
+      beforeOdds,
+      amount,
+      afterOdds,
+      skipped: false,
+      reason: `最低オッズ${rule.minOdds.toFixed(2)}x以上を維持できる最大額を投票`,
+    });
+    totalPool += amount;
+    optionPools.set(rule.optionId, optionPool + amount);
+  }
+
+  return {
+    status: votes.length ? "executed" : "skipped",
+    votes,
+    result: {
+      type: "conditional",
+      reason: votes.length ? "条件に合う投票を実行しました。" : "条件に合う投票先がありませんでした。",
+      rules: results,
+    },
+  };
+}
+
 async function listAutoBetReservations() {
   const result = await query(
     `
@@ -2398,6 +2519,7 @@ async function listAutoBetReservations() {
         auto_bet_reservations.execute_at as "executeAt",
         auto_bet_reservations.max_amount::float as "maxAmount",
         auto_bet_reservations.status,
+        auto_bet_reservations.strategy,
         auto_bet_reservations.recommendation,
         auto_bet_reservations.analysis,
         auto_bet_reservations.error,
@@ -2425,7 +2547,11 @@ async function processDueAutoBetReservations() {
   try {
     const dueResult = await query(
       `
-        select id, match_id as "matchId", max_amount::float as "maxAmount"
+        select
+          id,
+          match_id as "matchId",
+          max_amount::float as "maxAmount",
+          strategy
         from auto_bet_reservations
         where status = 'pending'
           and execute_at <= now()
@@ -2447,29 +2573,10 @@ async function processDueAutoBetReservations() {
       if (!claimed.rowCount) continue;
 
       try {
-        const analysis = await createAutoBetAnalysis(reservation.matchId, reservation.maxAmount);
-        let votes = [];
-        const recommendations = analysis.recommendation.recommendations?.length
-          ? analysis.recommendation.recommendations
-          : analysis.recommendation.shouldBet
-            ? [analysis.recommendation]
-            : [];
-        if (recommendations.length) {
-          await withTransaction(async (client) => {
-            for (const recommendation of recommendations) {
-              const vote = await insertAutoBetVote(
-                {
-                  matchId: reservation.matchId,
-                  optionId: recommendation.optionId,
-                  amount: recommendation.amount,
-                  reason: `reservation:${reservation.id}`,
-                },
-                client,
-              );
-              votes.push(vote);
-            }
-          });
-        }
+        let runResult = null;
+        await withTransaction(async (client) => {
+          runResult = await runConditionalBetReservation(reservation, client);
+        });
 
         await query(
           `
@@ -2484,15 +2591,15 @@ async function processDueAutoBetReservations() {
           `,
           [
             reservation.id,
-            votes.length ? "executed" : "skipped",
-            JSON.stringify({ ...analysis.recommendation, votes }),
-            JSON.stringify(analysis),
+            runResult.status,
+            JSON.stringify({ ...runResult.result, votes: runResult.votes }),
+            JSON.stringify(runResult.result),
           ],
         );
         await writeAuditLog("auto-bet.reservation.run", reservation.id, {
-          status: votes.length ? "executed" : "skipped",
-          votes,
-          recommendation: analysis.recommendation,
+          status: runResult.status,
+          votes: runResult.votes,
+          result: runResult.result,
         });
       } catch (error) {
         await query(
@@ -3645,12 +3752,8 @@ app.get("/api/admin/auto-bet", requireAdmin, requireSettingsAuth, async (_reques
     response.json({
       config: {
         userName: autoBetUserName,
-        openaiConfigured: Boolean(openaiApiKey),
-        model: openaiModel,
-        webSearchTool: openaiWebSearchToolType,
         defaultMaxAmount: autoBetDefaultMaxAmount,
-        minExpectedValue: autoBetMinExpectedValue,
-        minExpectedRate: autoBetMinExpectedRate,
+        executeOffsetMinutes: 10,
       },
       reservations: await listAutoBetReservations(),
     });
@@ -3660,81 +3763,16 @@ app.get("/api/admin/auto-bet", requireAdmin, requireSettingsAuth, async (_reques
 });
 
 app.post("/api/admin/auto-bet/analyze", requireAdmin, requireSettingsAuth, async (request, response, next) => {
-  try {
-    const matchId = String(request.body?.matchId ?? "");
-    const maxAmount = Number(request.body?.maxAmount ?? autoBetDefaultMaxAmount);
-    if (!matchId) {
-      response.status(400).json({ error: "Match ID is required" });
-      return;
-    }
-
-    const analysis = await createAutoBetAnalysis(matchId, maxAmount);
-    await writeAuditLog("auto-bet.analyze", matchId, {
-      maxAmount: analysis.maxAmount,
-      recommendation: analysis.recommendation,
-    });
-    response.json({ analysis });
-  } catch (error) {
-    next(error);
-  }
+  response.status(410).json({ error: "AI分析機能は無効化されています。条件付き予約投票を利用してください。" });
 });
 
 app.post("/api/admin/auto-bet/accept", requireAdmin, requireSettingsAuth, async (request, response, next) => {
-  try {
-    const matchId = String(request.body?.matchId ?? "");
-    const reason = String(request.body?.reason ?? "manual-accept").slice(0, 120);
-    const requestedVotes = Array.isArray(request.body?.votes)
-      ? request.body.votes
-      : [{ optionId: request.body?.optionId, amount: request.body?.amount }];
-    const votesToInsert = requestedVotes.map((vote) => ({
-      optionId: String(vote?.optionId ?? ""),
-      amount: Number(vote?.amount),
-    }));
-
-    if (
-      !matchId ||
-      !votesToInsert.length ||
-      votesToInsert.some((vote) => !vote.optionId || !Number.isInteger(vote.amount) || vote.amount < 100)
-    ) {
-      response.status(400).json({ error: "Invalid accepted recommendation" });
-      return;
-    }
-
-    const votes = [];
-    await withTransaction(async (client) => {
-      for (const vote of votesToInsert) {
-        votes.push(await insertAutoBetVote({ matchId, ...vote, reason }, client));
-      }
-    });
-    response.status(201).json({
-      vote: votes[0] ?? null,
-      votes,
-      state: await getState(),
-      reservations: await listAutoBetReservations(),
-    });
-  } catch (error) {
-    next(error);
-  }
+  response.status(410).json({ error: "即時自動投票は無効化されています。条件付き予約投票を利用してください。" });
 });
 
 app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, async (request, response, next) => {
   try {
     const matchId = String(request.body?.matchId ?? "");
-    const executeAt = String(request.body?.executeAt ?? "");
-    const maxAmount = Number(request.body?.maxAmount);
-    const executeDate = new Date(executeAt);
-
-    if (
-      !matchId ||
-      Number.isNaN(executeDate.getTime()) ||
-      executeDate.getTime() <= Date.now() ||
-      !Number.isInteger(maxAmount) ||
-      maxAmount < 100 ||
-      maxAmount > 1_000_000_000
-    ) {
-      response.status(400).json({ error: "Invalid reservation payload" });
-      return;
-    }
 
     const matchResult = await query(
       `
@@ -3753,8 +3791,24 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       response.status(409).json({ error: "Voting is closed" });
       return;
     }
-    if (executeDate.getTime() >= new Date(match.closes_at).getTime()) {
-      response.status(409).json({ error: "予約時刻は投票締切より前にしてください。" });
+
+    const optionsResult = await query(
+      "select id, label from match_options where match_id = $1 order by sort_order asc, label asc",
+      [matchId],
+    );
+    const rules = normalizeConditionalRules(request.body?.rules, optionsResult.rows).map((rule) => ({
+      ...rule,
+      optionLabel: optionsResult.rows.find((option) => option.id === rule.optionId)?.label ?? rule.optionLabel,
+    }));
+    const maxAmount = rules.reduce((sum, rule) => sum + rule.maxAmount, 0);
+    const executeDate = new Date(new Date(match.closes_at).getTime() - 10 * 60 * 1000);
+
+    if (!matchId || !rules.length || maxAmount < 100 || maxAmount > 1_000_000_000) {
+      response.status(400).json({ error: "有効な予約投票条件を1件以上入力してください。" });
+      return;
+    }
+    if (executeDate.getTime() <= Date.now()) {
+      response.status(409).json({ error: "締切10分前を過ぎているため予約できません。" });
       return;
     }
 
@@ -3762,15 +3816,23 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
     await query(
       `
         insert into auto_bet_reservations (
-          id, match_id, user_name, execute_at, max_amount
-        ) values ($1, $2, $3, $4, $5)
+          id, match_id, user_name, execute_at, max_amount, strategy
+        ) values ($1, $2, $3, $4, $5, $6::jsonb)
       `,
-      [reservationId, matchId, autoBetUserName, executeDate.toISOString(), maxAmount],
+      [
+        reservationId,
+        matchId,
+        autoBetUserName,
+        executeDate.toISOString(),
+        maxAmount,
+        JSON.stringify({ type: "conditional", executeOffsetMinutes: 10, rules }),
+      ],
     );
     await writeAuditLog("auto-bet.reservation.create", reservationId, {
       matchId,
       executeAt: executeDate.toISOString(),
       maxAmount,
+      rules,
     });
     response.status(201).json({ reservations: await listAutoBetReservations() });
   } catch (error) {
