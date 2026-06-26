@@ -1983,12 +1983,27 @@ function optimizeAutoBet(snapshot, probabilityRows, maxAmount) {
 function buildAutoBetPrompt(snapshot, maxAmount) {
   return [
     "あなたはサッカー国際大会の試合予測とパリミューチュエル型プールの期待値評価を補助する分析者です。",
-    "最新ニュース、怪我、先発予想、チーム状態、対戦文脈をウェブ検索で確認し、各選択肢の現時点の実力確率を推定してください。",
-    "投票の最終判断はアプリ側で期待値計算します。あなたは確率推定と根拠に集中してください。",
-    "出力は必ずJSONだけにしてください。説明文やMarkdownをJSONの外に出さないでください。",
+    "以下の依頼文を最優先の分析方針として扱ってください。",
+    "",
+    "依頼文:",
+    "2026年開催中のワールドカップの特定の試合の予想をしてほしいです。",
+    "常に回答時点の最新の情報に基づき、直近のコンディションや選手の出場状況、怪我の状況、特定の個人の好調・不調、ゴール状況、様々ななるべく最新の情報に基づいて分析してください。",
+    "予選リーグ中の場合には、予選における順位や予選突破の可能性、また次の対戦相手を考慮した影響、それぞれの勝ちたい、引き分けでもいい、負けてもいいといった思惑等も全て総合的に考慮してください。",
+    "また、これまでの今回のワールドカップの予選から導き出される直近の試合全体を通した傾向も考慮してください。",
+    "試合の予想については、点数差を含めた勝率、またスポーツベッティングを開催していた場合に想定されるその勝敗、それぞれのオッズまで詳しく記載してください。",
+    "参考情報: https://drive.google.com/drive/folders/1YykAFl3pjyPZoxaXh5cLU7geIi_Tlezw?usp=sharing",
+    "",
+    "追加の統合ルール:",
+    "1. 必ずウェブ検索を使い、回答時点の最新情報を確認してください。",
+    "2. Google Driveの参考情報にアクセスできる場合は考慮してください。アクセスできない場合は riskNotes にその旨を明記してください。",
+    "3. 勝率はこのアプリの選択肢ごとの確率として出してください。probabilities の optionId は分析対象JSONの optionId と完全一致させてください。",
+    "4. probabilities の probability は0〜1の小数で、全選択肢の合計が概ね1になるようにしてください。",
+    "5. 投票の最終判断と追加投票額の期待値計算はアプリ側で行います。あなたは最新情報に基づく確率推定、点差予想、想定ベッティングオッズ、根拠に集中してください。",
+    "6. ハンデ付き選択肢がある場合は、表示ラベルとルールを踏まえてその選択肢が的中する確率を推定してください。",
+    "7. 出力は必ずJSONだけにしてください。説明文やMarkdownをJSONの外に出さないでください。",
     "",
     "JSON形式:",
-    '{"summary":"短い総括","marketNotes":"プールや参考オッズへのコメント","probabilities":[{"optionId":"選択肢ID","label":"選択肢名","probability":0.5,"rationale":"根拠"}],"riskNotes":["不確実性"],"sources":[{"title":"出典名","url":"URL"}]}',
+    '{"summary":"短い総括","scorePrediction":"点差を含む予想スコア、勝敗シナリオ","groupContext":"予選順位、突破条件、次戦、勝ちたい/引き分けでよい等の思惑","tournamentTrend":"今大会ここまでの試合傾向","marketNotes":"想定スポーツベッティングオッズ、現在プールや参考オッズへのコメント","probabilities":[{"optionId":"選択肢ID","label":"選択肢名","probability":0.5,"projectedOdds":2.0,"rationale":"根拠"}],"riskNotes":["不確実性"],"sources":[{"title":"出典名","url":"URL"}]}',
     "",
     "分析対象:",
     JSON.stringify(
@@ -2093,6 +2108,9 @@ async function createAutoBetAnalysis(matchId, maxAmount = autoBetDefaultMaxAmoun
     externalOdds: snapshot.externalOdds,
     ai: {
       summary: String(aiResult.parsed?.summary ?? "").slice(0, 1200),
+      scorePrediction: String(aiResult.parsed?.scorePrediction ?? "").slice(0, 1200),
+      groupContext: String(aiResult.parsed?.groupContext ?? "").slice(0, 1200),
+      tournamentTrend: String(aiResult.parsed?.tournamentTrend ?? "").slice(0, 1200),
       marketNotes: String(aiResult.parsed?.marketNotes ?? "").slice(0, 1200),
       riskNotes: Array.isArray(aiResult.parsed?.riskNotes)
         ? aiResult.parsed.riskNotes.map((note) => String(note).slice(0, 240)).slice(0, 6)

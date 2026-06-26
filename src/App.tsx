@@ -269,6 +269,9 @@ type AutoBetAnalysis = {
   externalOdds: ExternalOddsRecord | null;
   ai: {
     summary: string;
+    scorePrediction?: string;
+    groupContext?: string;
+    tournamentTrend?: string;
     marketNotes: string;
     riskNotes: string[];
     sources: Array<{ title: string; url: string }>;
@@ -3280,6 +3283,9 @@ function App() {
                                 分析結果 {formatDateTime(analysis.generatedAt)}
                               </div>
                               <p>{analysis.ai.summary || "AI分析の要約はありません。"}</p>
+                              {analysis.ai.scorePrediction && <p>{analysis.ai.scorePrediction}</p>}
+                              {analysis.ai.groupContext && <p>{analysis.ai.groupContext}</p>}
+                              {analysis.ai.tournamentTrend && <p>{analysis.ai.tournamentTrend}</p>}
                               {analysis.ai.marketNotes && <p>{analysis.ai.marketNotes}</p>}
                               <div className="auto-bet-analysis-grid">
                                 {analysis.currentPool.options.map((option) => (
