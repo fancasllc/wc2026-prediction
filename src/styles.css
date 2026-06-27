@@ -3638,7 +3638,7 @@ th {
 
 .auto-bet-view-switch {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   padding: 6px;
   background: rgba(239, 248, 255, 0.92);

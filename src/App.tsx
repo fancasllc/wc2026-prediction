@@ -280,7 +280,7 @@ type AutoBetReservation = {
   executedAt?: string | null;
 };
 
-type AutoBetReservationView = "upcoming" | "history";
+type AutoBetReservationView = "upcoming" | "reserved" | "history";
 
 type VoteDraft = {
   name: string;
@@ -1685,6 +1685,7 @@ function App() {
         })),
       });
       setAutoBetReservations(result.reservations);
+      setAutoBetReservationView("reserved");
       setSettingsMessage("条件付き予約投票を登録しました。");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -3209,11 +3210,18 @@ function App() {
                     これから予約
                   </button>
                   <button
+                    className={autoBetReservationView === "reserved" ? "active" : ""}
+                    type="button"
+                    onClick={() => setAutoBetReservationView("reserved")}
+                  >
+                    予約中
+                  </button>
+                  <button
                     className={autoBetReservationView === "history" ? "active" : ""}
                     type="button"
                     onClick={() => setAutoBetReservationView("history")}
                   >
-                    実行後
+                    実行済み
                   </button>
                 </div>
 
@@ -3225,9 +3233,6 @@ function App() {
                       const totalPool = getMatchTotal(match, visibleVotes);
                       const draft = getReservationDraft(match);
                       const previewRows = getConditionalBetPreview(match, visibleVotes);
-                      const pendingReservation = autoBetReservations.find(
-                        (reservation) => reservation.matchId === match.id && reservation.status === "pending",
-                      );
                       const executeAt = getReservationExecuteIso(match);
 
                       return (
@@ -3334,12 +3339,12 @@ function App() {
 
                           <button
                             className="primary-action compact"
-                            disabled={autoBetActionMatchId === match.id || Boolean(pendingReservation)}
+                            disabled={autoBetActionMatchId === match.id}
                             type="button"
                             onClick={() => reserveAutoBet(match)}
                           >
                             <CalendarClock size={18} aria-hidden />
-                            {pendingReservation ? "予約済み" : "この条件で予約する"}
+                            この条件で予約する
                           </button>
                         </article>
                       );
@@ -3350,24 +3355,25 @@ function App() {
                   </div>
                 ) : null}
 
-                <div className="data-panel auto-bet-reservations-panel">
-                  <div className="panel-title">
-                    <CalendarClock size={18} aria-hidden />
-                    {autoBetReservationView === "upcoming" ? "予約中" : "実行後の記録"}
-                  </div>
-                  {autoBetReservations.filter((reservation) =>
-                    autoBetReservationView === "upcoming"
-                      ? reservation.status === "pending" || reservation.status === "processing"
-                      : reservation.status !== "pending" && reservation.status !== "processing",
-                  ).length ? (
-                    <div className="auto-bet-reservation-list">
-                      {autoBetReservations
-                        .filter((reservation) =>
-                          autoBetReservationView === "upcoming"
-                            ? reservation.status === "pending" || reservation.status === "processing"
-                            : reservation.status !== "pending" && reservation.status !== "processing",
-                        )
-                        .map((reservation) => (
+                {autoBetReservationView !== "upcoming" ? (
+                  <div className="data-panel auto-bet-reservations-panel">
+                    <div className="panel-title">
+                      <CalendarClock size={18} aria-hidden />
+                      {autoBetReservationView === "reserved" ? "予約中" : "実行済みの記録"}
+                    </div>
+                    {autoBetReservations.filter((reservation) =>
+                      autoBetReservationView === "reserved"
+                        ? reservation.status === "pending" || reservation.status === "processing"
+                        : reservation.status !== "pending" && reservation.status !== "processing",
+                    ).length ? (
+                      <div className="auto-bet-reservation-list">
+                        {autoBetReservations
+                          .filter((reservation) =>
+                            autoBetReservationView === "reserved"
+                              ? reservation.status === "pending" || reservation.status === "processing"
+                              : reservation.status !== "pending" && reservation.status !== "processing",
+                          )
+                          .map((reservation) => (
                         <div className="auto-bet-reservation-row" key={reservation.id}>
                           <span>
                             <strong>{reservation.matchTitle}</strong>
@@ -3411,11 +3417,12 @@ function App() {
                           )}
                         </div>
                         ))}
-                    </div>
-                  ) : (
-                    <EmptyState title={autoBetReservationView === "upcoming" ? "予約中の自動投票はありません" : "実行後の記録はありません"} />
-                  )}
-                </div>
+                      </div>
+                    ) : (
+                      <EmptyState title={autoBetReservationView === "reserved" ? "予約中の自動投票はありません" : "実行済みの記録はありません"} />
+                    )}
+                  </div>
+                ) : null}
               </>
             )}
           </section>
