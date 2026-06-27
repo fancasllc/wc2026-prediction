@@ -245,6 +245,8 @@ type ConditionalBetStrategy = {
 };
 
 type AutoBetReservationResult = {
+  type?: string;
+  reason?: string;
   optionId?: string;
   optionLabel?: string;
   amount?: number;
@@ -277,6 +279,8 @@ type AutoBetReservation = {
   updatedAt: string;
   executedAt?: string | null;
 };
+
+type AutoBetReservationView = "upcoming" | "history";
 
 type VoteDraft = {
   name: string;
@@ -538,7 +542,11 @@ async function requestAutoBetSettings(adminToken: string, settingsPassword: stri
 async function createAutoBetReservation(
   adminToken: string,
   settingsPassword: string,
-  reservation: { matchId: string; rules: Array<{ optionId: string; priority: number; minOdds: number; maxAmount: number }> },
+  reservation: {
+    matchId: string;
+    executeAt: string;
+    rules: Array<{ optionId: string; priority: number; minOdds: number; maxAmount: number }>;
+  },
 ) {
   return apiRequest<{ reservations: AutoBetReservation[] }>("/api/admin/auto-bet/reservations", {
     method: "POST",
@@ -716,6 +724,21 @@ function formatTokyoDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function toDateTimeLocalValue(value: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocalValue(value: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function formatStartsIn(value: string, now: Date) {
@@ -1322,10 +1345,12 @@ function App() {
   const [settingsMessage, setSettingsMessage] = useState("");
   const [autoBetConfig, setAutoBetConfig] = useState<AutoBetConfig | null>(null);
   const [autoBetReservations, setAutoBetReservations] = useState<AutoBetReservation[]>([]);
+  const [autoBetReservationView, setAutoBetReservationView] = useState<AutoBetReservationView>("upcoming");
   const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
   const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
     Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; maxAmount: string }>>
   >({});
+  const [autoBetExecuteDrafts, setAutoBetExecuteDrafts] = useState<Record<string, string>>({});
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [backupStorage, setBackupStorage] = useState<BackupStorageStatus | null>(null);
   const [backupMessage, setBackupMessage] = useState("");
@@ -1546,6 +1571,27 @@ function App() {
     );
   }
 
+  function getDefaultReservationExecuteAt(match: MatchRecord) {
+    const offsetMinutes = autoBetConfig?.executeOffsetMinutes ?? 10;
+    const executeDate = new Date(new Date(match.closesAt).getTime() - offsetMinutes * 60 * 1000);
+    return Number.isNaN(executeDate.getTime()) ? "" : executeDate.toISOString();
+  }
+
+  function getReservationExecuteInput(match: MatchRecord) {
+    return autoBetExecuteDrafts[match.id] ?? toDateTimeLocalValue(getDefaultReservationExecuteAt(match));
+  }
+
+  function getReservationExecuteIso(match: MatchRecord) {
+    return fromDateTimeLocalValue(getReservationExecuteInput(match));
+  }
+
+  function updateReservationExecuteAt(match: MatchRecord, value: string) {
+    setAutoBetExecuteDrafts((current) => ({
+      ...current,
+      [match.id]: value,
+    }));
+  }
+
   function updateReservationDraft(
     match: MatchRecord,
     optionId: string,
@@ -1615,8 +1661,13 @@ function App() {
 
   async function reserveAutoBet(match: MatchRecord) {
     const rules = getReservationRules(match);
+    const executeAt = getReservationExecuteIso(match);
     if (!rules.length) {
       setSettingsMessage("有効な投票条件を1件以上入力してください。");
+      return;
+    }
+    if (!executeAt) {
+      setSettingsMessage("実行時刻を入力してください。");
       return;
     }
 
@@ -1625,6 +1676,7 @@ function App() {
     try {
       const result = await createAutoBetReservation(adminToken, settingsPassword, {
         matchId: match.id,
+        executeAt,
         rules: rules.map(({ optionId, priority, minOdds, maxAmount }) => ({
           optionId,
           priority,
@@ -3148,9 +3200,27 @@ function App() {
                   {settingsMessage && <p className="inline-message">{settingsMessage}</p>}
                 </div>
 
-                <div className="settings-match-list">
-                  {openMatches.length ? (
-                    openMatches.map((match) => {
+                <div className="auto-bet-view-switch" role="group" aria-label="自動投票予約の表示切替">
+                  <button
+                    className={autoBetReservationView === "upcoming" ? "active" : ""}
+                    type="button"
+                    onClick={() => setAutoBetReservationView("upcoming")}
+                  >
+                    これから予約
+                  </button>
+                  <button
+                    className={autoBetReservationView === "history" ? "active" : ""}
+                    type="button"
+                    onClick={() => setAutoBetReservationView("history")}
+                  >
+                    実行後
+                  </button>
+                </div>
+
+                {autoBetReservationView === "upcoming" ? (
+                  <div className="settings-match-list">
+                    {openMatches.length ? (
+                      openMatches.map((match) => {
                       const matchVotes = getMatchVotes(match, visibleVotes);
                       const totalPool = getMatchTotal(match, visibleVotes);
                       const draft = getReservationDraft(match);
@@ -3158,7 +3228,7 @@ function App() {
                       const pendingReservation = autoBetReservations.find(
                         (reservation) => reservation.matchId === match.id && reservation.status === "pending",
                       );
-                      const executeAt = new Date(new Date(match.closesAt).getTime() - 10 * 60 * 1000);
+                      const executeAt = getReservationExecuteIso(match);
 
                       return (
                         <article className="data-panel auto-bet-card" key={match.id}>
@@ -3169,14 +3239,21 @@ function App() {
                                 締切 {formatDateTime(match.closesAt)} / 総プール {formatPoints(totalPool)}
                               </small>
                             </span>
-                            <small className="auto-bet-execute-time">
-                              実行 {Number.isNaN(executeAt.getTime()) ? "-" : formatDateTime(executeAt.toISOString())}
-                            </small>
+                            <label className="auto-bet-execute-control">
+                              <small>実行時刻</small>
+                              <input
+                                type="datetime-local"
+                                value={getReservationExecuteInput(match)}
+                                onChange={(event) => updateReservationExecuteAt(match, event.target.value)}
+                              />
+                            </label>
                           </div>
 
                           <div className="auto-bet-current-label">
                             <span>予約条件</span>
-                            <small>締切10分前の最新プールで再計算します</small>
+                            <small>
+                              {executeAt ? `${formatDateTime(executeAt)} の最新プールで再計算します` : "実行時刻を入力してください"}
+                            </small>
                           </div>
 
                           <div className="auto-bet-options">
@@ -3262,24 +3339,35 @@ function App() {
                             onClick={() => reserveAutoBet(match)}
                           >
                             <CalendarClock size={18} aria-hidden />
-                            {pendingReservation ? "予約済み" : "締切10分前に予約する"}
+                            {pendingReservation ? "予約済み" : "この条件で予約する"}
                           </button>
                         </article>
                       );
-                    })
-                  ) : (
-                    <EmptyState title="受付中の試合はありません" />
-                  )}
-                </div>
+                      })
+                    ) : (
+                      <EmptyState title="受付中の試合はありません" />
+                    )}
+                  </div>
+                ) : null}
 
                 <div className="data-panel auto-bet-reservations-panel">
                   <div className="panel-title">
                     <CalendarClock size={18} aria-hidden />
-                    自動投票予約
+                    {autoBetReservationView === "upcoming" ? "予約中" : "実行後の記録"}
                   </div>
-                  {autoBetReservations.length ? (
+                  {autoBetReservations.filter((reservation) =>
+                    autoBetReservationView === "upcoming"
+                      ? reservation.status === "pending" || reservation.status === "processing"
+                      : reservation.status !== "pending" && reservation.status !== "processing",
+                  ).length ? (
                     <div className="auto-bet-reservation-list">
-                      {autoBetReservations.map((reservation) => (
+                      {autoBetReservations
+                        .filter((reservation) =>
+                          autoBetReservationView === "upcoming"
+                            ? reservation.status === "pending" || reservation.status === "processing"
+                            : reservation.status !== "pending" && reservation.status !== "processing",
+                        )
+                        .map((reservation) => (
                         <div className="auto-bet-reservation-row" key={reservation.id}>
                           <span>
                             <strong>{reservation.matchTitle}</strong>
@@ -3294,9 +3382,14 @@ function App() {
                             {reservation.recommendation?.rules?.map((rule) => (
                               <small key={`${reservation.id}-result-${rule.optionId}`}>
                                 結果 {rule.optionLabel} {rule.amount ? formatPoints(rule.amount) : "見送り"}
+                                {rule.beforeOdds ? ` / 実行前 ${rule.beforeOdds.toFixed(2)}x` : ""}
                                 {rule.afterOdds ? ` / 投票後 ${rule.afterOdds.toFixed(2)}x` : ""}
+                                {rule.reason ? ` / ${rule.reason}` : ""}
                               </small>
                             ))}
+                            {reservation.recommendation?.reason && (
+                              <small className="auto-bet-execution-note">{reservation.recommendation.reason}</small>
+                            )}
                             {reservation.recommendation?.optionLabel &&
                               !reservation.recommendation?.recommendations?.length &&
                               !reservation.recommendation?.rules?.length && (
@@ -3317,10 +3410,10 @@ function App() {
                             </button>
                           )}
                         </div>
-                      ))}
+                        ))}
                     </div>
                   ) : (
-                    <EmptyState title="自動投票予約はありません" />
+                    <EmptyState title={autoBetReservationView === "upcoming" ? "予約中の自動投票はありません" : "実行後の記録はありません"} />
                   )}
                 </div>
               </>
@@ -3995,9 +4088,6 @@ function App() {
                   <Settings size={18} aria-hidden />
                   設定
                 </div>
-                <p className="admin-help">
-                  自動投票の分析と予約を行う専用ページへ移動します。
-                </p>
                 <button className="ghost-action" type="button" onClick={() => setView("settings")}>
                   <Settings size={18} aria-hidden />
                   設定画面を開く

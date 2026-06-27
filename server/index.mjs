@@ -3801,14 +3801,25 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       optionLabel: optionsResult.rows.find((option) => option.id === rule.optionId)?.label ?? rule.optionLabel,
     }));
     const maxAmount = rules.reduce((sum, rule) => sum + rule.maxAmount, 0);
-    const executeDate = new Date(new Date(match.closes_at).getTime() - 10 * 60 * 1000);
+    const defaultExecuteDate = new Date(new Date(match.closes_at).getTime() - 10 * 60 * 1000);
+    const requestedExecuteAt = String(request.body?.executeAt ?? "");
+    const executeDate = requestedExecuteAt ? new Date(requestedExecuteAt) : defaultExecuteDate;
+    const closesAt = new Date(match.closes_at);
 
     if (!matchId || !rules.length || maxAmount < 100 || maxAmount > 1_000_000_000) {
       response.status(400).json({ error: "有効な予約投票条件を1件以上入力してください。" });
       return;
     }
+    if (Number.isNaN(executeDate.getTime())) {
+      response.status(400).json({ error: "実行時刻が不正です。" });
+      return;
+    }
     if (executeDate.getTime() <= Date.now()) {
-      response.status(409).json({ error: "締切10分前を過ぎているため予約できません。" });
+      response.status(409).json({ error: "実行時刻が過去のため予約できません。" });
+      return;
+    }
+    if (!Number.isNaN(closesAt.getTime()) && executeDate.getTime() >= closesAt.getTime()) {
+      response.status(409).json({ error: "締切時刻以降には予約できません。" });
       return;
     }
 
@@ -3825,7 +3836,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
         autoBetUserName,
         executeDate.toISOString(),
         maxAmount,
-        JSON.stringify({ type: "conditional", executeOffsetMinutes: 10, rules }),
+        JSON.stringify({ type: "conditional", executeOffsetMinutes: 10, executeAt: executeDate.toISOString(), rules }),
       ],
     );
     await writeAuditLog("auto-bet.reservation.create", reservationId, {

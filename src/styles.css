@@ -3636,6 +3636,33 @@ th {
   gap: 12px;
 }
 
+.auto-bet-view-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px;
+  background: rgba(239, 248, 255, 0.92);
+  border: 1px solid #cfe4f8;
+  border-radius: 8px;
+}
+
+.auto-bet-view-switch button {
+  min-height: 38px;
+  color: #60748b;
+  font-size: 0.82rem;
+  font-weight: 950;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.auto-bet-view-switch button.active {
+  color: #075eb5;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(8, 43, 82, 0.1);
+}
+
 .auto-bet-card {
   gap: 12px;
 }
@@ -3673,6 +3700,26 @@ th {
   background: #e8f4ff;
   border: 1px solid #cfe4f8;
   border-radius: 999px;
+}
+
+.auto-bet-execute-control {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.auto-bet-execute-control small {
+  color: #60748b;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.auto-bet-execute-control input {
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
 }
 
 .primary-action.compact {
@@ -3991,6 +4038,10 @@ th {
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 900;
+}
+
+.auto-bet-execution-note {
+  color: #087b62 !important;
 }
 
 .settings-entry-panel {
