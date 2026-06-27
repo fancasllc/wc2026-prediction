@@ -395,6 +395,7 @@ const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 const hiddenUserNames = new Set(["いつき"]);
 const personIconFileNames = new Set([
   "あずみ",
+  "あづみ",
   "あらい",
   "いまい",
   "おうくら",
@@ -409,9 +410,7 @@ const personIconFileNames = new Set([
   "もえか",
   "刃霧要",
 ]);
-const personIconAliases: Record<string, string> = {
-  あづみ: "あずみ",
-};
+const personIconAliases: Record<string, string> = {};
 
 function getStoredAdminToken() {
   const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) ?? localStorage.getItem(ADMIN_TOKEN_KEY) ?? "";
