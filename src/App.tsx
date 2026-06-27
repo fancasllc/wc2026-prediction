@@ -245,6 +245,7 @@ type ConditionalBetStrategy = {
 };
 
 type AutoBetReservationResult = {
+  optionId?: string;
   optionLabel?: string;
   amount?: number;
   recommendations?: AutoBetReservationResult[];
@@ -3169,7 +3170,7 @@ function App() {
                               </small>
                             </span>
                             <small className="auto-bet-execute-time">
-                              実行 {Number.isNaN(executeAt.getTime()) ? "-" : formatDateTime(executeAt)}
+                              実行 {Number.isNaN(executeAt.getTime()) ? "-" : formatDateTime(executeAt.toISOString())}
                             </small>
                           </div>
 
@@ -3300,12 +3301,12 @@ function App() {
                               !reservation.recommendation?.recommendations?.length &&
                               !reservation.recommendation?.rules?.length && (
                               <small>
-                                {reservation.recommendation.optionLabel} {formatPoints(reservation.recommendation.amount)}
+                                {reservation.recommendation.optionLabel} {formatPoints(reservation.recommendation.amount ?? 0)}
                               </small>
                             )}
                             {reservation.recommendation?.recommendations?.map((recommendation) => (
                               <small key={recommendation.optionId}>
-                                {recommendation.optionLabel} {formatPoints(recommendation.amount)}
+                                {recommendation.optionLabel} {formatPoints(recommendation.amount ?? 0)}
                               </small>
                             ))}
                             {reservation.error && <small className="negative">{reservation.error}</small>}
