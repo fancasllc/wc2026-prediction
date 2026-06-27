@@ -2397,6 +2397,7 @@ function normalizeConditionalRules(rawRules, options = []) {
       optionLabel: String(rule?.optionLabel ?? ""),
       priority: Math.max(1, Math.floor(Number(rule?.priority) || index + 1)),
       minOdds: Number(rule?.minOdds),
+      minOtherPool: Math.max(0, Math.floor(Number(rule?.minOtherPool) / 100) * 100 || 0),
       maxAmount: Math.floor(Number(rule?.maxAmount) / 100) * 100,
     }))
     .filter(
@@ -2457,7 +2458,21 @@ async function runConditionalBetReservation(reservation, db = pool) {
     const option = snapshot.options.find((row) => row.optionId === rule.optionId);
     if (!option) continue;
     const optionPool = optionPools.get(rule.optionId) ?? 0;
+    const otherPool = Math.max(0, totalPool - optionPool);
     const beforeOdds = optionPool > 0 ? totalPool / optionPool : null;
+    if (otherPool < rule.minOtherPool) {
+      results.push({
+        ...rule,
+        optionLabel: option.label,
+        beforeOdds,
+        otherPool,
+        amount: 0,
+        afterOdds: beforeOdds,
+        skipped: true,
+        reason: `投票先以外の合計プールが${rule.minOtherPool.toLocaleString("ja-JP")}pt未満のため見送り`,
+      });
+      continue;
+    }
     const amount = calculateMaxBetForMinimumOdds(totalPool, optionPool, rule.minOdds, rule.maxAmount);
 
     if (amount < 100) {
@@ -2465,6 +2480,7 @@ async function runConditionalBetReservation(reservation, db = pool) {
         ...rule,
         optionLabel: option.label,
         beforeOdds,
+        otherPool,
         amount: 0,
         afterOdds: beforeOdds,
         skipped: true,
@@ -2488,6 +2504,7 @@ async function runConditionalBetReservation(reservation, db = pool) {
       ...rule,
       optionLabel: option.label,
       beforeOdds,
+      otherPool,
       amount,
       afterOdds,
       skipped: false,

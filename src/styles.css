@@ -3807,7 +3807,7 @@ th {
 
 .conditional-rule-fields {
   display: grid;
-  grid-template-columns: 0.7fr 1fr 1fr;
+  grid-template-columns: 0.7fr 1fr 1fr 1fr;
   gap: 8px;
 }
 

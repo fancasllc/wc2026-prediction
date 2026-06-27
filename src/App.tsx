@@ -235,6 +235,7 @@ type ConditionalBetRule = {
   optionLabel: string;
   priority: number;
   minOdds: number;
+  minOtherPool?: number;
   maxAmount: number;
 };
 
@@ -254,6 +255,7 @@ type AutoBetReservationResult = {
   rules?: Array<
     ConditionalBetRule & {
       beforeOdds?: number | null;
+      otherPool?: number;
       amount?: number;
       afterOdds?: number | null;
       skipped?: boolean;
@@ -545,7 +547,7 @@ async function createAutoBetReservation(
   reservation: {
     matchId: string;
     executeAt: string;
-    rules: Array<{ optionId: string; priority: number; minOdds: number; maxAmount: number }>;
+    rules: Array<{ optionId: string; priority: number; minOdds: number; minOtherPool?: number; maxAmount: number }>;
   },
 ) {
   return apiRequest<{ reservations: AutoBetReservation[] }>("/api/admin/auto-bet/reservations", {
@@ -1348,7 +1350,7 @@ function App() {
   const [autoBetReservationView, setAutoBetReservationView] = useState<AutoBetReservationView>("upcoming");
   const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
   const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
-    Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; maxAmount: string }>>
+    Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; minOtherPool: string; maxAmount: string }>>
   >({});
   const [autoBetExecuteDrafts, setAutoBetExecuteDrafts] = useState<Record<string, string>>({});
   const [backups, setBackups] = useState<BackupRecord[]>([]);
@@ -1565,6 +1567,7 @@ function App() {
           enabled: false,
           priority: String(index + 1),
           minOdds: "",
+          minOtherPool: "",
           maxAmount: "",
         },
       ]),
@@ -1595,7 +1598,7 @@ function App() {
   function updateReservationDraft(
     match: MatchRecord,
     optionId: string,
-    patch: Partial<{ enabled: boolean; priority: string; minOdds: string; maxAmount: string }>,
+    patch: Partial<{ enabled: boolean; priority: string; minOdds: string; minOtherPool: string; maxAmount: string }>,
   ) {
     setAutoBetReservationDrafts((current) => ({
       ...current,
@@ -1619,6 +1622,7 @@ function App() {
           optionLabel: optionDisplayLabel(match, option),
           priority: Math.max(1, Math.floor(Number(row?.priority) || index + 1)),
           minOdds: Number(row?.minOdds),
+          minOtherPool: Math.max(0, Math.floor(Number(row?.minOtherPool) / 100) * 100 || 0),
           maxAmount: Math.floor(Number(row?.maxAmount) / 100) * 100,
           enabled: Boolean(row?.enabled),
         };
@@ -1640,11 +1644,12 @@ function App() {
     const optionPools = new Map(match.options.map((option) => [option.id, getOptionTotal(match, votes, option.id)]));
     return rules.map((rule) => {
       const optionPool = optionPools.get(rule.optionId) ?? 0;
+      const otherPool = Math.max(0, totalPool - optionPool);
       const beforeOdds = optionPool > 0 && totalPool > 0 ? totalPool / optionPool : null;
       const numerator = totalPool - rule.minOdds * optionPool;
       const maxByOdds =
         rule.minOdds > 1 ? Math.floor((numerator / (rule.minOdds - 1)) / 100) * 100 : 0;
-      const amount = Math.max(0, Math.min(rule.maxAmount, maxByOdds));
+      const amount = otherPool >= rule.minOtherPool ? Math.max(0, Math.min(rule.maxAmount, maxByOdds)) : 0;
       const safeAmount = Math.floor(amount / 100) * 100;
       const afterOdds =
         optionPool + safeAmount > 0 ? (totalPool + safeAmount) / (optionPool + safeAmount) : null;
@@ -1653,6 +1658,7 @@ function App() {
       return {
         ...rule,
         beforeOdds,
+        otherPool,
         amount: safeAmount,
         afterOdds,
       };
@@ -1677,10 +1683,11 @@ function App() {
       const result = await createAutoBetReservation(adminToken, settingsPassword, {
         matchId: match.id,
         executeAt,
-        rules: rules.map(({ optionId, priority, minOdds, maxAmount }) => ({
+        rules: rules.map(({ optionId, priority, minOdds, minOtherPool, maxAmount }) => ({
           optionId,
           priority,
           minOdds,
+          minOtherPool,
           maxAmount,
         })),
       });
@@ -3314,6 +3321,18 @@ function App() {
                                       />
                                     </label>
                                     <label>
+                                      <span>他プール下限pt</span>
+                                      <input
+                                        min={0}
+                                        step={100}
+                                        type="number"
+                                        value={row?.minOtherPool ?? ""}
+                                        onChange={(event) =>
+                                          updateReservationDraft(match, option.id, { minOtherPool: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label>
                                       <span>最大pt</span>
                                       <input
                                         min={100}
@@ -3329,6 +3348,7 @@ function App() {
                                   {row?.enabled && (
                                     <small className={preview?.amount ? "conditional-rule-preview positive" : "conditional-rule-preview negative"}>
                                       現時点試算: {preview?.amount ? formatPoints(preview.amount) : "投票なし"}
+                                      {preview ? ` / 他プール ${formatPoints(preview.otherPool)}` : ""}
                                       {preview?.afterOdds ? ` / 投票後 ${preview.afterOdds.toFixed(2)}x` : ""}
                                     </small>
                                   )}
@@ -3383,11 +3403,13 @@ function App() {
                             {reservation.strategy?.rules?.map((rule) => (
                               <small key={`${reservation.id}-${rule.optionId}`}>
                                 優先{rule.priority} {rule.optionLabel} / 最低{rule.minOdds.toFixed(2)}x / 最大{formatPoints(rule.maxAmount)}
+                                {rule.minOtherPool ? ` / 他プール下限 ${formatPoints(rule.minOtherPool)}` : ""}
                               </small>
                             ))}
                             {reservation.recommendation?.rules?.map((rule) => (
                               <small key={`${reservation.id}-result-${rule.optionId}`}>
                                 結果 {rule.optionLabel} {rule.amount ? formatPoints(rule.amount) : "見送り"}
+                                {typeof rule.otherPool === "number" ? ` / 他プール ${formatPoints(rule.otherPool)}` : ""}
                                 {rule.beforeOdds ? ` / 実行前 ${rule.beforeOdds.toFixed(2)}x` : ""}
                                 {rule.afterOdds ? ` / 投票後 ${rule.afterOdds.toFixed(2)}x` : ""}
                                 {rule.reason ? ` / ${rule.reason}` : ""}
