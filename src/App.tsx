@@ -207,6 +207,7 @@ type ConditionalBetRule = {
   optionLabel: string;
   priority: number;
   minOdds: number;
+  minAfterOdds?: number;
   minOtherPool?: number;
   maxAmount: number;
 };
@@ -519,7 +520,7 @@ async function createAutoBetReservation(
   reservation: {
     matchId: string;
     executeAt: string;
-    rules: Array<{ optionId: string; priority: number; minOdds: number; minOtherPool?: number; maxAmount: number }>;
+    rules: Array<{ optionId: string; priority: number; minOdds: number; minAfterOdds?: number; minOtherPool?: number; maxAmount: number }>;
   },
 ) {
   return apiRequest<{ reservations: AutoBetReservation[] }>("/api/admin/auto-bet/reservations", {
@@ -1312,7 +1313,7 @@ function App() {
   const [autoBetReservationView, setAutoBetReservationView] = useState<AutoBetReservationView>("upcoming");
   const [autoBetActionMatchId, setAutoBetActionMatchId] = useState("");
   const [autoBetReservationDrafts, setAutoBetReservationDrafts] = useState<
-    Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; minOtherPool: string; maxAmount: string }>>
+    Record<string, Record<string, { enabled: boolean; priority: string; minOdds: string; minAfterOdds: string; minOtherPool: string; maxAmount: string }>>
   >({});
   const [autoBetExecuteDrafts, setAutoBetExecuteDrafts] = useState<Record<string, string>>({});
   const [backups, setBackups] = useState<BackupRecord[]>([]);
@@ -1529,6 +1530,7 @@ function App() {
           enabled: false,
           priority: String(index + 1),
           minOdds: "",
+          minAfterOdds: "",
           minOtherPool: "",
           maxAmount: "",
         },
@@ -1560,7 +1562,7 @@ function App() {
   function updateReservationDraft(
     match: MatchRecord,
     optionId: string,
-    patch: Partial<{ enabled: boolean; priority: string; minOdds: string; minOtherPool: string; maxAmount: string }>,
+    patch: Partial<{ enabled: boolean; priority: string; minOdds: string; minAfterOdds: string; minOtherPool: string; maxAmount: string }>,
   ) {
     setAutoBetReservationDrafts((current) => ({
       ...current,
@@ -1584,6 +1586,7 @@ function App() {
           optionLabel: optionDisplayLabel(match, option),
           priority: Math.max(1, Math.floor(Number(row?.priority) || index + 1)),
           minOdds: Number(row?.minOdds),
+          minAfterOdds: Number(row?.minAfterOdds) || Number(row?.minOdds),
           minOtherPool: Math.max(0, Math.floor(Number(row?.minOtherPool) / 100) * 100 || 0),
           maxAmount: Math.floor(Number(row?.maxAmount) / 100) * 100,
           enabled: Boolean(row?.enabled),
@@ -1594,6 +1597,8 @@ function App() {
           rule.enabled &&
           Number.isFinite(rule.minOdds) &&
           rule.minOdds > 1 &&
+          Number.isFinite(rule.minAfterOdds) &&
+          rule.minAfterOdds > 1 &&
           Number.isInteger(rule.maxAmount) &&
           rule.maxAmount >= 100,
       )
@@ -1608,10 +1613,13 @@ function App() {
       const optionPool = optionPools.get(rule.optionId) ?? 0;
       const otherPool = Math.max(0, totalPool - optionPool);
       const beforeOdds = optionPool > 0 && totalPool > 0 ? totalPool / optionPool : null;
-      const numerator = totalPool - rule.minOdds * optionPool;
+      const meetsBeforeOdds = beforeOdds === null || beforeOdds >= rule.minOdds;
+      const minAfterOdds = rule.minAfterOdds || rule.minOdds;
+      const numerator = totalPool - minAfterOdds * optionPool;
       const maxByOdds =
-        rule.minOdds > 1 ? Math.floor((numerator / (rule.minOdds - 1)) / 100) * 100 : 0;
-      const amount = otherPool >= rule.minOtherPool ? Math.max(0, Math.min(rule.maxAmount, maxByOdds)) : 0;
+        minAfterOdds > 1 ? Math.floor((numerator / (minAfterOdds - 1)) / 100) * 100 : 0;
+      const amount =
+        meetsBeforeOdds && otherPool >= rule.minOtherPool ? Math.max(0, Math.min(rule.maxAmount, maxByOdds)) : 0;
       const safeAmount = Math.floor(amount / 100) * 100;
       const afterOdds =
         optionPool + safeAmount > 0 ? (totalPool + safeAmount) / (optionPool + safeAmount) : null;
@@ -1645,10 +1653,11 @@ function App() {
       const result = await createAutoBetReservation(adminToken, settingsPassword, {
         matchId: match.id,
         executeAt,
-        rules: rules.map(({ optionId, priority, minOdds, minOtherPool, maxAmount }) => ({
+        rules: rules.map(({ optionId, priority, minOdds, minAfterOdds, minOtherPool, maxAmount }) => ({
           optionId,
           priority,
           minOdds,
+          minAfterOdds,
           minOtherPool,
           maxAmount,
         })),
@@ -3290,7 +3299,7 @@ function App() {
                                       />
                                     </label>
                                     <label>
-                                      <span>最低オッズ</span>
+                                      <span>実行前最低オッズ</span>
                                       <input
                                         min={1.01}
                                         step={0.01}
@@ -3298,6 +3307,19 @@ function App() {
                                         value={row?.minOdds ?? ""}
                                         onChange={(event) =>
                                           updateReservationDraft(match, option.id, { minOdds: event.target.value })
+                                        }
+                                      />
+                                    </label>
+                                    <label>
+                                      <span>投票後最低オッズ</span>
+                                      <input
+                                        min={1.01}
+                                        step={0.01}
+                                        type="number"
+                                        value={row?.minAfterOdds ?? ""}
+                                        placeholder={row?.minOdds || ""}
+                                        onChange={(event) =>
+                                          updateReservationDraft(match, option.id, { minAfterOdds: event.target.value })
                                         }
                                       />
                                     </label>
@@ -3384,6 +3406,7 @@ function App() {
                             {reservation.strategy?.rules?.map((rule) => (
                               <small key={`${reservation.id}-${rule.optionId}`}>
                                 優先{rule.priority} {rule.optionLabel} / 最低{rule.minOdds.toFixed(2)}x / 最大{formatPoints(rule.maxAmount)}
+                                {` / 投票後最低 ${(rule.minAfterOdds ?? rule.minOdds).toFixed(2)}x`}
                                 {rule.minOtherPool ? ` / 他プール下限 ${formatPoints(rule.minOtherPool)}` : ""}
                               </small>
                             ))}

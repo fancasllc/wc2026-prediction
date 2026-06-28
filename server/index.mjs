@@ -2625,6 +2625,7 @@ function normalizeConditionalRules(rawRules, options = []) {
       optionLabel: String(rule?.optionLabel ?? ""),
       priority: Math.max(1, Math.floor(Number(rule?.priority) || index + 1)),
       minOdds: Number(rule?.minOdds),
+      minAfterOdds: Number(rule?.minAfterOdds) || Number(rule?.minOdds),
       minOtherPool: Math.max(0, Math.floor(Number(rule?.minOtherPool) / 100) * 100 || 0),
       maxAmount: Math.floor(Number(rule?.maxAmount) / 100) * 100,
     }))
@@ -2634,6 +2635,8 @@ function normalizeConditionalRules(rawRules, options = []) {
         (!optionIds.size || optionIds.has(rule.optionId)) &&
         Number.isFinite(rule.minOdds) &&
         rule.minOdds > 1 &&
+        Number.isFinite(rule.minAfterOdds) &&
+        rule.minAfterOdds > 1 &&
         Number.isInteger(rule.maxAmount) &&
         rule.maxAmount >= 100,
     )
@@ -2688,6 +2691,19 @@ async function runConditionalBetReservation(reservation, db = pool) {
     const optionPool = optionPools.get(rule.optionId) ?? 0;
     const otherPool = Math.max(0, totalPool - optionPool);
     const beforeOdds = optionPool > 0 ? totalPool / optionPool : null;
+    if (beforeOdds !== null && beforeOdds < rule.minOdds) {
+      results.push({
+        ...rule,
+        optionLabel: option.label,
+        beforeOdds,
+        otherPool,
+        amount: 0,
+        afterOdds: beforeOdds,
+        skipped: true,
+        reason: `実行前オッズが最低オッズ${rule.minOdds.toFixed(2)}x未満のため見送り`,
+      });
+      continue;
+    }
     if (otherPool < rule.minOtherPool) {
       results.push({
         ...rule,
@@ -2701,7 +2717,8 @@ async function runConditionalBetReservation(reservation, db = pool) {
       });
       continue;
     }
-    const amount = calculateMaxBetForMinimumOdds(totalPool, optionPool, rule.minOdds, rule.maxAmount);
+    const minAfterOdds = rule.minAfterOdds || rule.minOdds;
+    const amount = calculateMaxBetForMinimumOdds(totalPool, optionPool, minAfterOdds, rule.maxAmount);
 
     if (amount < 100) {
       results.push({
@@ -2712,7 +2729,7 @@ async function runConditionalBetReservation(reservation, db = pool) {
         amount: 0,
         afterOdds: beforeOdds,
         skipped: true,
-        reason: `最低オッズ${rule.minOdds.toFixed(2)}xを維持できないため見送り`,
+        reason: `投票後最低オッズ${minAfterOdds.toFixed(2)}xを維持できないため見送り`,
       });
       continue;
     }
@@ -2736,7 +2753,7 @@ async function runConditionalBetReservation(reservation, db = pool) {
       amount,
       afterOdds,
       skipped: false,
-      reason: `最低オッズ${rule.minOdds.toFixed(2)}x以上を維持できる最大額を投票`,
+      reason: `投票後最低オッズ${minAfterOdds.toFixed(2)}x以上を維持できる最大額を投票`,
     });
     totalPool += amount;
     optionPools.set(rule.optionId, optionPool + amount);
