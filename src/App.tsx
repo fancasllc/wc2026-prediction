@@ -29,7 +29,7 @@ type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "adm
 const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_ranking/";
 const FIFA_STANDINGS_URL = "https://www.flashscore.co.jp/soccer/world/world-championship/standings/SbLsX4y7/standings/";
 const WORLD_CUP_NEWS_URL = "https://www.olympics.com/ja/news/fifa-world-cup-2026-schedule-results-scores-standings-list-japan";
-const BET_CHANNEL_URL = "https://bet-channel.com/matches?ct=10037";
+const PINNACLE_URL = "https://www.pinnacle.com/ja/soccer/fifa-world-cup/matchups/#all";
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
   アメリカ: "us",
@@ -687,6 +687,14 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function formatSummaryStartDateTime(value: string) {
+  if (!value) return "未設定";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}${weekdays[date.getDay()]} ${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function toDateTimeLocalValue(value: string) {
   if (!value) return "";
   const date = new Date(value);
@@ -1005,6 +1013,11 @@ function getExternalOddsForOption(match: MatchRecord, option: MatchOption) {
 
 function formatExternalOdds(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(2)}x` : "-";
+}
+
+function formatExternalOddsSource(source: string | undefined) {
+  const normalized = String(source ?? "").trim();
+  return normalized || "PINNACLE";
 }
 
 function isMatchOpen(match: MatchRecord, now: Date) {
@@ -2819,6 +2832,7 @@ function App() {
                     key={match.id}
                     match={match}
                     now={now}
+                    compactStartTime
                     votes={visibleVotes}
                     onOpen={() => openMatchDetail(match.id)}
                   />
@@ -4653,11 +4667,13 @@ function ScheduledMatchPicker({
 function MatchSummaryCard({
   match,
   now,
+  compactStartTime = false,
   votes,
   onOpen,
 }: {
   match: MatchRecord;
   now: Date;
+  compactStartTime?: boolean;
   votes: VoteRecord[];
   onOpen: () => void;
 }) {
@@ -4699,7 +4715,7 @@ function MatchSummaryCard({
           )}
         </div>
         <div className="summary-side" aria-label="開始時刻と総プール">
-          <span>{formatDateTime(match.startsAt)} 開始</span>
+          <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
           <span>総プール {formatPoints(total)}</span>
         </div>
       </div>
@@ -4820,15 +4836,15 @@ function ExternalOddsPanel({
       <div className="external-odds-heading">
         <span>参考オッズ</span>
         <a
-          href={externalOdds.sourceUrl || BET_CHANNEL_URL}
+          href={externalOdds.sourceUrl || PINNACLE_URL}
           target="_blank"
           rel="noopener noreferrer"
         >
-          BET CHANNEL
+          {formatExternalOddsSource(externalOdds.source)}
         </a>
         <time>{formatDateTime(externalOdds.fetchedAt)}取得</time>
       </div>
-      <div className="external-odds-rows" aria-label="BET CHANNELの参考オッズ">
+      <div className="external-odds-rows" aria-label={`${formatExternalOddsSource(externalOdds.source)}の参考オッズ`}>
         <div className="external-odds-strip external-odds-strip-teams">
           {teamItems.map((item) => (
             <span className="external-odds-item" key={item.id}>

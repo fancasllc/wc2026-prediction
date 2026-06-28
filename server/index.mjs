@@ -54,8 +54,10 @@ const openaiApiKey = process.env.OPENAI_API_KEY ?? "";
 const openaiModel = process.env.OPENAI_MODEL ?? "gpt-5.5";
 const openaiWebSearchToolType = process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ?? "web_search";
 const openaiReasoningEffort = process.env.OPENAI_REASONING_EFFORT ?? "high";
-const betChannelMatchesUrl = "https://bet-channel.com/matches?ct=10037";
-const betChannelApiUrl = "https://bet-channel.com/matches/api/matchlist?ct=10037&limit=300";
+const pinnacleMatchesUrl = "https://www.pinnacle.com/ja/soccer/fifa-world-cup/matchups/#all";
+const pinnacleApiRoot = "https://guest.api.arcadia.pinnacle.com/0.1";
+const pinnacleApiKey = process.env.PINNACLE_API_KEY ?? "CmX2KcMrXuFmNg6YFbmTxE0y9CIrOi0R";
+const pinnacleWorldCupLeagueId = Number(process.env.PINNACLE_WORLD_CUP_LEAGUE_ID ?? 2686);
 const daznJapanChannelId = process.env.YOUTUBE_CHANNEL_ID ?? "UCoFLB_Gw_AoxUuuzKjXrc_Q";
 const daznJapanVideosUrl = "https://www.youtube.com/@DAZNJapan/videos";
 const youtubeFeedUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(daznJapanChannelId)}`;
@@ -1728,58 +1730,118 @@ function cleanFixtureLabel(value) {
   );
 }
 
-function parseBetChannelKickoff(value) {
+function parsePinnacleKickoff(value) {
   const text = String(value ?? "").trim();
   if (!text) return null;
-  const isoLike = text.replace(/\//g, "-").replace(" ", "T");
-  const parsed = new Date(`${isoLike}Z`);
+  const parsed = new Date(text);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function parseExternalOdds(value) {
+function parsePinnacleOdds(value) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  if (!Number.isFinite(parsed) || parsed === 0) return null;
+  const decimal = parsed > 0 ? 1 + parsed / 100 : 1 + 100 / Math.abs(parsed);
+  return Number(decimal.toFixed(3));
 }
 
-function isBetChannelDrawChoice(bet) {
-  const values = [
-    bet?.choice_name,
-    bet?.choice_short_name,
-    bet?.name,
-    bet?.selection_name,
-  ];
-  return values.some((value) => {
-    const normalized = String(value ?? "").normalize("NFKC").trim().toLowerCase();
-    return normalized === "draw" || normalized === "x" || normalized === "引き分け" || normalized === "ドロー";
+function getPinnacleParticipant(matchup, alignment) {
+  return (matchup?.participants ?? []).find((participant) => participant?.alignment === alignment) ?? null;
+}
+
+function getPinnacleMarketPrice(market, designation) {
+  return (market?.prices ?? []).find((price) => price?.designation === designation) ?? null;
+}
+
+function getPinnacleParticipantPrice(market, participantId) {
+  return (market?.prices ?? []).find((price) => String(price?.participantId) === String(participantId)) ?? null;
+}
+
+function getPinnacleStraightMoneyline(markets) {
+  return (markets ?? []).find((market) => (
+    market?.type === "moneyline"
+    && Number(market?.period ?? 0) === 0
+    && market?.status !== "closed"
+    && Array.isArray(market?.prices)
+    && market.prices.length >= 2
+  )) ?? null;
+}
+
+async function fetchPinnacleJson(path) {
+  const response = await fetch(`${pinnacleApiRoot}${path}`, {
+    headers: {
+      accept: "application/json",
+      "x-api-key": pinnacleApiKey,
+      "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
+    },
   });
+  if (!response.ok) {
+    throw new Error(`PINNACLE responded ${response.status} for ${path}`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
 }
 
-function getBetChannelOdds(sourceMatch) {
-  const sourceMatchId = String(sourceMatch?.id ?? sourceMatch?.match_id ?? "");
-  const bets = Object.values(sourceMatch?.MatchBet ?? {})
-    .filter(Boolean)
-    .sort((a, b) => Number(a?.disp_order ?? 0) - Number(b?.disp_order ?? 0));
-  const activeBets = bets.filter((bet) => bet?.is_enabled !== false && bet?.is_cancelled !== true);
-  const drawBet = activeBets.find((bet) => isBetChannelDrawChoice(bet));
-  const teamBets = activeBets.filter((bet) => !isBetChannelDrawChoice(bet));
-  if (!sourceMatchId || teamBets.length < 2) return null;
+async function getPinnacleOdds(sourceMatch) {
+  const sourceMatchId = String(sourceMatch?.id ?? "");
+  const home = getPinnacleParticipant(sourceMatch, "home");
+  const away = getPinnacleParticipant(sourceMatch, "away");
+  if (!sourceMatchId || !home?.name || !away?.name) return null;
 
-  const homeLabel = englishToJapaneseCountry(teamBets[0]?.choice_name);
-  const awayLabel = englishToJapaneseCountry(teamBets[1]?.choice_name);
-  const kickoffAt = parseBetChannelKickoff(sourceMatch?.game_start_ts);
+  const related = await fetchPinnacleJson(`/matchups/${encodeURIComponent(sourceMatchId)}/related`);
+  const relatedMatches = Array.isArray(related) ? related : [];
+  const drawNoBet = relatedMatches.find((matchup) => (
+    matchup?.parentId === sourceMatch.id
+    && matchup?.type === "special"
+    && String(matchup?.special?.description ?? "").toLowerCase() === "draw no bet"
+    && Array.isArray(matchup?.participants)
+    && matchup.participants.length >= 2
+  ));
+
+  let sourceMarketId = sourceMatchId;
+  let homeOdds = null;
+  let drawOdds = null;
+  let awayOdds = null;
+  let marketType = "moneyline";
+
+  if (drawNoBet) {
+    const markets = await fetchPinnacleJson(`/matchups/${encodeURIComponent(drawNoBet.id)}/markets/straight`);
+    const market = getPinnacleStraightMoneyline(markets);
+    const drawNoBetHome = drawNoBet.participants.find((participant) => (
+      cleanFixtureLabel(participant?.name) === cleanFixtureLabel(home.name)
+    )) ?? drawNoBet.participants[0];
+    const drawNoBetAway = drawNoBet.participants.find((participant) => (
+      cleanFixtureLabel(participant?.name) === cleanFixtureLabel(away.name)
+    )) ?? drawNoBet.participants[1];
+    homeOdds = parsePinnacleOdds(getPinnacleParticipantPrice(market, drawNoBetHome?.id)?.price);
+    awayOdds = parsePinnacleOdds(getPinnacleParticipantPrice(market, drawNoBetAway?.id)?.price);
+    sourceMarketId = String(drawNoBet.id);
+    marketType = "draw_no_bet";
+  } else {
+    const markets = await fetchPinnacleJson(`/matchups/${encodeURIComponent(sourceMatchId)}/markets/straight`);
+    const market = getPinnacleStraightMoneyline(markets);
+    homeOdds = parsePinnacleOdds(getPinnacleMarketPrice(market, "home")?.price);
+    drawOdds = parsePinnacleOdds(getPinnacleMarketPrice(market, "draw")?.price);
+    awayOdds = parsePinnacleOdds(getPinnacleMarketPrice(market, "away")?.price);
+  }
+
+  if (!homeOdds || !awayOdds) return null;
   return {
-    sourceMatchId,
-    sourceUrl: betChannelMatchesUrl,
-    homeLabel,
-    awayLabel,
-    homeOdds: parseExternalOdds(teamBets[0]?.odds),
-    drawOdds: parseExternalOdds(drawBet?.odds),
-    awayOdds: parseExternalOdds(teamBets[1]?.odds),
-    kickoffAt,
+    sourceMatchId: `${sourceMatchId}-${sourceMarketId}`,
+    sourceUrl: pinnacleMatchesUrl,
+    homeLabel: englishToJapaneseCountry(home.name),
+    awayLabel: englishToJapaneseCountry(away.name),
+    homeOdds,
+    drawOdds,
+    awayOdds,
+    kickoffAt: parsePinnacleKickoff(sourceMatch.startTime),
     raw: {
       id: sourceMatchId,
-      name: sourceMatch?.name,
-      gameStartTs: sourceMatch?.game_start_ts,
+      marketId: sourceMarketId,
+      marketType,
+      leagueId: sourceMatch?.league?.id,
+      startTime: sourceMatch?.startTime,
+      home: home.name,
+      away: away.name,
     },
   };
 }
@@ -1838,20 +1900,21 @@ async function refreshExternalOdds(reason = "scheduled") {
 
   externalOddsInProgress = true;
   try {
-    const response = await fetch(betChannelApiUrl, {
-      headers: {
-        accept: "application/json, text/plain, */*",
-        referer: betChannelMatchesUrl,
-        "user-agent": "Mozilla/5.0 compatible; wc2026-prediction/1.0",
-        "x-requested-with": "XMLHttpRequest",
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`BET CHANNEL responded ${response.status}`);
+    const payload = await fetchPinnacleJson(`/leagues/${encodeURIComponent(pinnacleWorldCupLeagueId)}/matchups`);
+    const sourceMatches = (Array.isArray(payload) ? payload : [])
+      .filter((matchup) => (
+        matchup?.type === "matchup"
+        && !matchup?.parentId
+        && matchup?.league?.id === pinnacleWorldCupLeagueId
+        && Array.isArray(matchup?.participants)
+        && matchup.participants.some((participant) => participant?.alignment === "home")
+        && matchup.participants.some((participant) => participant?.alignment === "away")
+      ));
+    const externalMatches = [];
+    for (const sourceMatch of sourceMatches) {
+      const externalMatch = await getPinnacleOdds(sourceMatch);
+      if (externalMatch) externalMatches.push(externalMatch);
     }
-
-    const payload = await response.json();
-    const externalMatches = Object.values(payload ?? {}).map(getBetChannelOdds).filter(Boolean);
     const localMatches = await loadLocalMatchesForExternalOdds();
     let savedCount = 0;
 
@@ -1875,9 +1938,9 @@ async function refreshExternalOdds(reason = "scheduled") {
             raw = excluded.raw
         `,
         [
-          `bet-channel-${externalMatch.sourceMatchId}-${localMatch.id}`,
+          `pinnacle-${externalMatch.sourceMatchId}-${localMatch.id}`,
           localMatch.id,
-          "BET CHANNEL",
+          "PINNACLE",
           externalMatch.sourceMatchId,
           externalMatch.sourceUrl,
           externalMatch.homeLabel,
@@ -1983,7 +2046,7 @@ async function loadAutoBetSnapshot(matchId, db = pool) {
           fetched_at as "fetchedAt"
         from external_odds
         where match_id = $1
-        order by match_id, (draw_odds is not null) desc, fetched_at desc
+        order by match_id, (source = 'PINNACLE') desc, fetched_at desc
       `,
       [matchId],
     ),
@@ -3065,7 +3128,7 @@ async function getState() {
         away_odds::float as "awayOdds",
         fetched_at as "fetchedAt"
       from external_odds
-      order by match_id, (draw_odds is not null) desc, fetched_at desc
+      order by match_id, (source = 'PINNACLE') desc, fetched_at desc
     `),
   ]);
 
