@@ -452,6 +452,137 @@ const scheduledGroupMatches = [
   { id: "wc26-jordan-argentina", title: "ヨルダン VS アルゼンチン", startsAt: "2026-06-28T11:00", options: ["ヨルダン", "アルゼンチン", "引き分け"] },
 ];
 
+const knockoutAutoRegisterMatches = [
+  {
+    id: "wc26-r32-south-africa-canada",
+    title: "南アフリカ VS カナダ",
+    stage: "ラウンド・オブ・32",
+    venue: "Los Angeles Stadium",
+    startsAt: "2026-06-29T04:00",
+    options: ["南アフリカ", "カナダ"],
+  },
+  {
+    id: "wc26-r32-brazil-japan",
+    title: "ブラジル VS 日本",
+    stage: "ラウンド・オブ・32",
+    venue: "Houston Stadium",
+    startsAt: "2026-06-30T02:00",
+    options: ["ブラジル", "日本"],
+  },
+  {
+    id: "wc26-r32-germany-paraguay",
+    title: "ドイツ VS パラグアイ",
+    stage: "ラウンド・オブ・32",
+    venue: "Boston Stadium",
+    startsAt: "2026-06-30T05:30",
+    options: ["ドイツ", "パラグアイ"],
+  },
+  {
+    id: "wc26-r32-netherlands-morocco",
+    title: "オランダ VS モロッコ",
+    stage: "ラウンド・オブ・32",
+    venue: "Estadio Monterrey",
+    startsAt: "2026-06-30T10:00",
+    options: ["オランダ", "モロッコ"],
+  },
+  {
+    id: "wc26-r32-ivory-coast-norway",
+    title: "コートジボワール VS ノルウェー",
+    stage: "ラウンド・オブ・32",
+    venue: "Dallas Stadium",
+    startsAt: "2026-07-01T02:00",
+    options: ["コートジボワール", "ノルウェー"],
+  },
+  {
+    id: "wc26-r32-france-sweden",
+    title: "フランス VS スウェーデン",
+    stage: "ラウンド・オブ・32",
+    venue: "NY/NJ Stadium",
+    startsAt: "2026-07-01T06:00",
+    options: ["フランス", "スウェーデン"],
+  },
+  {
+    id: "wc26-r32-mexico-ecuador",
+    title: "メキシコ VS エクアドル",
+    stage: "ラウンド・オブ・32",
+    venue: "Mexico City Stadium",
+    startsAt: "2026-07-01T10:00",
+    options: ["メキシコ", "エクアドル"],
+  },
+  {
+    id: "wc26-r32-england-drc",
+    title: "イングランド VS コンゴ民主共和国",
+    stage: "ラウンド・オブ・32",
+    venue: "Atlanta Stadium",
+    startsAt: "2026-07-02T01:00",
+    options: ["イングランド", "コンゴ民主共和国"],
+  },
+  {
+    id: "wc26-r32-belgium-senegal",
+    title: "ベルギー VS セネガル",
+    stage: "ラウンド・オブ・32",
+    venue: "Seattle Stadium",
+    startsAt: "2026-07-02T05:00",
+    options: ["ベルギー", "セネガル"],
+  },
+  {
+    id: "wc26-r32-usa-bosnia",
+    title: "アメリカ VS ボスニア",
+    stage: "ラウンド・オブ・32",
+    venue: "San Francisco Bay Area Stadium",
+    startsAt: "2026-07-02T09:00",
+    options: ["アメリカ", "ボスニア"],
+  },
+  {
+    id: "wc26-r32-spain-austria",
+    title: "スペイン VS オーストリア",
+    stage: "ラウンド・オブ・32",
+    venue: "Los Angeles Stadium",
+    startsAt: "2026-07-03T04:00",
+    options: ["スペイン", "オーストリア"],
+  },
+  {
+    id: "wc26-r32-portugal-croatia",
+    title: "ポルトガル VS クロアチア",
+    stage: "ラウンド・オブ・32",
+    venue: "Toronto Stadium",
+    startsAt: "2026-07-03T08:00",
+    options: ["ポルトガル", "クロアチア"],
+  },
+  {
+    id: "wc26-r32-switzerland-algeria",
+    title: "スイス VS アルジェリア",
+    stage: "ラウンド・オブ・32",
+    venue: "BC Place Vancouver",
+    startsAt: "2026-07-03T12:00",
+    options: ["スイス", "アルジェリア"],
+  },
+  {
+    id: "wc26-r32-australia-egypt",
+    title: "オーストラリア VS エジプト",
+    stage: "ラウンド・オブ・32",
+    venue: "Dallas Stadium",
+    startsAt: "2026-07-04T03:00",
+    options: ["オーストラリア", "エジプト"],
+  },
+  {
+    id: "wc26-r32-argentina-cape-verde",
+    title: "アルゼンチン VS カーボベルデ",
+    stage: "ラウンド・オブ・32",
+    venue: "Miami Stadium",
+    startsAt: "2026-07-04T07:00",
+    options: ["アルゼンチン", "カーボベルデ"],
+  },
+  {
+    id: "wc26-r32-colombia-ghana",
+    title: "コロンビア VS ガーナ",
+    stage: "ラウンド・オブ・32",
+    venue: "Kansas City Stadium",
+    startsAt: "2026-07-04T10:30",
+    options: ["コロンビア", "ガーナ"],
+  },
+];
+
 function normalizeFixtureText(value) {
   return String(value ?? "").replace(/\s+/g, "").toLowerCase();
 }
@@ -484,11 +615,12 @@ function makeScheduledMatchPayload(scheduledMatch) {
   return {
     id: scheduledMatch.id,
     title: scheduledMatch.title,
-    stage: "",
-    venue: "",
+    stage: scheduledMatch.stage ?? "",
+    venue: scheduledMatch.venue ?? "",
     startsAt: scheduledMatch.startsAt,
     closesAt: scheduledMatch.startsAt,
     question: "",
+    notice: scheduledMatch.notice ?? "",
     options: scheduledMatch.options.map((label, index) => ({
       id: `${scheduledMatch.id}-option-${index + 1}`,
       label,
@@ -739,6 +871,7 @@ async function initializeDatabase() {
   `);
 
   await query("alter table auto_bet_reservations add column if not exists strategy jsonb not null default '{}'::jsonb");
+  await seedKnockoutMatches();
   await refreshTodayUserPointSnapshots();
   await ensureDailyBackup();
   startUserPointSnapshotScheduler();
@@ -1539,6 +1672,38 @@ async function insertMatch(input, client = pool) {
   }
 
   return match;
+}
+
+async function seedKnockoutMatches(db = pool) {
+  if (!db) return;
+
+  await withTransaction(async (client) => {
+    const existingMatches = await getMatchRegistrationRows(client);
+    let insertedCount = 0;
+
+    for (const knockoutMatch of knockoutAutoRegisterMatches) {
+      const alreadyRegistered = existingMatches.some((existingMatch) =>
+        existingMatch.id === knockoutMatch.id ||
+        isScheduledMatchRegistered(knockoutMatch, existingMatch),
+      );
+      if (alreadyRegistered) continue;
+
+      await insertMatch(
+        {
+          ...makeScheduledMatchPayload(knockoutMatch),
+          question: "勝者を予想してください",
+          handicapOptionId: "",
+          handicapPoints: 0,
+        },
+        client,
+      );
+      insertedCount += 1;
+    }
+
+    if (insertedCount > 0) {
+      console.log(`Seeded ${insertedCount} knockout matches.`);
+    }
+  });
 }
 
 function normalizeOddsLabel(value) {

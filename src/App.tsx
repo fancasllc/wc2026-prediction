@@ -83,34 +83,6 @@ const COUNTRY_FLAG_CODES: Record<string, string> = {
   日本: "jp",
 };
 
-const STAGE_NOTICE_CARDS = [
-  {
-    id: "round-of-32",
-    title: "ラウンド・オブ・32",
-    startsAt: "2026-06-29T04:00:00+09:00",
-  },
-  {
-    id: "round-of-16",
-    title: "ラウンド・オブ・16",
-    startsAt: "2026-07-05T02:00:00+09:00",
-  },
-  {
-    id: "quarter-finals",
-    title: "準々決勝",
-    startsAt: "2026-07-10T05:00:00+09:00",
-  },
-  {
-    id: "third-place",
-    title: "3位決定戦",
-    startsAt: "2026-07-19T06:00:00+09:00",
-  },
-  {
-    id: "final",
-    title: "決勝",
-    startsAt: "2026-07-20T04:00:00+09:00",
-  },
-];
-
 type MatchOption = {
   id: string;
   label: string;
@@ -715,19 +687,6 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
-function formatTokyoDateTime(value: string) {
-  if (!value) return "未設定";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function toDateTimeLocalValue(value: string) {
   if (!value) return "";
   const date = new Date(value);
@@ -741,22 +700,6 @@ function fromDateTimeLocalValue(value: string) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function formatStartsIn(value: string, now: Date) {
-  const startsAt = new Date(value).getTime();
-  if (Number.isNaN(startsAt)) return "開始予定";
-
-  const diffMinutes = Math.max(0, Math.ceil((startsAt - now.getTime()) / 60_000));
-  if (diffMinutes <= 0) return "開始予定日を迎えました";
-
-  const days = Math.floor(diffMinutes / 1440);
-  const hours = Math.floor((diffMinutes % 1440) / 60);
-  const minutes = diffMinutes % 60;
-
-  if (days > 0) return `開始まで ${days}日 ${hours}時間`;
-  if (hours > 0) return `開始まで ${hours}時間 ${minutes}分`;
-  return `開始まで ${minutes}分`;
 }
 
 function formatPoints(value: number) {
@@ -2871,23 +2814,17 @@ function App() {
           <section className="view-stack">
             <div className="summary-list">
               {openMatches.length ? (
-                <>
-                  {openMatches.map((match) => (
-                    <MatchSummaryCard
-                      key={match.id}
-                      match={match}
-                      now={now}
-                      votes={visibleVotes}
-                      onOpen={() => openMatchDetail(match.id)}
-                    />
-                  ))}
-                  <StageNoticeList now={now} />
-                </>
+                openMatches.map((match) => (
+                  <MatchSummaryCard
+                    key={match.id}
+                    match={match}
+                    now={now}
+                    votes={visibleVotes}
+                    onOpen={() => openMatchDetail(match.id)}
+                  />
+                ))
               ) : (
-                <>
-                  <EmptyState title="受付中の予想テーマはありません" />
-                  <StageNoticeList now={now} />
-                </>
+                <EmptyState title="受付中の予想テーマはありません" />
               )}
             </div>
           </section>
@@ -4847,43 +4784,6 @@ function HandicapPicker({
   );
 }
 
-function StageNoticeList({ now }: { now: Date }) {
-  return (
-    <div className="stage-notice-list" aria-label="今後の予想テーマ予定">
-      {STAGE_NOTICE_CARDS.map((notice) => (
-        <StageNoticeCard key={notice.id} notice={notice} now={now} />
-      ))}
-    </div>
-  );
-}
-
-function StageNoticeCard({
-  notice,
-  now,
-}: {
-  notice: (typeof STAGE_NOTICE_CARDS)[number];
-  now: Date;
-}) {
-  return (
-    <article className="stage-notice-card">
-      <div className="stage-notice-main">
-        <strong>{notice.title}</strong>
-        <span className="stage-notice-countdown">
-          <Clock3 size={15} aria-hidden />
-          {formatStartsIn(notice.startsAt, now)}
-        </span>
-      </div>
-      <div className="stage-notice-side">
-        <span>{formatTokyoDateTime(notice.startsAt)} 開催予定</span>
-      </div>
-      <div className="stage-notice-wait">
-        <CalendarClock size={15} aria-hidden />
-        組み合わせ待ち
-      </div>
-    </article>
-  );
-}
-
 function ExternalOddsPanel({
   match,
 }: {
@@ -4902,9 +4802,10 @@ function ExternalOddsPanel({
     .filter((item) => item.odds !== undefined);
   const teamItems = items.filter((item) => !item.isDraw);
   const optionDrawItems = items.filter((item) => item.isDraw);
+  const hasDrawOption = match.options.some((option) => isDrawOption(option));
   const drawItems = optionDrawItems.length > 0
     ? optionDrawItems
-    : typeof externalOdds.drawOdds === "number"
+    : hasDrawOption && typeof externalOdds.drawOdds === "number"
       ? [{
           id: `${match.id}-external-draw`,
           label: "引き分け",
