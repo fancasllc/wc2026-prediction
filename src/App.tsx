@@ -30,6 +30,7 @@ const FIFA_RANKING_URL = "https://www.jsports.co.jp/football/fifa/football_men_r
 const FIFA_STANDINGS_URL = "https://www.flashscore.co.jp/soccer/world/world-championship/standings/SbLsX4y7/standings/";
 const WORLD_CUP_NEWS_URL = "https://www.olympics.com/ja/news/fifa-world-cup-2026-schedule-results-scores-standings-list-japan";
 const PINNACLE_URL = "https://www.pinnacle.com/ja/soccer/fifa-world-cup/matchups/#all";
+const SHOW_REFERENCE_MENU = false;
 
 const COUNTRY_FLAG_CODES: Record<string, string> = {
   アメリカ: "us",
@@ -2775,7 +2776,8 @@ function App() {
   }
 
   const showReferenceOdds =
-    view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now));
+    SHOW_REFERENCE_MENU &&
+    (view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now)));
   const isMatchDetailView = view === "matchDetail";
 
   return (
