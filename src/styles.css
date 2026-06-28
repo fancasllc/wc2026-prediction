@@ -888,6 +888,10 @@ label span {
   border-radius: 8px;
 }
 
+.summary-odds.fixed {
+  padding: 4px;
+}
+
 .handicap-notice {
   display: grid;
   gap: 4px;
@@ -1092,6 +1096,14 @@ label span {
   padding: 3px 8px;
 }
 
+.odds-track.fixed {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+}
+
 .odds-track.animated {
   animation: odds-scroll 22s linear infinite;
   animation-delay: 1.4s;
@@ -1110,6 +1122,32 @@ label span {
   background: #ffffff;
   border: 1px solid #d8edf8;
   border-radius: 999px;
+}
+
+.odds-chip.fixed {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.odds-chip.fixed b {
+  min-width: 0;
+}
+
+.odds-chip.fixed .option-label-flag {
+  min-width: 0;
+}
+
+.odds-chip.fixed .option-label-flag > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.odds-chip.fixed strong {
+  flex: 0 0 auto;
+  font-size: 0.82rem;
 }
 
 .odds-chip b,
@@ -2206,6 +2244,33 @@ textarea:focus {
   color: #07518d;
   background: #ffffff;
   box-shadow: 0 3px 8px rgba(0, 42, 103, 0.1);
+}
+
+.closed-filter-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 4px;
+  background: #edf7ff;
+  border: 1px solid #d7e9f5;
+  border-radius: 999px;
+}
+
+.closed-filter-control button {
+  min-height: 34px;
+  padding: 6px 10px;
+  color: #60748b;
+  font-size: 0.78rem;
+  font-weight: 950;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+}
+
+.closed-filter-control button.active {
+  color: #07518d;
+  background: #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 42, 103, 0.1);
 }
 
 .sort-control {

@@ -990,6 +990,11 @@ function OptionLabelWithFlag({
   );
 }
 
+function truncateOptionChipLabel(label: string) {
+  const chars = Array.from(label);
+  return chars.length > 5 ? `${chars.slice(0, 5).join("")}...` : label;
+}
+
 function normalizeExternalOddsLabel(value: string) {
   return value
     .normalize("NFKC")
@@ -1277,6 +1282,7 @@ function ReferenceMenu({ onAddClick }: { onAddClick: () => void }) {
 function App() {
   const now = useNow();
   const [view, setView] = useState<View>("open");
+  const [closedFilter, setClosedFilter] = useState<"settled" | "pending">("settled");
   const [peopleSort, setPeopleSort] = useState<{
     key: "net" | "return" | "win";
     direction: "desc" | "asc";
@@ -1810,6 +1816,14 @@ function App() {
   const closedMatches = useMemo(
     () => data.matches.filter((match) => !isMatchOpen(match, now)).sort(sortByCloseDateDesc),
     [data.matches, now],
+  );
+
+  const visibleClosedMatches = useMemo(
+    () =>
+      closedMatches.filter((match) =>
+        closedFilter === "settled" ? Boolean(match.resultOptionId) : !match.resultOptionId,
+      ),
+    [closedFilter, closedMatches],
   );
 
   const visibleKnownUsers = useMemo(
@@ -2846,9 +2860,25 @@ function App() {
 
         {view === "closed" && (
           <section className="view-stack">
+            <div className="closed-filter-control" aria-label="締切済み試合の表示切り替え">
+              <button
+                className={closedFilter === "settled" ? "active" : ""}
+                type="button"
+                onClick={() => setClosedFilter("settled")}
+              >
+                確定済み
+              </button>
+              <button
+                className={closedFilter === "pending" ? "active" : ""}
+                type="button"
+                onClick={() => setClosedFilter("pending")}
+              >
+                未確定
+              </button>
+            </div>
             <div className="summary-list">
-              {closedMatches.length ? (
-                closedMatches.map((match) => (
+              {visibleClosedMatches.length ? (
+                visibleClosedMatches.map((match) => (
                   <MatchSummaryCard
                     key={match.id}
                     match={match}
@@ -2858,7 +2888,7 @@ function App() {
                   />
                 ))
               ) : (
-                <EmptyState title="締切済みの予想テーマはありません" />
+                <EmptyState title={closedFilter === "settled" ? "確定済みの予想テーマはありません" : "未確定の予想テーマはありません"} />
               )}
             </div>
           </section>
@@ -4526,6 +4556,20 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
 
 function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
   const total = getMatchTotal(match, votes);
+  const teamOptions = getTeamOptions(match);
+
+  if (teamOptions.length === 2 && match.options.length <= 2) {
+    return teamOptions.map((option) => {
+      const amount = getOptionTotal(match, votes, option.id);
+      return {
+        id: option.id,
+        label: truncateOptionChipLabel(optionDisplayLabel(match, option)),
+        oddsText: amount > 0 && total > 0 ? `${(total / amount).toFixed(2)}x` : "-",
+        fixed: true,
+      };
+    });
+  }
+
   const rows = match.options
     .map((option) => {
       const amount = getOptionTotal(match, votes, option.id);
@@ -4547,6 +4591,7 @@ function getOddsTickerItems(match: MatchRecord, votes: VoteRecord[]) {
       id: row.option.id,
       label: optionDisplayLabel(match, row.option),
       oddsText: `${row.odds.toFixed(2)}x`,
+      fixed: false,
     }));
 }
 
@@ -4727,15 +4772,16 @@ function MatchSummaryCard({
 function OddsTicker({
   items,
 }: {
-  items: Array<{ id: string; label: string; oddsText: string }>;
+  items: Array<{ id: string; label: string; oddsText: string; fixed?: boolean }>;
 }) {
+  const fixed = items.length === 2 && items.every((item) => item.fixed);
   const tickerItems = items.length > 1 ? [...items, ...items] : items;
 
   return (
-    <div className="summary-odds" aria-label="オッズ一覧">
-      <div className={items.length > 1 ? "odds-track animated" : "odds-track"}>
-        {tickerItems.map((item, index) => (
-          <span className="odds-chip" key={`${item.id}-${index}`}>
+    <div className={`summary-odds ${fixed ? "fixed" : ""}`} aria-label="オッズ一覧">
+      <div className={fixed ? "odds-track fixed" : items.length > 1 ? "odds-track animated" : "odds-track"}>
+        {(fixed ? items : tickerItems).map((item, index) => (
+          <span className={`odds-chip ${fixed ? "fixed" : ""}`} key={`${item.id}-${index}`}>
             <b><OptionLabelWithFlag label={item.label} /></b>
             <strong>{item.oddsText}</strong>
           </span>
@@ -5001,7 +5047,14 @@ function PersonVoteList({
       const bTime = new Date(getVoteDisplayTime(b, bMatch)).getTime();
       if (filter === "pending") return bTime - aTime;
       if (aSettled !== bSettled) return aSettled ? -1 : 1;
-      return settledSort === "oldest" ? aTime - bTime : bTime - aTime;
+      const timeOrder = settledSort === "oldest" ? aTime - bTime : bTime - aTime;
+      if (timeOrder !== 0) return timeOrder;
+      const matchOrder = (aMatch?.title ?? a.matchId).localeCompare(bMatch?.title ?? b.matchId, "ja");
+      if (matchOrder !== 0) return matchOrder;
+      const aOptionIndex = aMatch?.options.findIndex((option) => option.id === a.optionId) ?? -1;
+      const bOptionIndex = bMatch?.options.findIndex((option) => option.id === b.optionId) ?? -1;
+      if (aOptionIndex !== bOptionIndex) return aOptionIndex - bOptionIndex;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   const visibleVotes = expanded ? filteredVotes : filteredVotes.slice(0, 4);
   const canExpand = filteredVotes.length > 4;
