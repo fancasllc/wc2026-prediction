@@ -2906,7 +2906,7 @@ function App() {
             <div className="people-sort-control" aria-label="個人別一覧の並び替え">
               {[
                 { key: "net" as const, label: "確定収支" },
-                { key: "return" as const, label: "リターン" },
+                { key: "return" as const, label: "リターン率" },
                 { key: "win" as const, label: "勝率" },
               ].map((item) => (
                 <button
@@ -4979,19 +4979,36 @@ function PersonVoteList({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "settled">("all");
-  const filteredVotes = votes.filter((vote) => {
-    const match = matches.find((item) => item.id === vote.matchId);
-    const settled = Boolean(match?.resultOptionId);
-    if (filter === "pending") return !settled;
-    if (filter === "settled") return settled;
-    return true;
-  });
+  const [settledSort, setSettledSort] = useState<"newest" | "oldest">("newest");
+  const getVoteMatch = (vote: VoteRecord) => matches.find((item) => item.id === vote.matchId);
+  const getVoteDisplayTime = (vote: VoteRecord, match: MatchRecord | undefined) => (
+    match?.resultOptionId ? match.settledAt ?? vote.createdAt : vote.createdAt
+  );
+  const filteredVotes = votes
+    .filter((vote) => {
+      const match = getVoteMatch(vote);
+      const settled = Boolean(match?.resultOptionId);
+      if (filter === "pending") return !settled;
+      if (filter === "settled") return settled;
+      return true;
+    })
+    .sort((a, b) => {
+      const aMatch = getVoteMatch(a);
+      const bMatch = getVoteMatch(b);
+      const aSettled = Boolean(aMatch?.resultOptionId);
+      const bSettled = Boolean(bMatch?.resultOptionId);
+      const aTime = new Date(getVoteDisplayTime(a, aMatch)).getTime();
+      const bTime = new Date(getVoteDisplayTime(b, bMatch)).getTime();
+      if (filter === "pending") return bTime - aTime;
+      if (aSettled !== bSettled) return aSettled ? -1 : 1;
+      return settledSort === "oldest" ? aTime - bTime : bTime - aTime;
+    });
   const visibleVotes = expanded ? filteredVotes : filteredVotes.slice(0, 4);
   const canExpand = filteredVotes.length > 4;
 
   useEffect(() => {
     setExpanded(false);
-  }, [filter]);
+  }, [filter, settledSort]);
 
   return (
     <div className="data-panel">
@@ -5012,15 +5029,34 @@ function PersonVoteList({
           </button>
         </div>
       </div>
+      {filter !== "pending" && (
+        <div className="detail-order-control" aria-label="投票詳細の並び替え">
+          <button
+            className={settledSort === "newest" ? "active" : ""}
+            type="button"
+            onClick={() => setSettledSort("newest")}
+          >
+            結果確定が新しい順
+          </button>
+          <button
+            className={settledSort === "oldest" ? "active" : ""}
+            type="button"
+            onClick={() => setSettledSort("oldest")}
+          >
+            結果確定が古い順
+          </button>
+        </div>
+      )}
       {filteredVotes.length ? (
         <>
           <div className="person-vote-list">
             {visibleVotes.map((vote) => {
-              const match = matches.find((item) => item.id === vote.matchId);
+              const match = getVoteMatch(vote);
               const payout = getVotePayout(vote, match, allVotes);
               const status = getVoteOutcomeText(payout);
               const outcomeClass = payout.settled ? (payout.won ? "won" : "lost") : "pending";
               const canOpenMatch = Boolean(match);
+              const displayTime = getVoteDisplayTime(vote, match);
 
               return (
                 <button
@@ -5035,7 +5071,7 @@ function PersonVoteList({
                 >
                   <div>
                     <strong>{match?.title ?? "削除済み"}</strong>
-                    <span>{formatDateTime(vote.createdAt)}</span>
+                    <span>{formatDateTime(displayTime)}</span>
                   </div>
                   <dl>
                     <div>

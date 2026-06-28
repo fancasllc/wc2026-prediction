@@ -2177,6 +2177,37 @@ textarea:focus {
   box-shadow: 0 3px 8px rgba(0, 42, 103, 0.1);
 }
 
+.detail-order-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: -2px 0 10px;
+  padding: 3px;
+  background: #edf7ff;
+  border: 1px solid #d7e9f5;
+  border-radius: 999px;
+}
+
+.detail-order-control button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  color: #60748b;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1.05;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+}
+
+.detail-order-control button.active {
+  color: #07518d;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 42, 103, 0.1);
+}
+
 .sort-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
