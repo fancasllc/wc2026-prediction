@@ -348,7 +348,7 @@ type PersonTrendRow = {
   name: string;
   net: number;
   pending: number;
-  points: Array<{ label: string; value: number }>;
+  points: Array<{ date: string; label: string; value: number }>;
 };
 
 type CsvMatchRow = {
@@ -2114,6 +2114,7 @@ function App() {
           runningNet += event.net;
         }
         return {
+          date: event.date,
           label: event.label,
           value: runningNet,
         };
@@ -4405,11 +4406,30 @@ function MotivationTicker({
 }
 
 function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
+  const latestEventTime = Math.max(
+    0,
+    ...rows.flatMap((row) => row.points.map((point) => new Date(point.date).getTime()).filter(Number.isFinite)),
+  );
+  const recentStartTime = latestEventTime > 0 ? latestEventTime - 4 * 24 * 60 * 60 * 1000 : 0;
+  const recentStartIndex = rows.length
+    ? Math.max(
+        0,
+        Math.min(
+          ...rows.map((row) => {
+            const index = row.points.findIndex((point) => new Date(point.date).getTime() >= recentStartTime);
+            return index >= 0 ? index : row.points.length - 1;
+          }),
+        ),
+      )
+    : 0;
+
   const visibleRows = rows
     .filter((row) => row.net > 0)
     .map((row) => ({
       ...row,
+      chartPoints: row.points.slice(recentStartIndex),
       positivePoints: row.points
+        .slice(recentStartIndex)
         .map((point, pointIndex) => ({ ...point, pointIndex }))
         .filter((point) => point.value > 0),
     }))
@@ -4434,7 +4454,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const width = 360;
   const height = 490;
   const paddingLeft = 20;
-  const paddingRight = 82;
+  const paddingRight = 58;
   const paddingY = 32;
   const plotRight = width - paddingRight;
   const allValues = visibleRows.flatMap((row) => row.positivePoints.map((point) => point.value));
@@ -4496,7 +4516,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     const segments: Array<Array<{ x: number; y: number }>> = [];
     let currentSegment: Array<{ x: number; y: number }> = [];
 
-    row.points.forEach((point, pointIndex, points) => {
+    row.chartPoints.forEach((point, pointIndex, points) => {
       if (point.value <= 0) {
         if (currentSegment.length) {
           segments.push(currentSegment);
@@ -4507,18 +4527,18 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
 
       if (!currentSegment.length && pointIndex > 0 && points[pointIndex - 1].value <= 0) {
         currentSegment.push({
-          x: xFor(pointIndex - 1, row.points.length),
+          x: xFor(pointIndex - 1, row.chartPoints.length),
           y: yFor(0),
         });
       }
       currentSegment.push({
-        x: xFor(pointIndex, row.points.length),
+        x: xFor(pointIndex, row.chartPoints.length),
         y: yFor(point.value),
       });
 
       if (points[pointIndex + 1]?.value <= 0) {
         currentSegment.push({
-          x: xFor(pointIndex + 1, row.points.length),
+          x: xFor(pointIndex + 1, row.chartPoints.length),
           y: yFor(0),
         });
         segments.push(currentSegment);
@@ -4538,7 +4558,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     let startIndex: number | null = null;
     let hasNegativeValue = false;
 
-    row.points.forEach((point, pointIndex) => {
+    row.chartPoints.forEach((point, pointIndex) => {
       if (point.value <= 0) {
         startIndex ??= pointIndex;
         if (point.value < 0) {
@@ -4555,7 +4575,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     });
 
     if (startIndex !== null && hasNegativeValue) {
-      ranges.push({ startIndex, endIndex: row.points.length - 1 });
+      ranges.push({ startIndex, endIndex: row.chartPoints.length - 1 });
     }
 
     return ranges;
@@ -4627,8 +4647,8 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
               <line
                 className="trend-below-zero-range"
                 key={`${row.name}-below-${rangeIndex}`}
-                x1={xFor(rangeItem.startIndex, row.points.length)}
-                x2={xFor(rangeItem.endIndex, row.points.length)}
+                x1={xFor(rangeItem.startIndex, row.chartPoints.length)}
+                x2={xFor(rangeItem.endIndex, row.chartPoints.length)}
                 y1={yFor(0) - 1}
                 y2={yFor(0) - 1}
                 style={{ stroke: color }}
@@ -4638,7 +4658,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           {visibleRows.map((row, rowIndex) => {
             const segments = makeVisibleSegments(row);
             const lastPoint = row.positivePoints[row.positivePoints.length - 1];
-            const lastX = xFor(lastPoint.pointIndex, row.points.length);
+            const lastX = xFor(lastPoint.pointIndex, row.chartPoints.length);
             const lastY = yFor(lastPoint.value);
             const color = colors[rowIndex % colors.length];
 
@@ -4656,7 +4676,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   className="trend-dot"
                   cx={lastX}
                   cy={lastY}
-                  r={rowIndex < 3 ? "4.2" : "3.5"}
+                  r={rowIndex < 3 ? "3.8" : "3.2"}
                   style={{ fill: color }}
                 />
               </g>
@@ -4667,8 +4687,8 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
             const iconSrc = getPersonIconSrc(row.name);
             const labelX = plotRight + 5;
             const labelWidth = width - labelX - 5;
-            const labelHeight = 17;
-            const avatarSize = 12;
+            const labelHeight = 15;
+            const avatarSize = 10;
             return (
               <g key={`label-${row.name}`}>
                 <line

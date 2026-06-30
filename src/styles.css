@@ -2601,13 +2601,13 @@ textarea:focus {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 2.4;
+  stroke-width: 1.8;
   opacity: 0.9;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.32));
 }
 
 .trend-line-leading {
-  stroke-width: 3;
+  stroke-width: 2.3;
   opacity: 1;
   filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.42));
 }
@@ -2618,7 +2618,7 @@ textarea:focus {
 }
 
 .trend-below-zero-range {
-  stroke-width: 2.4;
+  stroke-width: 1.8;
   stroke-linecap: round;
   stroke-dasharray: 4 4;
   opacity: 0.46;
@@ -2637,7 +2637,7 @@ textarea:focus {
 }
 
 .trend-name-label {
-  font-size: 7.6px;
+  font-size: 7px;
   font-weight: 950;
   paint-order: stroke;
   stroke: rgba(0, 23, 72, 0.78);
