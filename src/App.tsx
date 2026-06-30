@@ -2831,7 +2831,7 @@ function App() {
           <span aria-hidden />
         </div>
       )}
-      {!isMatchDetailView && (
+      {!isMatchDetailView && view !== "people" && view !== "personDetail" && (
         <YoutubeHero
           video={latestYoutubeVideo}
         />
@@ -4431,10 +4431,10 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   }
 
   const width = 360;
-  const height = 260;
+  const height = 490;
   const paddingLeft = 20;
-  const paddingRight = 102;
-  const paddingY = 24;
+  const paddingRight = 70;
+  const paddingY = 32;
   const plotRight = width - paddingRight;
   const allValues = visibleRows.flatMap((row) => row.positivePoints.map((point) => point.value));
   const minValue = 0;
@@ -4616,10 +4616,6 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   style={{ fill: color }}
                 >
                   <tspan x={plotRight + 11}>{shortenName(row.name, 5)}</tspan>
-                  <tspan className="trend-points-label" x={plotRight + 11} dy="11">
-                    {row.net >= 0 ? "+" : ""}
-                    {formatPoints(row.net)}
-                  </tspan>
                 </text>
               </g>
             );
@@ -4631,10 +4627,6 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           <span key={row.name}>
             <i style={{ background: colors[index % colors.length] }} />
             <b>{shortenName(row.name, 6)}</b>
-            <strong className={row.net >= 0 ? "positive" : "negative"}>
-              {row.net >= 0 ? "+" : ""}
-              {formatPoints(row.net)}
-            </strong>
           </span>
         ))}
       </div>
