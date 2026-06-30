@@ -323,6 +323,18 @@ function isDrawOptionLabel(label) {
   return value.includes("引き分け") || value.toLowerCase() === "draw";
 }
 
+const pkWinnerMarkerPattern = /\n?\[PK_WINNER_OPTION_ID:[^\]]+\]/g;
+
+function stripPkWinnerMarker(value) {
+  return String(value ?? "").replace(pkWinnerMarkerPattern, "").trim();
+}
+
+function appendPkWinnerMarker(value, optionId) {
+  const base = stripPkWinnerMarker(value);
+  if (!optionId) return base;
+  return `${base}${base ? "\n" : ""}[PK_WINNER_OPTION_ID:${optionId}]`;
+}
+
 function parseScoreValue(value) {
   if (value === undefined || value === null || value === "") return null;
   const score = Number(value);
@@ -330,12 +342,13 @@ function parseScoreValue(value) {
   return score;
 }
 
-function deriveResultFromScores(match, options, homeScoreInput, awayScoreInput) {
+function deriveResultFromScores(match, options, homeScoreInput, awayScoreInput, pkWinnerOptionIdInput = "") {
   const teamOptions = options.filter((option) => !isDrawOptionLabel(option.label)).slice(0, 2);
   const [homeOption, awayOption] = teamOptions;
   const drawOption = options.find((option) => isDrawOptionLabel(option.label));
   const homeScore = parseScoreValue(homeScoreInput);
   const awayScore = parseScoreValue(awayScoreInput);
+  const pkWinnerOptionId = String(pkWinnerOptionIdInput ?? "");
 
   if (!homeOption || !awayOption) {
     const error = new Error("Two team options are required to settle by score");
@@ -356,16 +369,24 @@ function deriveResultFromScores(match, options, homeScoreInput, awayScoreInput) 
     handicapOptionId === awayOption.id ? awayScore + handicapPoints : awayScore;
   let resultOption = null;
 
+  if (pkWinnerOptionId && pkWinnerOptionId !== homeOption.id && pkWinnerOptionId !== awayOption.id) {
+    const error = new Error("PK winner option must be one of the two teams");
+    error.status = 400;
+    throw error;
+  }
+
   if (adjustedHomeScore > adjustedAwayScore) {
     resultOption = homeOption;
   } else if (adjustedAwayScore > adjustedHomeScore) {
     resultOption = awayOption;
+  } else if (pkWinnerOptionId) {
+    resultOption = pkWinnerOptionId === homeOption.id ? homeOption : awayOption;
   } else {
     resultOption = drawOption;
   }
 
   if (!resultOption) {
-    const error = new Error("Score result is draw but no draw option exists");
+    const error = new Error("Score result is draw but no draw option or PK winner exists");
     error.status = 400;
     throw error;
   }
@@ -376,6 +397,7 @@ function deriveResultFromScores(match, options, homeScoreInput, awayScoreInput) 
     awayScore,
     adjustedHomeScore,
     adjustedAwayScore,
+    pkWinnerOptionId: adjustedHomeScore === adjustedAwayScore ? pkWinnerOptionId : "",
   };
 }
 
@@ -3684,13 +3706,14 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
     const matchId = request.params.id;
     const homeScore = request.body?.homeScore;
     const awayScore = request.body?.awayScore;
+    const pkWinnerOptionId = request.body?.pkWinnerOptionId ? String(request.body.pkWinnerOptionId) : "";
     const optionId = request.body?.optionId ? String(request.body.optionId) : "";
     const hasScoreInput = homeScore !== undefined || awayScore !== undefined;
 
     const settlement = await withTransaction(async (client) => {
       const matchResult = await client.query(
         `
-          select id, title, handicap_option_id, handicap_points
+          select id, title, notice, handicap_option_id, handicap_points
           from matches
           where id = $1
         `,
@@ -3713,6 +3736,7 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
             optionsResult.rows,
             homeScore,
             awayScore,
+            pkWinnerOptionId,
           )
         : (() => {
             if (!optionId) {
@@ -3740,10 +3764,17 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
             result_option_id = $2,
             home_score = $3,
             away_score = $4,
+            notice = $5,
             settled_at = now()
           where id = $1
         `,
-        [matchId, decision.resultOptionId, decision.homeScore, decision.awayScore],
+        [
+          matchId,
+          decision.resultOptionId,
+          decision.homeScore,
+          decision.awayScore,
+          appendPkWinnerMarker(matchResult.rows[0].notice, decision.pkWinnerOptionId),
+        ],
       );
       return decision;
     });
@@ -3764,7 +3795,7 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
 app.post("/api/matches/:id/reopen", requireAdmin, async (request, response, next) => {
   try {
     await query(
-      "update matches set result_option_id = null, home_score = null, away_score = null, settled_at = null where id = $1",
+      "update matches set result_option_id = null, home_score = null, away_score = null, notice = regexp_replace(notice, E'\\n?\\\\[PK_WINNER_OPTION_ID:[^\\\\]]+\\\\]', '', 'g'), settled_at = null where id = $1",
       [request.params.id],
     );
     await writeAuditLog("match.reopen", request.params.id);

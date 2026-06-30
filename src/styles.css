@@ -3405,6 +3405,54 @@ textarea:focus {
   color: #62768a;
 }
 
+.pk-winner-panel {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  background: #eef8ff;
+  border: 1px solid #d1e6f4;
+  border-radius: 8px;
+}
+
+.pk-winner-panel > span {
+  color: #52677d;
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.pk-winner-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pk-winner-buttons button {
+  min-width: 0;
+  padding: 8px 9px;
+  color: #0b315d;
+  font-weight: 950;
+  background: #ffffff;
+  border: 1px solid #cfe1ec;
+  border-radius: 8px;
+}
+
+.pk-winner-buttons button.selected {
+  color: #075a4e;
+  background: #eafff7;
+  border-color: #42d5b6;
+  box-shadow: inset 0 0 0 1px rgba(66, 213, 182, 0.35);
+}
+
+.pk-winner-buttons button:disabled {
+  opacity: 0.52;
+}
+
+.pk-winner-panel small {
+  color: #60748b;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
 .score-preview {
   display: grid;
   gap: 3px;

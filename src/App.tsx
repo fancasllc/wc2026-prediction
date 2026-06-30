@@ -300,6 +300,7 @@ type PendingVoteImpact = {
 type ScoreDraft = {
   home: string;
   away: string;
+  pkWinnerOptionId?: string;
 };
 
 type ScoreDecision = {
@@ -312,6 +313,8 @@ type ScoreDecision = {
   adjustedAwayScore: number;
   resultOptionId: string;
   resultLabel: string;
+  pkWinnerOptionId?: string;
+  pkWinnerLabel?: string;
   handicap: ReturnType<typeof getMatchHandicap>;
 };
 
@@ -817,6 +820,17 @@ function optionLabel(match: MatchRecord | undefined, optionId: string) {
   return optionDisplayLabel(match, option);
 }
 
+const pkWinnerMarkerPattern = /\n?\[PK_WINNER_OPTION_ID:([^\]]+)\]/;
+const pkWinnerMarkerGlobalPattern = /\n?\[PK_WINNER_OPTION_ID:[^\]]+\]/g;
+
+function getPkWinnerOptionId(match: MatchRecord | undefined) {
+  return match?.notice?.match(pkWinnerMarkerPattern)?.[1] ?? "";
+}
+
+function getVisibleNotice(match: MatchRecord) {
+  return match.notice?.replace(pkWinnerMarkerGlobalPattern, "").trim() ?? "";
+}
+
 function isDrawOption(option: MatchOption | undefined) {
   const label = option?.label ?? "";
   return label.includes("引き分け") || label.toLowerCase() === "draw";
@@ -850,11 +864,13 @@ function evaluateScoreSettlement(
   match: MatchRecord,
   homeScoreInput: string | number | undefined,
   awayScoreInput: string | number | undefined,
+  pkWinnerOptionIdInput = "",
 ): { ok: true; decision: ScoreDecision } | { ok: false; error: string } {
   const [homeOption, awayOption] = getTeamOptions(match);
   const drawOption = getDrawOption(match);
   const homeScore = parseScoreInput(homeScoreInput);
   const awayScore = parseScoreInput(awayScoreInput);
+  const pkWinnerOptionId = String(pkWinnerOptionIdInput ?? "");
 
   if (!homeOption || !awayOption) {
     return { ok: false, error: "国別の選択肢を2つ以上設定してください。" };
@@ -869,11 +885,21 @@ function evaluateScoreSettlement(
   const adjustedAwayScore =
     handicap?.option.id === awayOption.id ? awayScore + handicap.points : awayScore;
   let resultOption: MatchOption | undefined;
+  let pkWinnerOption: MatchOption | undefined;
+
+  if (pkWinnerOptionId) {
+    pkWinnerOption = [homeOption, awayOption].find((option) => option.id === pkWinnerOptionId);
+    if (!pkWinnerOption) {
+      return { ok: false, error: "PKによる勝者は左右どちらかの国を選択してください。" };
+    }
+  }
 
   if (adjustedHomeScore > adjustedAwayScore) {
     resultOption = homeOption;
   } else if (adjustedAwayScore > adjustedHomeScore) {
     resultOption = awayOption;
+  } else if (pkWinnerOption) {
+    resultOption = pkWinnerOption;
   } else {
     resultOption = drawOption;
   }
@@ -881,7 +907,7 @@ function evaluateScoreSettlement(
   if (!resultOption) {
     return {
       ok: false,
-      error: "ハンデ反映後に同点ですが、引き分けの選択肢がありません。",
+      error: "同点です。引き分けの選択肢がない場合は、PKによる勝者を選択してください。",
     };
   }
 
@@ -897,6 +923,8 @@ function evaluateScoreSettlement(
       adjustedAwayScore,
       resultOptionId: resultOption.id,
       resultLabel: optionDisplayLabel(match, resultOption),
+      pkWinnerOptionId: adjustedHomeScore === adjustedAwayScore ? pkWinnerOption?.id : undefined,
+      pkWinnerLabel: adjustedHomeScore === adjustedAwayScore && pkWinnerOption ? optionDisplayLabel(match, pkWinnerOption) : undefined,
       handicap,
     },
   };
@@ -904,7 +932,7 @@ function evaluateScoreSettlement(
 
 function getScoreDecisionFromMatch(match: MatchRecord) {
   if (match.homeScore === undefined || match.awayScore === undefined) return null;
-  const result = evaluateScoreSettlement(match, match.homeScore, match.awayScore);
+  const result = evaluateScoreSettlement(match, match.homeScore, match.awayScore, getPkWinnerOptionId(match));
   return result.ok ? result.decision : null;
 }
 
@@ -2525,8 +2553,8 @@ function App() {
       return;
     }
 
-    const scoreDraft = settlement.scoreDraft ?? { home: "", away: "" };
-    const evaluation = evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away);
+    const scoreDraft = settlement.scoreDraft ?? { home: "", away: "", pkWinnerOptionId: "" };
+    const evaluation = evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away, scoreDraft.pkWinnerOptionId);
     if (!evaluation.ok) {
       window.alert(evaluation.error);
       return;
@@ -2537,8 +2565,9 @@ function App() {
     const handicapLine = decision.handicap
       ? `ハンデ反映後: ${decision.homeOption.label} ${formatScoreValue(decision.adjustedHomeScore)} - ${formatScoreValue(decision.adjustedAwayScore)} ${decision.awayOption.label}`
       : "ハンデなし";
+    const pkLine = decision.pkWinnerLabel ? `PKによる勝者: ${decision.pkWinnerLabel}` : "";
     const judgementOk = window.confirm(
-      `入力スコアから以下のように判定しました。\n\n${rawScoreLine}\n${handicapLine}\n\n確定結果: ${decision.resultLabel}\n\nこの判定で問題ありませんか？`,
+      `入力スコアから以下のように判定しました。\n\n${rawScoreLine}\n${handicapLine}${pkLine ? `\n${pkLine}` : ""}\n\n確定結果: ${decision.resultLabel}\n\nこの判定で問題ありませんか？`,
     );
     if (!judgementOk) return;
 
@@ -2553,6 +2582,7 @@ function App() {
         {
           homeScore: decision.homeScore,
           awayScore: decision.awayScore,
+          pkWinnerOptionId: decision.pkWinnerOptionId,
         },
         "POST",
         adminToken,
@@ -2560,7 +2590,11 @@ function App() {
     );
     setScoreDrafts((current) => ({
       ...current,
-      [match.id]: { home: String(decision.homeScore), away: String(decision.awayScore) },
+      [match.id]: {
+        home: String(decision.homeScore),
+        away: String(decision.awayScore),
+        pkWinnerOptionId: decision.pkWinnerOptionId ?? "",
+      },
     }));
   }
 
@@ -2575,7 +2609,7 @@ function App() {
     if (!ok) return;
 
     await syncState(() => postState(`/api/matches/${match.id}/reopen`, undefined, "POST", adminToken));
-    setScoreDrafts((current) => ({ ...current, [match.id]: { home: "", away: "" } }));
+    setScoreDrafts((current) => ({ ...current, [match.id]: { home: "", away: "", pkWinnerOptionId: "" } }));
     setResultDrafts((current) => ({ ...current, [match.id]: "" }));
   }
 
@@ -3713,6 +3747,7 @@ function App() {
                       const scoreDraft = scoreDrafts[match.id] ?? {
                         home: match.homeScore === undefined ? "" : String(match.homeScore),
                         away: match.awayScore === undefined ? "" : String(match.awayScore),
+                        pkWinnerOptionId: getPkWinnerOptionId(match),
                       };
                       const selectedOptionId =
                         resultDrafts[match.id] ?? match.resultOptionId ?? "";
@@ -4954,7 +4989,7 @@ function MatchHeader({
   const status = getStatusLabel(match, now);
   const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
   const handicap = getMatchHandicap(match);
-  const notice = match.notice?.trim();
+  const notice = getVisibleNotice(match);
 
   return (
     <div className="match-header">
@@ -5027,6 +5062,12 @@ function ScoreOutcome({
         <span>
           <b>ハンデ反映</b>
           {adjustedScore}
+        </span>
+      )}
+      {decision.pkWinnerLabel && (
+        <span>
+          <b>PK勝者</b>
+          {decision.pkWinnerLabel}
         </span>
       )}
       <span className="score-outcome-result">
@@ -5227,8 +5268,11 @@ function AdminSettleCard({
   const matchVotes = getMatchVotes(match, votes);
   const settled = Boolean(match.resultOptionId);
   const [homeOption, awayOption] = getTeamOptions(match);
+  const homeScoreValue = parseScoreInput(scoreDraft.home);
+  const awayScoreValue = parseScoreInput(scoreDraft.away);
+  const isRawScoreDraw = homeScoreValue !== null && awayScoreValue !== null && homeScoreValue === awayScoreValue;
   const scoreEvaluation = scoreMode
-    ? evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away)
+    ? evaluateScoreSettlement(match, scoreDraft.home, scoreDraft.away, scoreDraft.pkWinnerOptionId)
     : null;
   const previewResultId = scoreMode
     ? (scoreEvaluation?.ok ? scoreEvaluation.decision.resultOptionId : match.resultOptionId)
@@ -5272,11 +5316,40 @@ function AdminSettleCard({
               />
             </label>
           </div>
+          <div className="pk-winner-panel">
+            <span>PKによる勝者</span>
+            <div className="pk-winner-buttons" aria-label="PKによる勝者">
+              {[homeOption, awayOption].filter(Boolean).map((option) => (
+                <button
+                  className={scoreDraft.pkWinnerOptionId === option.id ? "selected" : ""}
+                  disabled={!isRawScoreDraw || settled}
+                  key={option.id}
+                  type="button"
+                  onClick={() =>
+                    onScoreChange({
+                      ...scoreDraft,
+                      pkWinnerOptionId: scoreDraft.pkWinnerOptionId === option.id ? "" : option.id,
+                    })
+                  }
+                >
+                  <OptionLabelWithFlag label={optionDisplayLabel(match, option)} />
+                </button>
+              ))}
+            </div>
+            <small>
+              {isRawScoreDraw
+                ? "同点でPK決着の場合のみ選択してください。"
+                : "スコアが同点のときに選択できます。"}
+            </small>
+          </div>
           <div className={`score-preview ${scoreEvaluation?.ok ? "ready" : ""}`}>
             {scoreEvaluation?.ok ? (
               <>
                 <span>判定プレビュー</span>
                 <b>{scoreEvaluation.decision.resultLabel}</b>
+                {scoreEvaluation.decision.pkWinnerLabel && (
+                  <small>PKによる勝者 {scoreEvaluation.decision.pkWinnerLabel}</small>
+                )}
                 {scoreEvaluation.decision.handicap && (
                   <small>
                     ハンデ反映後 {formatScoreValue(scoreEvaluation.decision.adjustedHomeScore)} - {formatScoreValue(scoreEvaluation.decision.adjustedAwayScore)}
