@@ -2602,7 +2602,14 @@ textarea:focus {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.4;
+  opacity: 0.9;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.32));
+}
+
+.trend-line-leading {
+  stroke-width: 3;
+  opacity: 1;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.42));
 }
 
 .trend-dot {
@@ -2610,18 +2617,36 @@ textarea:focus {
   stroke-width: 1.4;
 }
 
+.trend-below-zero-range {
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 4 4;
+  opacity: 0.46;
+}
+
 .trend-label-guide {
   stroke-width: 1;
   stroke-linecap: round;
-  opacity: 0.74;
+  opacity: 0.38;
+}
+
+.trend-label-card {
+  fill: rgba(3, 31, 79, 0.72);
+  stroke-width: 1;
+  opacity: 0.96;
 }
 
 .trend-name-label {
-  font-size: 7.8px;
+  font-size: 7.6px;
   font-weight: 950;
   paint-order: stroke;
   stroke: rgba(0, 23, 72, 0.78);
   stroke-width: 2.4px;
+}
+
+.trend-label-avatar {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.32));
 }
 
 .trend-points-label {

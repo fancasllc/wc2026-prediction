@@ -4413,7 +4413,8 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
         .map((point, pointIndex) => ({ ...point, pointIndex }))
         .filter((point) => point.value > 0),
     }))
-    .filter((row) => row.positivePoints.length > 0);
+    .filter((row) => row.positivePoints.length > 0)
+    .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name, "ja"));
 
   if (!visibleRows.length) {
     return (
@@ -4433,12 +4434,12 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const width = 360;
   const height = 490;
   const paddingLeft = 20;
-  const paddingRight = 70;
+  const paddingRight = 82;
   const paddingY = 32;
   const plotRight = width - paddingRight;
   const allValues = visibleRows.flatMap((row) => row.positivePoints.map((point) => point.value));
   const minValue = 0;
-  const maxValue = Math.max(1, ...allValues);
+  const maxValue = Math.max(1, ...allValues) * 1.08;
   const range = maxValue - minValue;
   const colors = [
     "#ffe45e",
@@ -4449,6 +4450,10 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     "#ffb15e",
     "#8df4d2",
     "#ff6d6d",
+    "#6ea8ff",
+    "#f4a7ff",
+    "#c7ff64",
+    "#ffcf7a",
   ];
 
   function xFor(index: number, count: number) {
@@ -4487,11 +4492,11 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return segments.join(" ");
   }
 
-  function makePositiveSegments(row: (typeof visibleRows)[number]) {
+  function makeVisibleSegments(row: (typeof visibleRows)[number]) {
     const segments: Array<Array<{ x: number; y: number }>> = [];
     let currentSegment: Array<{ x: number; y: number }> = [];
 
-    row.points.forEach((point, pointIndex) => {
+    row.points.forEach((point, pointIndex, points) => {
       if (point.value <= 0) {
         if (currentSegment.length) {
           segments.push(currentSegment);
@@ -4500,10 +4505,25 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
         return;
       }
 
+      if (!currentSegment.length && pointIndex > 0 && points[pointIndex - 1].value <= 0) {
+        currentSegment.push({
+          x: xFor(pointIndex - 1, row.points.length),
+          y: yFor(0),
+        });
+      }
       currentSegment.push({
         x: xFor(pointIndex, row.points.length),
         y: yFor(point.value),
       });
+
+      if (points[pointIndex + 1]?.value <= 0) {
+        currentSegment.push({
+          x: xFor(pointIndex + 1, row.points.length),
+          y: yFor(0),
+        });
+        segments.push(currentSegment);
+        currentSegment = [];
+      }
     });
 
     if (currentSegment.length) {
@@ -4511,6 +4531,34 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     }
 
     return segments;
+  }
+
+  function makeNegativeRanges(row: (typeof visibleRows)[number]) {
+    const ranges: Array<{ startIndex: number; endIndex: number }> = [];
+    let startIndex: number | null = null;
+    let hasNegativeValue = false;
+
+    row.points.forEach((point, pointIndex) => {
+      if (point.value <= 0) {
+        startIndex ??= pointIndex;
+        if (point.value < 0) {
+          hasNegativeValue = true;
+        }
+        return;
+      }
+
+      if (startIndex !== null && hasNegativeValue) {
+        ranges.push({ startIndex, endIndex: pointIndex });
+      }
+      startIndex = null;
+      hasNegativeValue = false;
+    });
+
+    if (startIndex !== null && hasNegativeValue) {
+      ranges.push({ startIndex, endIndex: row.points.length - 1 });
+    }
+
+    return ranges;
   }
 
   const labelRows = visibleRows
@@ -4572,51 +4620,93 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
             0
           </text>
           {visibleRows.map((row, rowIndex) => {
-            const segments = makePositiveSegments(row);
+            const color = colors[rowIndex % colors.length];
+            const ranges = makeNegativeRanges(row);
+
+            return ranges.map((rangeItem, rangeIndex) => (
+              <line
+                className="trend-below-zero-range"
+                key={`${row.name}-below-${rangeIndex}`}
+                x1={xFor(rangeItem.startIndex, row.points.length)}
+                x2={xFor(rangeItem.endIndex, row.points.length)}
+                y1={yFor(0) - 1}
+                y2={yFor(0) - 1}
+                style={{ stroke: color }}
+              />
+            ));
+          })}
+          {visibleRows.map((row, rowIndex) => {
+            const segments = makeVisibleSegments(row);
             const lastPoint = row.positivePoints[row.positivePoints.length - 1];
             const lastX = xFor(lastPoint.pointIndex, row.points.length);
             const lastY = yFor(lastPoint.value);
+            const color = colors[rowIndex % colors.length];
 
             return (
               <g key={row.name}>
                 {segments.map((segment, segmentIndex) => (
                   <path
-                    className="trend-line"
+                    className={`trend-line ${rowIndex < 3 ? "trend-line-leading" : ""}`}
                     d={makeSmoothPath(segment)}
                     key={`${row.name}-${segmentIndex}`}
-                    style={{ stroke: colors[rowIndex % colors.length] }}
+                    style={{ stroke: color }}
                   />
                 ))}
                 <circle
                   className="trend-dot"
                   cx={lastX}
                   cy={lastY}
-                  r="3.8"
-                  style={{ fill: colors[rowIndex % colors.length] }}
+                  r={rowIndex < 3 ? "4.2" : "3.5"}
+                  style={{ fill: color }}
                 />
               </g>
             );
           })}
           {labelRows.map(({ row, rowIndex, lineY, labelY }) => {
             const color = colors[rowIndex % colors.length];
+            const iconSrc = getPersonIconSrc(row.name);
+            const labelX = plotRight + 5;
+            const labelWidth = width - labelX - 5;
+            const labelHeight = 17;
+            const avatarSize = 12;
             return (
               <g key={`label-${row.name}`}>
                 <line
                   className="trend-label-guide"
-                  x1={plotRight + 4}
-                  x2={plotRight + 9}
+                  x1={plotRight - 2}
+                  x2={labelX + 2}
                   y1={lineY}
                   y2={labelY}
                   style={{ stroke: color }}
                 />
+                <rect
+                  className="trend-label-card"
+                  x={labelX}
+                  y={labelY - labelHeight / 2}
+                  width={labelWidth}
+                  height={labelHeight}
+                  rx="6"
+                  style={{ stroke: color }}
+                />
                 <text
                   className="trend-name-label"
-                  x={plotRight + 11}
-                  y={labelY - 3}
+                  x={labelX + 5}
+                  y={labelY + 3}
                   style={{ fill: color }}
                 >
-                  <tspan x={plotRight + 11}>{shortenName(row.name, 5)}</tspan>
+                  <tspan>{shortenName(row.name, iconSrc ? 4 : 5)}</tspan>
                 </text>
+                {iconSrc && (
+                  <image
+                    className="trend-label-avatar"
+                    href={iconSrc}
+                    preserveAspectRatio="xMidYMid meet"
+                    x={labelX + labelWidth - avatarSize - 4}
+                    y={labelY - avatarSize / 2}
+                    width={avatarSize}
+                    height={avatarSize}
+                  />
+                )}
               </g>
             );
           })}
