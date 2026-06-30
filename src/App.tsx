@@ -4405,7 +4405,17 @@ function MotivationTicker({
 }
 
 function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
-  if (!rows.length) {
+  const visibleRows = rows
+    .filter((row) => row.net > 0)
+    .map((row) => ({
+      ...row,
+      positivePoints: row.points
+        .map((point, pointIndex) => ({ ...point, pointIndex }))
+        .filter((point) => point.value > 0),
+    }))
+    .filter((row) => row.positivePoints.length > 0);
+
+  if (!visibleRows.length) {
     return (
       <section className="trend-card trend-card-empty" aria-label="確定収支推移">
         <div className="trend-heading">
@@ -4415,7 +4425,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           </span>
           <small>結果確定後に表示</small>
         </div>
-        <p>確定した試合が出ると、全員の収支推移をここに表示します。</p>
+        <p>確定収支がプラスのユーザーが出ると、賞金レース推移をここに表示します。</p>
       </section>
     );
   }
@@ -4426,10 +4436,10 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const paddingRight = 102;
   const paddingY = 24;
   const plotRight = width - paddingRight;
-  const allValues = rows.flatMap((row) => row.points.map((point) => point.value));
-  const minValue = Math.min(0, ...allValues);
-  const maxValue = Math.max(0, ...allValues);
-  const range = Math.max(1, maxValue - minValue);
+  const allValues = visibleRows.flatMap((row) => row.positivePoints.map((point) => point.value));
+  const minValue = 0;
+  const maxValue = Math.max(1, ...allValues);
+  const range = maxValue - minValue;
   const colors = [
     "#ffe45e",
     "#5ee7ff",
@@ -4477,16 +4487,35 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return segments.join(" ");
   }
 
-  const labelTargetIndexes = new Set<number>();
-  rows.forEach((_, index) => {
-    if (index < 3 || index >= Math.max(0, rows.length - 3)) {
-      labelTargetIndexes.add(index);
+  function makePositiveSegments(row: (typeof visibleRows)[number]) {
+    const segments: Array<Array<{ x: number; y: number }>> = [];
+    let currentSegment: Array<{ x: number; y: number }> = [];
+
+    row.points.forEach((point, pointIndex) => {
+      if (point.value <= 0) {
+        if (currentSegment.length) {
+          segments.push(currentSegment);
+          currentSegment = [];
+        }
+        return;
+      }
+
+      currentSegment.push({
+        x: xFor(pointIndex, row.points.length),
+        y: yFor(point.value),
+      });
+    });
+
+    if (currentSegment.length) {
+      segments.push(currentSegment);
     }
-  });
-  const labelRows = [...labelTargetIndexes]
-    .map((rowIndex) => {
-      const row = rows[rowIndex];
-      const lastPoint = row.points[row.points.length - 1];
+
+    return segments;
+  }
+
+  const labelRows = visibleRows
+    .map((row, rowIndex) => {
+      const lastPoint = row.positivePoints[row.positivePoints.length - 1];
       return {
         row,
         rowIndex,
@@ -4496,7 +4525,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     })
     .sort((a, b) => a.labelY - b.labelY);
 
-  const minLabelGap = 23;
+  const minLabelGap = Math.max(16, Math.min(23, (height - paddingY * 2) / Math.max(1, labelRows.length)));
   labelRows.forEach((label, index) => {
     if (index === 0) {
       label.labelY = Math.max(paddingY, label.labelY);
@@ -4518,10 +4547,10 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           <Trophy size={17} aria-hidden />
           賞金レース推移
         </span>
-        <small>全員 {rows.length}人</small>
+        <small>プラス {visibleRows.length}人</small>
       </div>
       <div className="trend-chart-wrap">
-        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="全員の確定収支推移">
+        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="プラス収支ユーザーの確定収支推移">
           {[0.25, 0.5, 0.75].map((ratio) => (
             <line
               className="trend-grid-line"
@@ -4542,23 +4571,22 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           <text className="trend-zero-label" x={paddingLeft - 5} y={yFor(0) - 4}>
             0
           </text>
-          {rows.map((row, rowIndex) => {
-            const chartPoints = row.points.map((point, pointIndex) => ({
-              x: xFor(pointIndex, row.points.length),
-              y: yFor(point.value),
-            }));
-            const path = makeSmoothPath(chartPoints);
-            const lastPoint = row.points[row.points.length - 1];
-            const lastX = xFor(row.points.length - 1, row.points.length);
+          {visibleRows.map((row, rowIndex) => {
+            const segments = makePositiveSegments(row);
+            const lastPoint = row.positivePoints[row.positivePoints.length - 1];
+            const lastX = xFor(lastPoint.pointIndex, row.points.length);
             const lastY = yFor(lastPoint.value);
 
             return (
               <g key={row.name}>
-                <path
-                  className="trend-line"
-                  d={path}
-                  style={{ stroke: colors[rowIndex % colors.length] }}
-                />
+                {segments.map((segment, segmentIndex) => (
+                  <path
+                    className="trend-line"
+                    d={makeSmoothPath(segment)}
+                    key={`${row.name}-${segmentIndex}`}
+                    style={{ stroke: colors[rowIndex % colors.length] }}
+                  />
+                ))}
                 <circle
                   className="trend-dot"
                   cx={lastX}
@@ -4599,7 +4627,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
         </svg>
       </div>
       <div className="trend-legend">
-        {rows.map((row, index) => (
+        {visibleRows.map((row, index) => (
           <span key={row.name}>
             <i style={{ background: colors[index % colors.length] }} />
             <b>{shortenName(row.name, 6)}</b>
