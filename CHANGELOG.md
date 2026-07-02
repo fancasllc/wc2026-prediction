@@ -14,7 +14,7 @@
 
 ## 2026-07-02
 
-### 4343e62 - Refine prize race chart selection
+### 03af08b - Refine prize race chart selection
 
 - 変更内容: 賞金レース推移を全ユーザー対象に戻し、下部の名前チップから個人を選択すると該当ユーザーの線だけを強調表示するようにした。右側ラベルは上位3名・下位3名に絞り、名前とポイントを表示。
 - DB変更: なし
