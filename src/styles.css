@@ -449,6 +449,11 @@ label span {
   color: var(--ink);
 }
 
+.summary-card-visual {
+  padding: 12px;
+  gap: 10px;
+}
+
 .summary-status-line {
   display: flex;
   align-items: center;
@@ -582,6 +587,13 @@ label span {
   white-space: nowrap;
 }
 
+.summary-countdown.prominent {
+  gap: 6px;
+  color: #df7278;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 .summary-recent-votes {
   display: inline-flex;
   align-items: center;
@@ -625,6 +637,135 @@ label span {
   color: #60748b;
   font-size: 0.72rem;
   line-height: 1.12;
+}
+
+.min-vote-note {
+  display: block;
+  margin-top: 6px;
+  color: #b15d00;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.schedule-min-vote-field {
+  display: grid;
+  gap: 5px;
+}
+
+.schedule-min-vote-field span {
+  color: #60748b;
+  font-size: 0.74rem;
+  font-weight: 950;
+}
+
+.schedule-min-vote-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  color: #08234a;
+  font: inherit;
+  font-weight: 850;
+  background: #f7fbff;
+  border: 1px solid #cfe2ee;
+  border-radius: 8px;
+}
+
+.summary-visual-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.summary-visual-meta {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  min-width: max-content;
+  color: #52677d;
+  font-weight: 950;
+  text-align: right;
+}
+
+.summary-visual-meta > span:not(.summary-countdown) {
+  font-size: 0.84rem;
+  line-height: 1.08;
+  white-space: nowrap;
+}
+
+.visual-odds-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.visual-odds-team {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.visual-odds-team + .visual-odds-vs + .visual-odds-team,
+.visual-odds-team:last-child {
+  justify-items: start;
+}
+
+.visual-odds-team b {
+  max-width: 100%;
+  color: #08234a;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-odds-flag {
+  display: grid;
+  width: 66px;
+  height: 46px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid rgba(5, 42, 85, 0.14);
+  border-radius: 5px;
+  box-shadow: 0 6px 14px rgba(0, 26, 67, 0.16);
+}
+
+.visual-odds-flag .country-flag {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.visual-odds-team strong {
+  min-width: 66px;
+  padding: 3px 8px;
+  color: #005fc7;
+  font-size: 1.1rem;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #d8edf8;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 3px 8px rgba(0, 26, 67, 0.08);
+}
+
+.visual-odds-vs {
+  align-self: center;
+  color: #2d4864;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .schedule-modal-backdrop {

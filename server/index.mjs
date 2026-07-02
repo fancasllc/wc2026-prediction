@@ -274,6 +274,10 @@ function validateMatch(input) {
   const handicapOptionId = String(input.handicapOptionId ?? "").trim();
   const rawHandicapPoints = Number(input.handicapPoints ?? 0);
   const handicapPoints = Number.isFinite(rawHandicapPoints) ? rawHandicapPoints : 0;
+  const rawMinVoteAmount = Number(input.minVoteAmount ?? 100);
+  const minVoteAmount = Number.isFinite(rawMinVoteAmount) && rawMinVoteAmount > 0
+    ? Math.max(100, Math.round(rawMinVoteAmount))
+    : 100;
 
   if (!title || !startsAt || !closesAt || options.length < 2 || options.length > 80) {
     const error = new Error("Invalid match payload");
@@ -315,6 +319,7 @@ function validateMatch(input) {
     options: normalizedOptions,
     handicapOptionId: handicapPoints > 0 ? handicapOptionId : "",
     handicapPoints: handicapPoints > 0 ? handicapPoints : 0,
+    minVoteAmount,
   };
 }
 
@@ -672,6 +677,7 @@ function makeScheduledMatchPayloadWithHandicap(scheduledMatch, input = {}) {
     options,
     handicapOptionId: option && handicapPoints > 0 ? option.id : "",
     handicapPoints,
+    minVoteAmount: input.minVoteAmount,
   };
 }
 
@@ -817,6 +823,7 @@ async function initializeDatabase() {
       add column if not exists notice text not null default '',
       add column if not exists handicap_option_id text,
       add column if not exists handicap_points numeric(4, 1) not null default 0,
+      add column if not exists min_vote_amount numeric(14, 2) not null default 100,
       add column if not exists home_score numeric(5, 1),
       add column if not exists away_score numeric(5, 1);
 
@@ -1220,6 +1227,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         away_score,
         handicap_option_id,
         handicap_points,
+        min_vote_amount,
         settled_at,
         created_at
       from matches
@@ -1307,6 +1315,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       settled_at: match.settled_at?.toISOString?.() ?? "",
       handicap_option_id: match.handicap_option_id ?? "",
       handicap_points: Number(match.handicap_points ?? 0),
+      min_vote_amount: Number(match.min_vote_amount ?? 100),
     });
   }
 
@@ -1653,8 +1662,8 @@ async function insertMatch(input, client = pool) {
     `
       insert into matches (
         id, title, stage, venue, starts_at, closes_at, question, notice, result_option_id, settled_at,
-        handicap_option_id, handicap_points
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        handicap_option_id, handicap_points, min_vote_amount
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       on conflict (id) do update set
         title = excluded.title,
         stage = excluded.stage,
@@ -1664,7 +1673,8 @@ async function insertMatch(input, client = pool) {
         question = excluded.question,
         notice = excluded.notice,
         handicap_option_id = excluded.handicap_option_id,
-        handicap_points = excluded.handicap_points
+        handicap_points = excluded.handicap_points,
+        min_vote_amount = excluded.min_vote_amount
     `,
     [
       match.id,
@@ -1679,6 +1689,7 @@ async function insertMatch(input, client = pool) {
       input.settledAt ?? null,
       match.handicapOptionId || null,
       match.handicapPoints,
+      match.minVoteAmount,
     ],
   );
 
@@ -2025,7 +2036,8 @@ async function loadAutoBetSnapshot(matchId, db = pool) {
           closes_at as "closesAt",
           result_option_id as "resultOptionId",
           handicap_option_id as "handicapOptionId",
-          handicap_points::float as "handicapPoints"
+          handicap_points::float as "handicapPoints",
+          min_vote_amount::float as "minVoteAmount"
         from matches
         where id = $1
       `,
@@ -2122,6 +2134,7 @@ async function loadAutoBetSnapshot(matchId, db = pool) {
       resultOptionId: match.resultOptionId ?? undefined,
       handicapOptionId: match.handicapOptionId ?? undefined,
       handicapPoints: Number(match.handicapPoints ?? 0),
+      minVoteAmount: Number(match.minVoteAmount ?? 100),
       options,
     },
     totalPool,
@@ -3110,6 +3123,7 @@ async function getState() {
         away_score::float as "awayScore",
         handicap_option_id as "handicapOptionId",
         handicap_points::float as "handicapPoints",
+        min_vote_amount::float as "minVoteAmount",
         settled_at as "settledAt"
       from matches
       order by starts_at asc, created_at asc
@@ -3204,6 +3218,7 @@ async function getState() {
       awayScore: match.awayScore == null ? undefined : Number(match.awayScore),
       handicapOptionId: match.handicapOptionId ?? undefined,
       handicapPoints: Number(match.handicapPoints ?? 0),
+      minVoteAmount: Number(match.minVoteAmount ?? 100),
       options: optionsByMatch.get(match.id) ?? [],
       externalOdds: externalOddsByMatch.get(match.id) ?? undefined,
     })),
@@ -3553,7 +3568,8 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
               question = $7,
               notice = $8,
               handicap_option_id = $9,
-              handicap_points = $10
+              handicap_points = $10,
+              min_vote_amount = $11
           where id = $1
         `,
         [
@@ -3567,6 +3583,7 @@ app.put("/api/matches/:id", requireAdmin, async (request, response, next) => {
           match.notice,
           match.handicapOptionId || null,
           match.handicapPoints,
+          match.minVoteAmount,
         ],
       );
 
@@ -3646,7 +3663,7 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
     await withTransaction(async (client) => {
       const matchResult = await client.query(
         `
-          select id, closes_at, result_option_id
+          select id, closes_at, result_option_id, min_vote_amount
           from matches
           where id = $1
           for update
@@ -3664,6 +3681,13 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
       if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
         const error = new Error("Voting is closed");
         error.status = 409;
+        throw error;
+      }
+
+      const minVoteAmount = Math.max(100, Number(match.min_vote_amount ?? 100));
+      if (amount < minVoteAmount) {
+        const error = new Error(`投票ポイントは${Math.round(minVoteAmount).toLocaleString("ja-JP")}ポイント以上で入力してください。`);
+        error.status = 400;
         throw error;
       }
 

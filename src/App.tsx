@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
@@ -105,6 +105,7 @@ type MatchRecord = {
   awayScore?: number;
   handicapOptionId?: string;
   handicapPoints?: number;
+  minVoteAmount?: number;
   externalOdds?: ExternalOddsRecord;
 };
 
@@ -326,6 +327,7 @@ type MatchDraft = {
   notice: string;
   handicapOptionId: string;
   handicapPoints: number;
+  minVoteAmount: string;
 };
 
 type PointAdjustmentDraft = {
@@ -448,14 +450,14 @@ async function fetchScheduledMatches() {
 
 async function createScheduledMatchWithHandicap(
   matchId: string,
-  handicap: { handicapOptionIndex: number; handicapPoints: number },
+  payload: { handicapOptionIndex: number; handicapPoints: number; minVoteAmount?: number },
 ) {
   return apiRequest<{
     state: AppData;
     matches: ScheduledMatchCandidate[];
   }>(`/api/scheduled-matches/${matchId}`, {
     method: "POST",
-    body: JSON.stringify(handicap),
+    body: JSON.stringify(payload),
   });
 }
 
@@ -623,6 +625,7 @@ const emptyMatchDraft: MatchDraft = {
   notice: "",
   handicapOptionId: "",
   handicapPoints: 0,
+  minVoteAmount: "",
 };
 
 const emptyPointAdjustmentDraft: PointAdjustmentDraft = {
@@ -717,6 +720,18 @@ function fromDateTimeLocalValue(value: string) {
 
 function formatPoints(value: number) {
   return `${pointsFormatter.format(Math.round(value))} pt`;
+}
+
+function getMatchMinVoteAmount(match: Pick<MatchRecord, "minVoteAmount"> | null | undefined) {
+  const value = Number(match?.minVoteAmount ?? MIN_VOTE_AMOUNT);
+  return Number.isFinite(value) && value > 0 ? Math.max(MIN_VOTE_AMOUNT, Math.round(value)) : MIN_VOTE_AMOUNT;
+}
+
+function parseMinVoteAmountInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const amount = Number(trimmed);
+  return Number.isFinite(amount) && amount > 0 ? Math.max(MIN_VOTE_AMOUNT, Math.round(amount)) : undefined;
 }
 
 function compactDisplayName(value: string) {
@@ -1735,8 +1750,12 @@ function App() {
 
   async function addScheduledMatch(
     candidate: ScheduledMatchCandidate,
-    handicap: { handicapOptionIndex: number; handicapPoints: number },
+    settings: { handicapOptionIndex: number; handicapPoints: number; minVoteAmount?: number },
   ) {
+    const handicap = {
+      handicapOptionIndex: settings.handicapOptionIndex,
+      handicapPoints: settings.handicapPoints,
+    };
     const visibleOptions = hasHalfPointHandicap(handicap.handicapPoints)
       ? candidate.options.slice(0, 2)
       : candidate.options;
@@ -1757,6 +1776,7 @@ function App() {
         `${formatDateTime(candidate.startsAt)} 開始`,
         `投票先: ${optionLabels.join(" / ")}`,
         `ハンデ: ${handicapLabel}`,
+        `最低ベットpt: ${formatPoints(settings.minVoteAmount ?? MIN_VOTE_AMOUNT)}`,
       ].join("\n"),
     );
     if (!confirmed) return;
@@ -1764,7 +1784,7 @@ function App() {
     setIsSyncing(true);
     setScheduledMessage("");
     try {
-      const result = await createScheduledMatchWithHandicap(candidate.id, handicap);
+      const result = await createScheduledMatchWithHandicap(candidate.id, settings);
       setData(result.state);
       setScheduledMatches(result.matches);
       setHasRemoteState(true);
@@ -2218,21 +2238,24 @@ function App() {
   }, [data.matches, data.votes, selectedPersonAdjustments, selectedPersonVotes]);
 
   function getDraft(match: MatchRecord): VoteDraft {
+    const minVoteAmount = getMatchMinVoteAmount(match);
     return (
       voteDrafts[match.id] ?? {
         name: localStorage.getItem(LAST_NAME_KEY) ?? "",
-        amount: String(MIN_VOTE_AMOUNT),
+        amount: String(minVoteAmount),
         optionId: match.options[0]?.id ?? "",
       }
     );
   }
 
   function updateVoteDraft(matchId: string, patch: Partial<VoteDraft>) {
+    const match = data.matches.find((item) => item.id === matchId);
+    const minVoteAmount = getMatchMinVoteAmount(match);
     setVoteDrafts((current) => ({
       ...current,
       [matchId]: {
         name: current[matchId]?.name ?? localStorage.getItem(LAST_NAME_KEY) ?? "",
-        amount: current[matchId]?.amount ?? String(MIN_VOTE_AMOUNT),
+        amount: current[matchId]?.amount ?? String(minVoteAmount),
         optionId: current[matchId]?.optionId ?? "",
         ...patch,
       },
@@ -2265,8 +2288,9 @@ function App() {
       return;
     }
 
-    if (!Number.isFinite(amount) || amount < MIN_VOTE_AMOUNT) {
-      window.alert(`投票ポイントは${MIN_VOTE_AMOUNT}ポイント以上で入力してください。`);
+    const minVoteAmount = getMatchMinVoteAmount(match);
+    if (!Number.isFinite(amount) || amount < minVoteAmount) {
+      window.alert(`投票ポイントは${formatPoints(minVoteAmount)}以上で入力してください。`);
       return;
     }
 
@@ -2378,6 +2402,7 @@ function App() {
 
     const options = makeOptions(labels);
     const handicapOption = options.find((option) => option.label === matchDraft.handicapOptionId);
+    const minVoteAmount = parseMinVoteAmountInput(matchDraft.minVoteAmount);
     const match: MatchRecord = {
       id: createId("match"),
       title: matchDraft.title.trim(),
@@ -2390,6 +2415,7 @@ function App() {
       options,
       handicapOptionId: matchDraft.handicapPoints > 0 ? handicapOption?.id : undefined,
       handicapPoints: handicapOption && matchDraft.handicapPoints > 0 ? matchDraft.handicapPoints : 0,
+      minVoteAmount,
     };
 
     try {
@@ -2670,6 +2696,7 @@ function App() {
       notice: match.notice ?? "",
       handicapOptionId: match.handicapOptionId ?? "",
       handicapPoints: Number(match.handicapPoints ?? 0),
+      minVoteAmount: match.minVoteAmount && match.minVoteAmount !== MIN_VOTE_AMOUNT ? String(match.minVoteAmount) : "",
     });
   }
 
@@ -2702,6 +2729,7 @@ function App() {
     const nextHandicapOption = nextOptions.find(
       (option) => option.id === editMatchDraft.handicapOptionId || option.label === editMatchDraft.handicapOptionId,
     );
+    const minVoteAmount = parseMinVoteAmountInput(editMatchDraft.minVoteAmount);
     const match: MatchRecord = {
       id: editMatchId,
       title: editMatchDraft.title.trim(),
@@ -2714,6 +2742,7 @@ function App() {
       options: nextOptions,
       handicapOptionId: editMatchDraft.handicapPoints > 0 ? nextHandicapOption?.id : undefined,
       handicapPoints: nextHandicapOption && editMatchDraft.handicapPoints > 0 ? editMatchDraft.handicapPoints : 0,
+      minVoteAmount,
     };
 
     try {
@@ -3680,6 +3709,18 @@ function App() {
                       rows={3}
                     />
                   </label>
+                  <label>
+                    <span>最低ベットpt</span>
+                    <input
+                      min={MIN_VOTE_AMOUNT}
+                      placeholder="空欄なら100"
+                      type="number"
+                      value={matchDraft.minVoteAmount}
+                      onChange={(event) =>
+                        setMatchDraft((current) => ({ ...current, minVoteAmount: event.target.value }))
+                      }
+                    />
+                  </label>
                   <div className="wide">
                     <HandicapPicker
                       optionId={matchDraft.handicapOptionId}
@@ -4105,6 +4146,18 @@ function App() {
                         }
                         placeholder="必要な場合のみ入力"
                         rows={3}
+                      />
+                    </label>
+                    <label>
+                      <span>最低ベットpt</span>
+                      <input
+                        min={MIN_VOTE_AMOUNT}
+                        placeholder="空欄なら100"
+                        type="number"
+                        value={editMatchDraft.minVoteAmount}
+                        onChange={(event) =>
+                          setEditMatchDraft((current) => ({ ...current, minVoteAmount: event.target.value }))
+                        }
                       />
                     </label>
                     <HandicapPicker
@@ -4805,7 +4858,7 @@ function ScheduledMatchPicker({
   message: string;
   onAdd: (
     match: ScheduledMatchCandidate,
-    handicap: { handicapOptionIndex: number; handicapPoints: number },
+    settings: { handicapOptionIndex: number; handicapPoints: number; minVoteAmount?: number },
   ) => void;
   onClose: () => void;
   onRefresh: () => void;
@@ -4813,6 +4866,7 @@ function ScheduledMatchPicker({
   const [handicapByMatch, setHandicapByMatch] = useState<
     Record<string, { optionIndex: number; points: number }>
   >({});
+  const [minVoteByMatch, setMinVoteByMatch] = useState<Record<string, string>>({});
 
   function getHandicap(match: ScheduledMatchCandidate) {
     return handicapByMatch[match.id] ?? { optionIndex: -1, points: 0 };
@@ -4875,6 +4929,21 @@ function ScheduledMatchPicker({
                       }))
                     }
                   />
+                  <label className="schedule-min-vote-field">
+                    <span>最低ベットpt</span>
+                    <input
+                      min={MIN_VOTE_AMOUNT}
+                      placeholder="空欄なら100"
+                      type="number"
+                      value={minVoteByMatch[match.id] ?? ""}
+                      onChange={(event) =>
+                        setMinVoteByMatch((current) => ({
+                          ...current,
+                          [match.id]: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
                   <button
                     className="schedule-add-action"
                     type="button"
@@ -4882,6 +4951,7 @@ function ScheduledMatchPicker({
                       onAdd(match, {
                         handicapOptionIndex: handicap.optionIndex,
                         handicapPoints: handicap.points,
+                        minVoteAmount: parseMinVoteAmountInput(minVoteByMatch[match.id] ?? ""),
                       })
                     }
                   >
@@ -4914,12 +4984,14 @@ function MatchSummaryCard({
 }) {
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
+  const visualOddsItems = getVisualOddsItems(match, votes);
   const open = isMatchOpen(match, now);
   const settled = Boolean(match.resultOptionId);
   const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
+  const useVisualOdds = open && visualOddsItems.length === 2;
 
   return (
-    <button className="summary-card" type="button" onClick={onOpen}>
+    <button className={`summary-card ${useVisualOdds ? "summary-card-visual" : ""}`} type="button" onClick={onOpen}>
       {!open && (
         <span className="summary-status-line">
           <span className={`summary-status-pill ${settled ? "settled" : "closed"}`}>
@@ -4933,29 +5005,83 @@ function MatchSummaryCard({
         </span>
       )}
       {settled && <ScoreOutcome match={match} compact />}
-      <span className="summary-title-row">
-        <strong><MatchTitleWithFlags title={match.title} /></strong>
-      </span>
-      <div className="summary-time">
-        <div className="summary-live">
-          <span className="summary-countdown">
-            <Clock3 size={16} aria-hidden />
-            {minutesRemaining(match.closesAt, now)}
-          </span>
-          {recentVoteTotal > 0 && (
-            <span className="summary-recent-votes">
-              <Flame size={14} aria-hidden />
-              1時間以内に +{formatPoints(recentVoteTotal)} 投票
+      {useVisualOdds ? (
+        <div className="summary-visual-layout">
+          <VisualOddsBoard items={visualOddsItems} />
+          <div className="summary-visual-meta">
+            <span className="summary-countdown prominent">
+              <Clock3 size={18} aria-hidden />
+              {minutesRemaining(match.closesAt, now)}
             </span>
-          )}
+            <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
+            <span>総プール {formatPoints(total)}</span>
+          </div>
         </div>
-        <div className="summary-side" aria-label="開始時刻と総プール">
-          <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
-          <span>総プール {formatPoints(total)}</span>
-        </div>
-      </div>
-      <OddsTicker items={oddsItems} />
+      ) : (
+        <>
+          <span className="summary-title-row">
+            <strong><MatchTitleWithFlags title={match.title} /></strong>
+          </span>
+          <div className="summary-time">
+            <div className="summary-live">
+              <span className="summary-countdown">
+                <Clock3 size={16} aria-hidden />
+                {minutesRemaining(match.closesAt, now)}
+              </span>
+              {recentVoteTotal > 0 && (
+                <span className="summary-recent-votes">
+                  <Flame size={14} aria-hidden />
+                  1時間以内に +{formatPoints(recentVoteTotal)} 投票
+                </span>
+              )}
+            </div>
+            <div className="summary-side" aria-label="開始時刻と総プール">
+              <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
+              <span>総プール {formatPoints(total)}</span>
+            </div>
+          </div>
+          <OddsTicker items={oddsItems} />
+        </>
+      )}
     </button>
+  );
+}
+
+function getVisualOddsItems(match: MatchRecord, votes: VoteRecord[]) {
+  const teamOptions = getTeamOptions(match);
+  if (teamOptions.length !== 2 || match.options.length > 2) return [];
+  const total = getMatchTotal(match, votes);
+  return teamOptions.map((option) => {
+    const amount = getOptionTotal(match, votes, option.id);
+    const label = cleanCountryLabel(optionDisplayLabel(match, option));
+    return {
+      id: option.id,
+      label,
+      oddsText: amount > 0 && total > 0 ? `${(total / amount).toFixed(2)}x` : "-",
+    };
+  });
+}
+
+function VisualOddsBoard({
+  items,
+}: {
+  items: Array<{ id: string; label: string; oddsText: string }>;
+}) {
+  return (
+    <div className="visual-odds-board" aria-label="オッズ">
+      {items.map((item, index) => (
+        <Fragment key={item.id}>
+          {index > 0 && <span className="visual-odds-vs">VS</span>}
+          <span className="visual-odds-team">
+            <b>{truncateOptionChipLabel(item.label)}</b>
+            <span className="visual-odds-flag">
+              <CountryFlag label={item.label} />
+            </span>
+            <strong>{item.oddsText}</strong>
+          </span>
+        </Fragment>
+      ))}
+    </div>
   );
 }
 
@@ -5685,10 +5811,12 @@ function VoteForm({
   const open = isMatchOpen(match, now);
   const canSubmit = open && hasRemoteState && !isSaving;
   const total = getMatchTotal(match, votes);
-  const currentAmount = Number(draft.amount) || MIN_VOTE_AMOUNT;
+  const minVoteAmount = getMatchMinVoteAmount(match);
+  const hasCustomMinVote = minVoteAmount !== MIN_VOTE_AMOUNT;
+  const currentAmount = Number(draft.amount) || minVoteAmount;
 
   function adjustAmount(delta: number) {
-    const nextAmount = Math.max(MIN_VOTE_AMOUNT, currentAmount + delta);
+    const nextAmount = Math.max(minVoteAmount, currentAmount + delta);
     onChange({ amount: String(nextAmount) });
   }
 
@@ -5742,11 +5870,11 @@ function VoteForm({
           />
         </label>
         <label>
-          <span>投票pt（最低100ポイント）</span>
+          <span>投票pt（最低{formatPoints(minVoteAmount)}）</span>
           <div className="amount-control">
             <input
               type="number"
-              min={MIN_VOTE_AMOUNT}
+              min={minVoteAmount}
               step="1"
               value={draft.amount}
               onChange={(event) => onChange({ amount: event.target.value })}
@@ -5754,7 +5882,7 @@ function VoteForm({
             />
             <button
               aria-label={`${VOTE_AMOUNT_STEP}ポイント減らす`}
-              disabled={!open || !hasRemoteState || isSaving || currentAmount <= MIN_VOTE_AMOUNT}
+              disabled={!open || !hasRemoteState || isSaving || currentAmount <= minVoteAmount}
               onClick={() => adjustAmount(-VOTE_AMOUNT_STEP)}
               type="button"
             >
@@ -5769,6 +5897,11 @@ function VoteForm({
               +
             </button>
           </div>
+          {hasCustomMinVote && (
+            <small className="min-vote-note">
+              この試合は最低投票ポイントが{formatPoints(minVoteAmount)}に設定されています。
+            </small>
+          )}
         </label>
         <button className="primary-action" type="submit" disabled={!canSubmit}>
           <WalletCards size={18} aria-hidden />
