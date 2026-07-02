@@ -5057,7 +5057,7 @@ function getVisualOddsItems(match: MatchRecord, votes: VoteRecord[]) {
     return {
       id: option.id,
       label,
-      oddsText: amount > 0 && total > 0 ? `${(total / amount).toFixed(2)}x` : "-",
+      oddsText: amount > 0 && total > 0 ? `X${(total / amount).toFixed(2)}` : "-",
     };
   });
 }

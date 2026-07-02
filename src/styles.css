@@ -698,7 +698,7 @@ label span {
 .visual-odds-board {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 5px;
   min-width: 0;
 }
@@ -747,21 +747,22 @@ label span {
 }
 
 .visual-odds-team strong {
-  min-width: 66px;
-  padding: 3px 8px;
+  min-width: 0;
+  padding: 0;
   color: #005fc7;
   font-size: 1.1rem;
   font-weight: 950;
   line-height: 1;
-  text-align: center;
-  background: #ffffff;
-  border: 1px solid #d8edf8;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 3px 8px rgba(0, 26, 67, 0.08);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .visual-odds-vs {
-  align-self: center;
+  align-self: start;
+  margin-top: calc(0.72rem + 3px + 23px);
   color: #2d4864;
   font-size: 0.78rem;
   font-weight: 950;
