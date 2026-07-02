@@ -2121,24 +2121,29 @@ function App() {
     const settledEvents = [...settledVoteEvents, ...adjustmentEvents]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    if (!settledEvents.length) return [];
+    if (!settledEvents.length || !userRows.length) return [];
 
-    const trendNames = userRows
-      .filter((row) => settledEvents.some((event) => event.userName === row.name))
-      .map((row) => row.name);
+    const trendNames = userRows.map((row) => row.name);
 
     return trendNames.map((name) => {
       let runningNet = 0;
-      const points = settledEvents.map((event) => {
-        if (event.userName === name) {
-          runningNet += event.net;
-        }
-        return {
-          date: event.date,
-          label: event.label,
-          value: runningNet,
-        };
-      });
+      const points = [
+        {
+          date: settledEvents[0].date,
+          label: "開始",
+          value: 0,
+        },
+        ...settledEvents.map((event) => {
+          if (event.userName === name) {
+            runningNet += event.net;
+          }
+          return {
+            date: event.date,
+            label: event.label,
+            value: runningNet,
+          };
+        }),
+      ];
       const summary = userRows.find((row) => row.name === name);
 
       return {
@@ -4459,35 +4464,20 @@ function MotivationTicker({
 }
 
 function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
-  const latestEventTime = Math.max(
-    0,
-    ...rows.flatMap((row) => row.points.map((point) => new Date(point.date).getTime()).filter(Number.isFinite)),
+  const [selectedName, setSelectedName] = useState("");
+  const visibleRows = useMemo(
+    () =>
+      rows
+        .filter((row) => row.points.length > 0)
+        .map((row) => ({
+          ...row,
+          chartPoints: row.points.map((point, pointIndex) => ({ ...point, pointIndex })),
+        }))
+        .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name, "ja")),
+    [rows],
   );
-  const recentStartTime = latestEventTime > 0 ? latestEventTime - 4 * 24 * 60 * 60 * 1000 : 0;
-  const recentStartIndex = rows.length
-    ? Math.max(
-        0,
-        Math.min(
-          ...rows.map((row) => {
-            const index = row.points.findIndex((point) => new Date(point.date).getTime() >= recentStartTime);
-            return index >= 0 ? index : row.points.length - 1;
-          }),
-        ),
-      )
-    : 0;
-
-  const visibleRows = rows
-    .filter((row) => row.net > 0)
-    .map((row) => ({
-      ...row,
-      chartPoints: row.points.slice(recentStartIndex),
-      positivePoints: row.points
-        .slice(recentStartIndex)
-        .map((point, pointIndex) => ({ ...point, pointIndex }))
-        .filter((point) => point.value > 0),
-    }))
-    .filter((row) => row.positivePoints.length > 0)
-    .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name, "ja"));
+  const selectedRow = visibleRows.find((row) => row.name === selectedName);
+  const activeSelectedName = selectedRow ? selectedName : "";
 
   if (!visibleRows.length) {
     return (
@@ -4499,7 +4489,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           </span>
           <small>結果確定後に表示</small>
         </div>
-        <p>確定収支がプラスのユーザーが出ると、賞金レース推移をここに表示します。</p>
+        <p>確定収支が出ると、賞金レース推移をここに表示します。</p>
       </section>
     );
   }
@@ -4507,12 +4497,14 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const width = 360;
   const height = 490;
   const paddingLeft = 20;
-  const paddingRight = 58;
+  const paddingRight = 74;
   const paddingY = 32;
   const plotRight = width - paddingRight;
-  const allValues = visibleRows.flatMap((row) => row.positivePoints.map((point) => point.value));
-  const minValue = 0;
-  const maxValue = Math.max(1, ...allValues) * 1.08;
+  const allValues = visibleRows.flatMap((row) => row.chartPoints.map((point) => point.value));
+  const rawMinValue = Math.min(0, ...allValues);
+  const rawMaxValue = Math.max(1, ...allValues);
+  const minValue = rawMinValue < 0 ? rawMinValue * 1.08 : 0;
+  const maxValue = rawMaxValue > 0 ? rawMaxValue * 1.08 : 1;
   const range = maxValue - minValue;
   const colors = [
     "#ffe45e",
@@ -4565,81 +4557,29 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
     return segments.join(" ");
   }
 
-  function makeVisibleSegments(row: (typeof visibleRows)[number]) {
-    const segments: Array<Array<{ x: number; y: number }>> = [];
-    let currentSegment: Array<{ x: number; y: number }> = [];
-
-    row.chartPoints.forEach((point, pointIndex, points) => {
-      if (point.value <= 0) {
-        if (currentSegment.length) {
-          segments.push(currentSegment);
-          currentSegment = [];
-        }
-        return;
-      }
-
-      if (!currentSegment.length && pointIndex > 0 && points[pointIndex - 1].value <= 0) {
-        currentSegment.push({
-          x: xFor(pointIndex - 1, row.chartPoints.length),
-          y: yFor(0),
-        });
-      }
-      currentSegment.push({
-        x: xFor(pointIndex, row.chartPoints.length),
-        y: yFor(point.value),
-      });
-
-      if (points[pointIndex + 1]?.value <= 0) {
-        currentSegment.push({
-          x: xFor(pointIndex + 1, row.chartPoints.length),
-          y: yFor(0),
-        });
-        segments.push(currentSegment);
-        currentSegment = [];
-      }
-    });
-
-    if (currentSegment.length) {
-      segments.push(currentSegment);
-    }
-
-    return segments;
+  function pointsFor(row: (typeof visibleRows)[number]) {
+    return row.chartPoints.map((point, pointIndex) => ({
+      x: xFor(pointIndex, row.chartPoints.length),
+      y: yFor(point.value),
+    }));
   }
 
-  function makeNegativeRanges(row: (typeof visibleRows)[number]) {
-    const ranges: Array<{ startIndex: number; endIndex: number }> = [];
-    let startIndex: number | null = null;
-    let hasNegativeValue = false;
-
-    row.chartPoints.forEach((point, pointIndex) => {
-      if (point.value <= 0) {
-        startIndex ??= pointIndex;
-        if (point.value < 0) {
-          hasNegativeValue = true;
-        }
-        return;
-      }
-
-      if (startIndex !== null && hasNegativeValue) {
-        ranges.push({ startIndex, endIndex: pointIndex });
-      }
-      startIndex = null;
-      hasNegativeValue = false;
-    });
-
-    if (startIndex !== null && hasNegativeValue) {
-      ranges.push({ startIndex, endIndex: row.chartPoints.length - 1 });
-    }
-
-    return ranges;
+  function labelCandidates() {
+    if (selectedRow) return [selectedRow];
+    const topRows = visibleRows.slice(0, 3);
+    const bottomRows = [...visibleRows]
+      .slice(-3)
+      .filter((row) => !topRows.some((topRow) => topRow.name === row.name));
+    return [...topRows, ...bottomRows];
   }
 
-  const labelRows = visibleRows
+  const labelRows = labelCandidates()
     .map((row, rowIndex) => {
-      const lastPoint = row.positivePoints[row.positivePoints.length - 1];
+      const sourceIndex = visibleRows.findIndex((item) => item.name === row.name);
+      const lastPoint = row.chartPoints[row.chartPoints.length - 1];
       return {
         row,
-        rowIndex,
+        rowIndex: sourceIndex >= 0 ? sourceIndex : rowIndex,
         lineY: yFor(lastPoint.value),
         labelY: yFor(lastPoint.value),
       };
@@ -4668,10 +4608,9 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           <Trophy size={17} aria-hidden />
           賞金レース推移
         </span>
-        <small>プラス {visibleRows.length}人</small>
       </div>
       <div className="trend-chart-wrap">
-        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="プラス収支ユーザーの確定収支推移">
+        <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="全ユーザーの確定収支推移">
           {[0.25, 0.5, 0.75].map((ratio) => (
             <line
               className="trend-grid-line"
@@ -4694,42 +4633,25 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           </text>
           {visibleRows.map((row, rowIndex) => {
             const color = colors[rowIndex % colors.length];
-            const ranges = makeNegativeRanges(row);
-
-            return ranges.map((rangeItem, rangeIndex) => (
-              <line
-                className="trend-below-zero-range"
-                key={`${row.name}-below-${rangeIndex}`}
-                x1={xFor(rangeItem.startIndex, row.chartPoints.length)}
-                x2={xFor(rangeItem.endIndex, row.chartPoints.length)}
-                y1={yFor(0) - 1}
-                y2={yFor(0) - 1}
-                style={{ stroke: color }}
-              />
-            ));
-          })}
-          {visibleRows.map((row, rowIndex) => {
-            const segments = makeVisibleSegments(row);
-            const lastPoint = row.positivePoints[row.positivePoints.length - 1];
+            const pathPoints = pointsFor(row);
+            const lastPoint = row.chartPoints[row.chartPoints.length - 1];
             const lastX = xFor(lastPoint.pointIndex, row.chartPoints.length);
             const lastY = yFor(lastPoint.value);
-            const color = colors[rowIndex % colors.length];
+            const selected = activeSelectedName === row.name;
+            const muted = Boolean(activeSelectedName) && !selected;
 
             return (
-              <g key={row.name}>
-                {segments.map((segment, segmentIndex) => (
-                  <path
-                    className={`trend-line ${rowIndex < 3 ? "trend-line-leading" : ""}`}
-                    d={makeSmoothPath(segment)}
-                    key={`${row.name}-${segmentIndex}`}
-                    style={{ stroke: color }}
-                  />
-                ))}
+              <g className={muted ? "trend-series muted" : selected ? "trend-series selected" : "trend-series"} key={row.name}>
+                <path
+                  className={`trend-line ${selected || (!activeSelectedName && rowIndex < 3) ? "trend-line-leading" : ""}`}
+                  d={makeSmoothPath(pathPoints)}
+                  style={{ stroke: color }}
+                />
                 <circle
                   className="trend-dot"
                   cx={lastX}
                   cy={lastY}
-                  r={rowIndex < 3 ? "3.8" : "3.2"}
+                  r={selected || (!activeSelectedName && rowIndex < 3) ? "3.8" : "3.1"}
                   style={{ fill: color }}
                 />
               </g>
@@ -4737,13 +4659,12 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           })}
           {labelRows.map(({ row, rowIndex, lineY, labelY }) => {
             const color = colors[rowIndex % colors.length];
-            const iconSrc = getPersonIconSrc(row.name);
             const labelX = plotRight + 5;
             const labelWidth = width - labelX - 5;
-            const labelHeight = 15;
-            const avatarSize = 10;
+            const labelHeight = 22;
+            const selected = activeSelectedName === row.name;
             return (
-              <g key={`label-${row.name}`}>
+              <g className={activeSelectedName && !selected ? "trend-label muted" : "trend-label"} key={`label-${row.name}`}>
                 <line
                   className="trend-label-guide"
                   x1={plotRight - 2}
@@ -4753,7 +4674,7 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                   style={{ stroke: color }}
                 />
                 <rect
-                  className="trend-label-card"
+                  className={`trend-label-card ${selected ? "selected" : ""}`}
                   x={labelX}
                   y={labelY - labelHeight / 2}
                   width={labelWidth}
@@ -4764,22 +4685,15 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
                 <text
                   className="trend-name-label"
                   x={labelX + 5}
-                  y={labelY + 3}
+                  y={labelY - 2}
                   style={{ fill: color }}
                 >
-                  <tspan>{shortenName(row.name, iconSrc ? 4 : 5)}</tspan>
+                  <tspan>{shortenName(row.name, 5)}</tspan>
+                  <tspan className="trend-points-label" x={labelX + 5} dy="9">
+                    {row.net >= 0 ? "+" : ""}
+                    {formatPoints(row.net)}
+                  </tspan>
                 </text>
-                {iconSrc && (
-                  <image
-                    className="trend-label-avatar"
-                    href={iconSrc}
-                    preserveAspectRatio="xMidYMid meet"
-                    x={labelX + labelWidth - avatarSize - 4}
-                    y={labelY - avatarSize / 2}
-                    width={avatarSize}
-                    height={avatarSize}
-                  />
-                )}
               </g>
             );
           })}
@@ -4787,10 +4701,19 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
       </div>
       <div className="trend-legend">
         {visibleRows.map((row, index) => (
-          <span key={row.name}>
+          <button
+            className={activeSelectedName === row.name ? "selected" : ""}
+            key={row.name}
+            onClick={() => setSelectedName((current) => (current === row.name ? "" : row.name))}
+            type="button"
+          >
             <i style={{ background: colors[index % colors.length] }} />
             <b>{shortenName(row.name, 6)}</b>
-          </span>
+            <strong className={row.net >= 0 ? "positive" : "negative"}>
+              {row.net >= 0 ? "+" : ""}
+              {formatPoints(row.net)}
+            </strong>
+          </button>
         ))}
       </div>
     </section>
