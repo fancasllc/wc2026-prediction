@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent } from "react";
 import Papa from "papaparse";
 import {
@@ -4984,14 +4984,12 @@ function MatchSummaryCard({
 }) {
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
-  const visualOddsItems = getVisualOddsItems(match, votes);
   const open = isMatchOpen(match, now);
   const settled = Boolean(match.resultOptionId);
   const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
-  const useVisualOdds = open && visualOddsItems.length === 2;
 
   return (
-    <button className={`summary-card ${useVisualOdds ? "summary-card-visual" : ""}`} type="button" onClick={onOpen}>
+    <button className="summary-card" type="button" onClick={onOpen}>
       {!open && (
         <span className="summary-status-line">
           <span className={`summary-status-pill ${settled ? "settled" : "closed"}`}>
@@ -5005,83 +5003,29 @@ function MatchSummaryCard({
         </span>
       )}
       {settled && <ScoreOutcome match={match} compact />}
-      {useVisualOdds ? (
-        <div className="summary-visual-layout">
-          <VisualOddsBoard items={visualOddsItems} />
-          <div className="summary-visual-meta">
-            <span className="summary-countdown prominent">
-              <Clock3 size={18} aria-hidden />
-              {minutesRemaining(match.closesAt, now)}
+      <span className="summary-title-row">
+        <strong><MatchTitleWithFlags title={match.title} /></strong>
+      </span>
+      <div className="summary-time">
+        <div className="summary-live">
+          <span className="summary-countdown">
+            <Clock3 size={16} aria-hidden />
+            {minutesRemaining(match.closesAt, now)}
+          </span>
+          {recentVoteTotal > 0 && (
+            <span className="summary-recent-votes">
+              <Flame size={14} aria-hidden />
+              1時間以内に +{formatPoints(recentVoteTotal)} 投票
             </span>
-            <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
-            <span>総プール {formatPoints(total)}</span>
-          </div>
+          )}
         </div>
-      ) : (
-        <>
-          <span className="summary-title-row">
-            <strong><MatchTitleWithFlags title={match.title} /></strong>
-          </span>
-          <div className="summary-time">
-            <div className="summary-live">
-              <span className="summary-countdown">
-                <Clock3 size={16} aria-hidden />
-                {minutesRemaining(match.closesAt, now)}
-              </span>
-              {recentVoteTotal > 0 && (
-                <span className="summary-recent-votes">
-                  <Flame size={14} aria-hidden />
-                  1時間以内に +{formatPoints(recentVoteTotal)} 投票
-                </span>
-              )}
-            </div>
-            <div className="summary-side" aria-label="開始時刻と総プール">
-              <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
-              <span>総プール {formatPoints(total)}</span>
-            </div>
-          </div>
-          <OddsTicker items={oddsItems} />
-        </>
-      )}
+        <div className="summary-side" aria-label="開始時刻と総プール">
+          <span>{compactStartTime ? formatSummaryStartDateTime(match.startsAt) : formatDateTime(match.startsAt)} 開始</span>
+          <span>総プール {formatPoints(total)}</span>
+        </div>
+      </div>
+      <OddsTicker items={oddsItems} />
     </button>
-  );
-}
-
-function getVisualOddsItems(match: MatchRecord, votes: VoteRecord[]) {
-  const teamOptions = getTeamOptions(match);
-  if (teamOptions.length !== 2 || match.options.length > 2) return [];
-  const total = getMatchTotal(match, votes);
-  return teamOptions.map((option) => {
-    const amount = getOptionTotal(match, votes, option.id);
-    const label = cleanCountryLabel(optionDisplayLabel(match, option));
-    return {
-      id: option.id,
-      label,
-      oddsText: amount > 0 && total > 0 ? `X${(total / amount).toFixed(2)}` : "-",
-    };
-  });
-}
-
-function VisualOddsBoard({
-  items,
-}: {
-  items: Array<{ id: string; label: string; oddsText: string }>;
-}) {
-  return (
-    <div className="visual-odds-board" aria-label="オッズ">
-      {items.map((item, index) => (
-        <Fragment key={item.id}>
-          {index > 0 && <span className="visual-odds-vs">VS</span>}
-          <span className="visual-odds-team">
-            <b>{truncateOptionChipLabel(item.label)}</b>
-            <span className="visual-odds-flag">
-              <CountryFlag label={item.label} />
-            </span>
-            <strong>{item.oddsText}</strong>
-          </span>
-        </Fragment>
-      ))}
-    </div>
   );
 }
 
