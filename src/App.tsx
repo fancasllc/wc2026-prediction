@@ -4465,6 +4465,7 @@ function MotivationTicker({
 
 function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   const [selectedName, setSelectedName] = useState("");
+  const legendRef = useRef<HTMLDivElement | null>(null);
   const visibleRows = useMemo(
     () =>
       rows
@@ -4478,6 +4479,29 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
   );
   const selectedRow = visibleRows.find((row) => row.name === selectedName);
   const activeSelectedName = selectedRow ? selectedName : "";
+  const loopingLegendRows = visibleRows.length > 1 ? [...visibleRows, ...visibleRows, ...visibleRows] : visibleRows;
+
+  useEffect(() => {
+    const legend = legendRef.current;
+    if (!legend || visibleRows.length <= 1) return;
+    const segmentWidth = legend.scrollWidth / 3;
+    if (segmentWidth > 0) {
+      legend.scrollLeft = segmentWidth;
+    }
+  }, [visibleRows.length]);
+
+  function handleLegendScroll() {
+    const legend = legendRef.current;
+    if (!legend || visibleRows.length <= 1) return;
+    const segmentWidth = legend.scrollWidth / 3;
+    if (segmentWidth <= 0) return;
+
+    if (legend.scrollLeft < segmentWidth * 0.45) {
+      legend.scrollLeft += segmentWidth;
+    } else if (legend.scrollLeft > segmentWidth * 1.55) {
+      legend.scrollLeft -= segmentWidth;
+    }
+  }
 
   if (!visibleRows.length) {
     return (
@@ -4699,22 +4723,26 @@ function PrizeTrendChart({ rows }: { rows: PersonTrendRow[] }) {
           })}
         </svg>
       </div>
-      <div className="trend-legend">
-        {visibleRows.map((row, index) => (
-          <button
-            className={activeSelectedName === row.name ? "selected" : ""}
-            key={row.name}
-            onClick={() => setSelectedName((current) => (current === row.name ? "" : row.name))}
-            type="button"
-          >
-            <i style={{ background: colors[index % colors.length] }} />
-            <b>{shortenName(row.name, 6)}</b>
-            <strong className={row.net >= 0 ? "positive" : "negative"}>
-              {row.net >= 0 ? "+" : ""}
-              {formatPoints(row.net)}
-            </strong>
-          </button>
-        ))}
+      <div className="trend-legend" onScroll={handleLegendScroll} ref={legendRef}>
+        {loopingLegendRows.map((row, index) => {
+          const colorIndex = visibleRows.findIndex((item) => item.name === row.name);
+          const normalizedIndex = colorIndex >= 0 ? colorIndex : index % Math.max(1, visibleRows.length);
+          return (
+            <button
+              className={activeSelectedName === row.name ? "selected" : ""}
+              key={`${row.name}-${index}`}
+              onClick={() => setSelectedName((current) => (current === row.name ? "" : row.name))}
+              type="button"
+            >
+              <i style={{ background: colors[normalizedIndex % colors.length] }} />
+              <b>{shortenName(row.name, 6)}</b>
+              <strong className={row.net >= 0 ? "positive" : "negative"}>
+                {row.net >= 0 ? "+" : ""}
+                {formatPoints(row.net)}
+              </strong>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
