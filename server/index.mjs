@@ -250,6 +250,38 @@ function toIsoLike(value) {
   return date.toISOString().slice(0, 16);
 }
 
+function toTokyoWallIsoLike(value) {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(" ", "T");
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized)) {
+      return normalized.slice(0, 16);
+    }
+  }
+  return toIsoLike(value);
+}
+
+function parseTokyoWallTimeMs(value) {
+  const isoLike = toTokyoWallIsoLike(value).slice(0, 16);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(isoLike)) return NaN;
+  return Date.parse(`${isoLike}:00+09:00`);
+}
+
+function getMatchClosesAtMs(match) {
+  return parseTokyoWallTimeMs(match?.closes_at ?? match?.closesAt);
+}
+
+function isVotingClosed(match, nowMs = Date.now()) {
+  const closesAtMs = getMatchClosesAtMs(match);
+  return Boolean(match?.result_option_id ?? match?.resultOptionId) || !Number.isFinite(closesAtMs) || closesAtMs <= nowMs;
+}
+
+function createVotingClosedError() {
+  const error = new Error("Voting is closed");
+  error.status = 409;
+  return error;
+}
+
 function createId(prefix) {
   return `${prefix}-${randomUUID()}`;
 }
@@ -2521,10 +2553,8 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
 async function createAutoBetAnalysis(matchId, maxAmount = autoBetDefaultMaxAmount) {
   const safeMaxAmount = Math.max(100, Math.min(1_000_000_000, Math.floor(Number(maxAmount) || autoBetDefaultMaxAmount)));
   const snapshot = await loadAutoBetSnapshot(matchId);
-  if (snapshot.match.resultOptionId || new Date(snapshot.match.closesAt).getTime() <= Date.now()) {
-    const error = new Error("Voting is closed");
-    error.status = 409;
-    throw error;
+  if (isVotingClosed(snapshot.match)) {
+    throw createVotingClosedError();
   }
 
   const aiResult = await callOpenAiForAutoBet(snapshot, safeMaxAmount);
@@ -2610,10 +2640,8 @@ async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = poo
     error.status = 404;
     throw error;
   }
-  if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
-    const error = new Error("Voting is closed");
-    error.status = 409;
-    throw error;
+  if (isVotingClosed(match)) {
+    throw createVotingClosedError();
   }
 
   const optionResult = await db.query(
@@ -2696,10 +2724,8 @@ function calculateMaxBetForMinimumOdds(totalPool, optionPool, minOdds, maxAmount
 
 async function runConditionalBetReservation(reservation, db = pool) {
   const snapshot = await loadAutoBetSnapshot(reservation.matchId, db);
-  if (snapshot.match.resultOptionId || new Date(snapshot.match.closesAt).getTime() <= Date.now()) {
-    const error = new Error("Voting is closed");
-    error.status = 409;
-    throw error;
+  if (isVotingClosed(snapshot.match)) {
+    throw createVotingClosedError();
   }
 
   const rules = normalizeConditionalRules(reservation.strategy?.rules, snapshot.options);
@@ -3678,10 +3704,8 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
         throw error;
       }
 
-      if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
-        const error = new Error("Voting is closed");
-        error.status = 409;
-        throw error;
+      if (isVotingClosed(match)) {
+        throw createVotingClosedError();
       }
 
       const minVoteAmount = Math.max(100, Number(match.min_vote_amount ?? 100));
@@ -3862,7 +3886,7 @@ app.delete("/api/votes/:id/cancel", voteRateLimit, async (request, response, nex
         where votes.id = $1
           and votes.match_id = matches.id
           and matches.result_option_id is null
-          and matches.closes_at > now()
+          and ((matches.closes_at at time zone 'UTC') at time zone 'Asia/Tokyo') > now()
           and votes.created_at > now() - interval '5 minutes'
           and not exists (
             select 1
@@ -4104,7 +4128,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       response.status(404).json({ error: "Match not found" });
       return;
     }
-    if (match.result_option_id || new Date(match.closes_at).getTime() <= Date.now()) {
+    if (isVotingClosed(match)) {
       response.status(409).json({ error: "Voting is closed" });
       return;
     }
@@ -4118,10 +4142,10 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       optionLabel: optionsResult.rows.find((option) => option.id === rule.optionId)?.label ?? rule.optionLabel,
     }));
     const maxAmount = rules.reduce((sum, rule) => sum + rule.maxAmount, 0);
-    const defaultExecuteDate = new Date(new Date(match.closes_at).getTime() - 10 * 60 * 1000);
+    const closesAtMs = getMatchClosesAtMs(match);
+    const defaultExecuteDate = Number.isFinite(closesAtMs) ? new Date(closesAtMs - 10 * 60 * 1000) : new Date(NaN);
     const requestedExecuteAt = String(request.body?.executeAt ?? "");
     const executeDate = requestedExecuteAt ? new Date(requestedExecuteAt) : defaultExecuteDate;
-    const closesAt = new Date(match.closes_at);
 
     if (!matchId || !rules.length || maxAmount < 100 || maxAmount > 1_000_000_000) {
       response.status(400).json({ error: "有効な予約投票条件を1件以上入力してください。" });
@@ -4135,7 +4159,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       response.status(409).json({ error: "実行時刻が過去のため予約できません。" });
       return;
     }
-    if (!Number.isNaN(closesAt.getTime()) && executeDate.getTime() >= closesAt.getTime()) {
+    if (Number.isFinite(closesAtMs) && executeDate.getTime() >= closesAtMs) {
       response.status(409).json({ error: "締切時刻以降には予約できません。" });
       return;
     }
