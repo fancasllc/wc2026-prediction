@@ -273,7 +273,12 @@ function getMatchClosesAtMs(match) {
 
 function isVotingClosed(match, nowMs = Date.now()) {
   const closesAtMs = getMatchClosesAtMs(match);
-  return Boolean(match?.result_option_id ?? match?.resultOptionId) || !Number.isFinite(closesAtMs) || closesAtMs <= nowMs;
+  return (
+    Boolean(match?.voided_at ?? match?.voidedAt) ||
+    Boolean(match?.result_option_id ?? match?.resultOptionId) ||
+    !Number.isFinite(closesAtMs) ||
+    closesAtMs <= nowMs
+  );
 }
 
 function createVotingClosedError() {
@@ -857,7 +862,9 @@ async function initializeDatabase() {
       add column if not exists handicap_points numeric(4, 1) not null default 0,
       add column if not exists min_vote_amount numeric(14, 2) not null default 100,
       add column if not exists home_score numeric(5, 1),
-      add column if not exists away_score numeric(5, 1);
+      add column if not exists away_score numeric(5, 1),
+      add column if not exists voided_at timestamptz,
+      add column if not exists void_reason text not null default '';
 
     create table if not exists admin_audit_logs (
       id text primary key,
@@ -1077,6 +1084,7 @@ async function refreshTodayUserPointSnapshots(db = pool) {
             sum(votes.amount) filter (where votes.option_id = matches.result_option_id) as winning_pool
           from matches
           join votes on votes.match_id = matches.id
+          where matches.voided_at is null
           group by matches.id, matches.result_option_id
         ),
         adjustment_sums as (
@@ -1094,6 +1102,7 @@ async function refreshTodayUserPointSnapshots(db = pool) {
           (coalesce(sum(
             case
               when matches.result_option_id is not null
+                and matches.voided_at is null
                 and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
               then
                 case
@@ -1108,6 +1117,7 @@ async function refreshTodayUserPointSnapshots(db = pool) {
           (coalesce(sum(
             case
               when matches.result_option_id is not null
+                and matches.voided_at is null
                 and coalesce(matches.settled_at, matches.closes_at) <= cutoff.cutoff_at
                 and votes.option_id = matches.result_option_id
                 and coalesce(match_pools.winning_pool, 0) > 0
@@ -1175,6 +1185,8 @@ function buildCsv(rows) {
     "result_option_id",
     "result_option_label",
     "settled_at",
+    "voided_at",
+    "void_reason",
     "option_id",
     "option_label",
     "option_sort_order",
@@ -1209,8 +1221,11 @@ function buildCsv(rows) {
 }
 
 function calculateBackupPayout(vote, match, votes) {
+  if (match?.voided_at) {
+    return { settled: false, voided: true, won: false, gross: 0, net: 0, totalPool: 0, winningPool: 0 };
+  }
   if (!match?.result_option_id) {
-    return { settled: false, won: false, gross: 0, net: 0, totalPool: 0, winningPool: 0 };
+    return { settled: false, voided: false, won: false, gross: 0, net: 0, totalPool: 0, winningPool: 0 };
   }
 
   const matchVotes = votes.filter((item) => item.match_id === match.id);
@@ -1223,6 +1238,7 @@ function calculateBackupPayout(vote, match, votes) {
 
   return {
     settled: true,
+    voided: false,
     won,
     gross,
     net: gross - Number(vote.amount),
@@ -1260,6 +1276,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         handicap_option_id,
         handicap_points,
         min_vote_amount,
+        voided_at,
+        void_reason,
         settled_at,
         created_at
       from matches
@@ -1348,6 +1366,8 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       handicap_option_id: match.handicap_option_id ?? "",
       handicap_points: Number(match.handicap_points ?? 0),
       min_vote_amount: Number(match.min_vote_amount ?? 100),
+      voided_at: match.voided_at?.toISOString?.() ?? "",
+      void_reason: match.void_reason ?? "",
     });
   }
 
@@ -1387,7 +1407,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
       user_name: vote.user_name,
       amount: vote.amount,
       vote_created_at: vote.created_at?.toISOString?.() ?? vote.created_at,
-      vote_result: payout.settled ? (payout.won ? "win" : "lose") : "pending",
+      vote_result: payout.voided ? "voided" : payout.settled ? (payout.won ? "win" : "lose") : "pending",
       return_points: payout.settled ? Math.round(payout.gross) : "",
       net_points: payout.settled ? Math.round(payout.net) : "",
       total_pool: payout.settled ? Math.round(payout.totalPool) : "",
@@ -1406,7 +1426,7 @@ async function createDatabaseBackup(reason = "manual", db = pool) {
         const payout = calculateBackupPayout(vote, match, votes);
         acc.voteCount += 1;
         acc.totalStaked += Number(vote.amount);
-        acc.pendingPoints += payout.settled ? 0 : Number(vote.amount);
+        acc.pendingPoints += payout.settled || payout.voided ? 0 : Number(vote.amount);
         acc.grossReturn += payout.settled ? payout.gross : 0;
         acc.settledNet += payout.settled ? payout.net : 0;
         return acc;
@@ -2067,6 +2087,7 @@ async function loadAutoBetSnapshot(matchId, db = pool) {
           starts_at as "startsAt",
           closes_at as "closesAt",
           result_option_id as "resultOptionId",
+          voided_at as "voidedAt",
           handicap_option_id as "handicapOptionId",
           handicap_points::float as "handicapPoints",
           min_vote_amount::float as "minVoteAmount"
@@ -2627,7 +2648,7 @@ async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = poo
 
   const matchResult = await db.query(
     `
-      select id, closes_at, result_option_id
+      select id, closes_at, result_option_id, voided_at
       from matches
       where id = $1
       for update
@@ -3150,6 +3171,8 @@ async function getState() {
         handicap_option_id as "handicapOptionId",
         handicap_points::float as "handicapPoints",
         min_vote_amount::float as "minVoteAmount",
+        voided_at as "voidedAt",
+        void_reason as "voidReason",
         settled_at as "settledAt"
       from matches
       order by starts_at asc, created_at asc
@@ -3239,6 +3262,8 @@ async function getState() {
       startsAt: toIsoLike(match.startsAt),
       closesAt: toIsoLike(match.closesAt),
       settledAt: match.settledAt ? new Date(match.settledAt).toISOString() : undefined,
+      voidedAt: match.voidedAt ? new Date(match.voidedAt).toISOString() : undefined,
+      voidReason: match.voidReason || undefined,
       resultOptionId: match.resultOptionId ?? undefined,
       homeScore: match.homeScore == null ? undefined : Number(match.homeScore),
       awayScore: match.awayScore == null ? undefined : Number(match.awayScore),
@@ -3689,7 +3714,7 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
     await withTransaction(async (client) => {
       const matchResult = await client.query(
         `
-          select id, closes_at, result_option_id, min_vote_amount
+          select id, closes_at, result_option_id, voided_at, min_vote_amount
           from matches
           where id = $1
           for update
@@ -3761,13 +3786,18 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
     const settlement = await withTransaction(async (client) => {
       const matchResult = await client.query(
         `
-          select id, title, notice, handicap_option_id, handicap_points
+          select id, title, notice, handicap_option_id, handicap_points, voided_at
           from matches
           where id = $1
         `,
         [matchId],
       );
       if (!matchResult.rowCount) return null;
+      if (matchResult.rows[0].voided_at) {
+        const error = new Error("Match has been voided");
+        error.status = 409;
+        throw error;
+      }
 
       const optionsResult = await client.query(
         `
@@ -3840,10 +3870,41 @@ app.post("/api/matches/:id/settle", requireAdmin, async (request, response, next
   }
 });
 
+app.post("/api/matches/:id/void", requireAdmin, async (request, response, next) => {
+  try {
+    const reason = clampText(request.body?.reason || "試合無効による投票返還", 240);
+    const result = await query(
+      `
+        update matches
+        set
+          result_option_id = null,
+          home_score = null,
+          away_score = null,
+          notice = regexp_replace(notice, E'\\n?\\\\[PK_WINNER_OPTION_ID:[^\\\\]]+\\\\]', '', 'g'),
+          settled_at = null,
+          voided_at = now(),
+          void_reason = $2
+        where id = $1
+        returning id
+      `,
+      [request.params.id, reason],
+    );
+    if (!result.rowCount) {
+      response.status(404).json({ error: "Match not found" });
+      return;
+    }
+    await writeAuditLog("match.void", request.params.id, { reason });
+    scheduleSettlementBackup(request.params.id);
+    response.json({ state: await getState() });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/matches/:id/reopen", requireAdmin, async (request, response, next) => {
   try {
     await query(
-      "update matches set result_option_id = null, home_score = null, away_score = null, notice = regexp_replace(notice, E'\\n?\\\\[PK_WINNER_OPTION_ID:[^\\\\]]+\\\\]', '', 'g'), settled_at = null where id = $1",
+      "update matches set result_option_id = null, home_score = null, away_score = null, notice = regexp_replace(notice, E'\\n?\\\\[PK_WINNER_OPTION_ID:[^\\\\]]+\\\\]', '', 'g'), settled_at = null, voided_at = null, void_reason = '' where id = $1",
       [request.params.id],
     );
     await writeAuditLog("match.reopen", request.params.id);
@@ -4117,7 +4178,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
 
     const matchResult = await query(
       `
-        select id, closes_at, result_option_id
+        select id, closes_at, result_option_id, voided_at
         from matches
         where id = $1
       `,

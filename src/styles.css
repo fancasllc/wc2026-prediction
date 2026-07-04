@@ -482,6 +482,11 @@ label span {
   background: #d9fff1;
 }
 
+.summary-status-pill.voided {
+  color: #31556e;
+  background: #e7f2fb;
+}
+
 .summary-title-row {
   display: flex;
   align-items: flex-start;
@@ -1303,6 +1308,11 @@ label span {
   background: #e2f0ff;
 }
 
+.status-pill.voided {
+  color: #31556e;
+  background: #e7f2fb;
+}
+
 .match-timebar {
   display: grid;
   grid-template-columns: 1fr;
@@ -1508,6 +1518,12 @@ label span {
   background: #fff6d6;
   border: 1px solid #ffe28c;
   border-radius: 8px;
+}
+
+.voided-result-panel {
+  color: #31556e;
+  background: #edf7ff;
+  border-color: #c5dff2;
 }
 
 .result-panel > div:first-child {
@@ -2551,6 +2567,10 @@ textarea:focus {
   color: var(--red);
 }
 
+.neutral {
+  color: #60748b;
+}
+
 .trend-card {
   display: grid;
   gap: 10px;
@@ -3076,6 +3096,11 @@ textarea:focus {
   border-color: #f4b2b8;
 }
 
+.person-vote-card.voided {
+  background: linear-gradient(180deg, #f7fbff 0%, #eef7ff 100%);
+  border-color: #bdd8ed;
+}
+
 .person-vote-card > div {
   display: flex;
   align-items: baseline;
@@ -3153,6 +3178,11 @@ textarea:focus {
 .vote-result-label.lost {
   color: #b82735;
   background: #ffe0e3;
+}
+
+.vote-result-label.voided {
+  color: #31556e;
+  background: #e7f2fb;
 }
 
 .balance-history-list {

@@ -101,6 +101,8 @@ type MatchRecord = {
   options: MatchOption[];
   resultOptionId?: string;
   settledAt?: string;
+  voidedAt?: string;
+  voidReason?: string;
   homeScore?: number;
   awayScore?: number;
   handicapOptionId?: string;
@@ -846,6 +848,10 @@ function getVisibleNotice(match: MatchRecord) {
   return match.notice?.replace(pkWinnerMarkerGlobalPattern, "").trim() ?? "";
 }
 
+function isMatchVoided(match: MatchRecord | undefined) {
+  return Boolean(match?.voidedAt);
+}
+
 function isDrawOption(option: MatchOption | undefined) {
   const label = option?.label ?? "";
   return label.includes("引き分け") || label.toLowerCase() === "draw";
@@ -1071,7 +1077,7 @@ function formatExternalOddsSource(source: string | undefined) {
 }
 
 function isMatchOpen(match: MatchRecord, now: Date) {
-  return !match.resultOptionId && new Date(match.closesAt).getTime() > now.getTime();
+  return !isMatchVoided(match) && !match.resultOptionId && new Date(match.closesAt).getTime() > now.getTime();
 }
 
 function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: VoteRecord[], now: Date) {
@@ -1089,6 +1095,7 @@ function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: 
 }
 
 function getStatusLabel(match: MatchRecord, now: Date) {
+  if (isMatchVoided(match)) return "無効";
   if (match.resultOptionId) return "確定済み";
   if (isMatchOpen(match, now)) return "受付中";
   return "受付終了";
@@ -1109,7 +1116,8 @@ function getMatchTotal(match: MatchRecord, votes: VoteRecord[]) {
 }
 
 function calculateVotePayout(vote: VoteRecord, match: MatchRecord, allVotes: VoteRecord[]) {
-  if (!match.resultOptionId) return { gross: 0, net: 0, won: false, settled: false };
+  if (isMatchVoided(match)) return { gross: 0, net: 0, won: false, settled: false, voided: true };
+  if (!match.resultOptionId) return { gross: 0, net: 0, won: false, settled: false, voided: false };
 
   const matchVotes = getMatchVotes(match, allVotes);
   const totalPool = matchVotes.reduce((sum, item) => sum + item.amount, 0);
@@ -1124,6 +1132,7 @@ function calculateVotePayout(vote: VoteRecord, match: MatchRecord, allVotes: Vot
     net: gross - vote.amount,
     won,
     settled: true,
+    voided: false,
   };
 }
 
@@ -1134,10 +1143,11 @@ function getVotePayout(
 ) {
   return match
     ? calculateVotePayout(vote, match, allVotes)
-    : { gross: 0, net: 0, won: false, settled: false };
+    : { gross: 0, net: 0, won: false, settled: false, voided: false };
 }
 
 function getVoteOutcomeText(payout: ReturnType<typeof calculateVotePayout>) {
+  if (payout.voided) return "返還済み";
   if (!payout.settled) return "未確定";
   return payout.won ? "○ 的中" : "× 不的中";
 }
@@ -1879,7 +1889,7 @@ function App() {
   const visibleClosedMatches = useMemo(
     () =>
       closedMatches.filter((match) =>
-        closedFilter === "settled" ? Boolean(match.resultOptionId) : !match.resultOptionId,
+        closedFilter === "settled" ? Boolean(match.resultOptionId || match.voidedAt) : !match.resultOptionId && !isMatchVoided(match),
       ),
     [closedFilter, closedMatches],
   );
@@ -2009,10 +2019,10 @@ function App() {
             const match = data.matches.find((item) => item.id === vote.matchId);
             if (!match) return acc;
             const payout = calculateVotePayout(vote, match, data.votes);
-            acc.staked += vote.amount;
+            acc.staked += payout.voided ? 0 : vote.amount;
             acc.gross += payout.gross;
             acc.net += payout.settled ? payout.net : 0;
-            acc.pending += payout.settled ? 0 : vote.amount;
+            acc.pending += payout.settled || payout.voided ? 0 : vote.amount;
             acc.settledVotes += payout.settled ? 1 : 0;
             acc.wonVotes += payout.settled && payout.won ? 1 : 0;
             return acc;
@@ -2173,8 +2183,8 @@ function App() {
         const match = data.matches.find((item) => item.id === vote.matchId);
         if (!match) return acc;
         const payout = calculateVotePayout(vote, match, data.votes);
-        acc.totalStake += vote.amount;
-        acc.pendingStake += payout.settled ? 0 : vote.amount;
+        acc.totalStake += payout.voided ? 0 : vote.amount;
+        acc.pendingStake += payout.settled || payout.voided ? 0 : vote.amount;
         acc.grossPayout += payout.gross;
         acc.net += payout.settled ? payout.net : 0;
         acc.settledVotes += payout.settled ? 1 : 0;
@@ -2207,7 +2217,7 @@ function App() {
         const match = data.matches.find((item) => item.id === vote.matchId);
         const payout = match
           ? calculateVotePayout(vote, match, data.votes)
-          : { gross: 0, net: 0, won: false, settled: false };
+          : { gross: 0, net: 0, won: false, settled: false, voided: false };
         return {
           id: vote.id,
           type: "vote" as const,
@@ -2645,6 +2655,34 @@ function App() {
     setResultDrafts((current) => ({ ...current, [match.id]: "" }));
   }
 
+  async function voidMatch(match: MatchRecord) {
+    if (!adminToken) {
+      window.alert("先に管理者認証をしてください。");
+      return;
+    }
+    const reason = window.prompt(
+      `「${match.title}」を無効化し、投票ポイントを返還扱いにします。\n\n理由を入力してください。`,
+      "試合無効による投票返還",
+    );
+    if (reason === null) return;
+    const trimmedReason = reason.trim() || "試合無効による投票返還";
+    const ok = window.confirm(
+      `「${match.title}」を無効試合にします。\n\nこの試合の投票は履歴に残りますが、投票中ポイント・確定収支・リターン率の計算から除外されます。\n\n理由: ${trimmedReason}\n\n本当に実行しますか？`,
+    );
+    if (!ok) return;
+
+    await syncState(() =>
+      postState(
+        `/api/matches/${match.id}/void`,
+        { reason: trimmedReason },
+        "POST",
+        adminToken,
+      ),
+    );
+    setScoreDrafts((current) => ({ ...current, [match.id]: { home: "", away: "", pkWinnerOptionId: "" } }));
+    setResultDrafts((current) => ({ ...current, [match.id]: "" }));
+  }
+
   async function deleteMatch(matchId: string) {
     if (!adminToken) {
       window.alert("先に管理者認証をしてください。");
@@ -2979,7 +3017,15 @@ function App() {
             <article className="match-card detail-card">
               <MatchHeader match={selectedMatch} now={now} votes={visibleVotes} showStatus={false} />
 
-              {selectedMatch.resultOptionId && (
+              {selectedMatch.voidedAt ? (
+                <div className="result-panel voided-result-panel">
+                  <div>
+                    <RotateCcw size={18} aria-hidden />
+                    無効試合: 投票ポイント返還済み
+                  </div>
+                  <span>{selectedMatch.voidReason || "試合無効による投票返還"}</span>
+                </div>
+              ) : selectedMatch.resultOptionId && (
                 <div className="result-panel">
                   <div>
                     <CheckCircle2 size={18} aria-hidden />
@@ -3806,7 +3852,7 @@ function App() {
                               <strong><MatchTitleWithFlags title={match.title} /></strong>
                               <small>{formatDateTime(match.closesAt)} 締切 / {getMatchVotes(match, visibleVotes).length}件</small>
                             </span>
-                            <b>{scoreMode ? "得点を入力" : "結果を選ぶ"}</b>
+                            <b>{isMatchVoided(match) ? "無効・返還済み" : scoreMode ? "得点を入力" : "結果を選ぶ"}</b>
                           </summary>
                           <AdminSettleCard
                             adminToken={adminToken}
@@ -3814,6 +3860,7 @@ function App() {
                             now={now}
                             onDelete={() => deleteMatch(match.id)}
                             onReopen={() => reopenMatch(match)}
+                            onVoid={() => voidMatch(match)}
                             onSelect={(optionId) =>
                               setResultDrafts((current) => ({ ...current, [match.id]: optionId }))
                             }
@@ -4022,8 +4069,8 @@ function App() {
                           return (
                             <tr key={vote.id}>
                               <td>
-                                {payout.settled ? (
-                                  <span className="locked-action">確定済み</span>
+                                {payout.settled || payout.voided ? (
+                                  <span className="locked-action">{payout.voided ? "返還済み" : "確定済み"}</span>
                                 ) : (
                                   <button
                                     className="table-delete"
@@ -4041,9 +4088,11 @@ function App() {
                               <td>{optionLabel(match, vote.optionId)}</td>
                               <td>{formatPoints(vote.amount)}</td>
                               <td>{getVoteOutcomeText(payout)}</td>
-                              <td>{payout.settled ? formatPoints(payout.gross) : "-"}</td>
+                              <td>{payout.voided ? "返還" : payout.settled ? formatPoints(payout.gross) : "-"}</td>
                               <td className={payout.net >= 0 ? "positive" : "negative"}>
-                                {payout.settled
+                                {payout.voided
+                                  ? "±0 pt"
+                                  : payout.settled
                                   ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
                                   : "-"}
                               </td>
@@ -4937,23 +4986,24 @@ function MatchSummaryCard({
   const oddsItems = getOddsTickerItems(match, votes);
   const open = isMatchOpen(match, now);
   const settled = Boolean(match.resultOptionId);
+  const voided = isMatchVoided(match);
   const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
       {!open && (
         <span className="summary-status-line">
-          <span className={`summary-status-pill ${settled ? "settled" : "closed"}`}>
-            {settled ? "確定済み" : "締切済み"}
+          <span className={`summary-status-pill ${voided ? "voided" : settled ? "settled" : "closed"}`}>
+            {voided ? "無効・返還済み" : settled ? "確定済み" : "締切済み"}
           </span>
-          {settled && (
+          {settled && !voided && (
             <b>
               確定結果: {optionLabel(match, match.resultOptionId ?? "")}
             </b>
           )}
         </span>
       )}
-      {settled && <ScoreOutcome match={match} compact />}
+      {settled && !voided && <ScoreOutcome match={match} compact />}
       <span className="summary-title-row">
         <strong><MatchTitleWithFlags title={match.title} /></strong>
       </span>
@@ -5138,7 +5188,7 @@ function MatchHeader({
 }) {
   const total = getMatchTotal(match, votes);
   const status = getStatusLabel(match, now);
-  const statusClass = isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
+  const statusClass = isMatchVoided(match) ? "voided" : isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
   const handicap = getMatchHandicap(match);
   const notice = getVisibleNotice(match);
 
@@ -5245,21 +5295,22 @@ function PersonVoteList({
   const [settledSort, setSettledSort] = useState<"newest" | "oldest">("newest");
   const getVoteMatch = (vote: VoteRecord) => matches.find((item) => item.id === vote.matchId);
   const getVoteDisplayTime = (vote: VoteRecord, match: MatchRecord | undefined) => (
-    match?.resultOptionId ? match.settledAt ?? vote.createdAt : vote.createdAt
+    match?.voidedAt ?? (match?.resultOptionId ? match.settledAt ?? vote.createdAt : vote.createdAt)
   );
   const filteredVotes = votes
     .filter((vote) => {
       const match = getVoteMatch(vote);
       const settled = Boolean(match?.resultOptionId);
-      if (filter === "pending") return !settled;
+      const voided = isMatchVoided(match);
+      if (filter === "pending") return !settled && !voided;
       if (filter === "settled") return settled;
       return true;
     })
     .sort((a, b) => {
       const aMatch = getVoteMatch(a);
       const bMatch = getVoteMatch(b);
-      const aSettled = Boolean(aMatch?.resultOptionId);
-      const bSettled = Boolean(bMatch?.resultOptionId);
+      const aSettled = Boolean(aMatch?.resultOptionId || aMatch?.voidedAt);
+      const bSettled = Boolean(bMatch?.resultOptionId || bMatch?.voidedAt);
       const aTime = new Date(getVoteDisplayTime(a, aMatch)).getTime();
       const bTime = new Date(getVoteDisplayTime(b, bMatch)).getTime();
       if (filter === "pending") return bTime - aTime;
@@ -5324,7 +5375,7 @@ function PersonVoteList({
               const match = getVoteMatch(vote);
               const payout = getVotePayout(vote, match, allVotes);
               const status = getVoteOutcomeText(payout);
-              const outcomeClass = payout.settled ? (payout.won ? "won" : "lost") : "pending";
+              const outcomeClass = payout.voided ? "voided" : payout.settled ? (payout.won ? "won" : "lost") : "pending";
               const canOpenMatch = Boolean(match);
               const displayTime = getVoteDisplayTime(vote, match);
 
@@ -5360,12 +5411,14 @@ function PersonVoteList({
                     </div>
                     <div>
                       <dt>還元</dt>
-                      <dd>{payout.settled ? formatPoints(payout.gross) : "-"}</dd>
+                      <dd>{payout.voided ? "返還" : payout.settled ? formatPoints(payout.gross) : "-"}</dd>
                     </div>
                     <div>
                       <dt>収支</dt>
                       <dd className={payout.net >= 0 ? "positive" : "negative"}>
-                        {payout.settled
+                        {payout.voided
+                          ? "±0 pt"
+                          : payout.settled
                           ? `${payout.net >= 0 ? "+" : ""}${formatPoints(payout.net)}`
                           : "-"}
                       </dd>
@@ -5394,6 +5447,7 @@ function AdminSettleCard({
   now,
   onDelete,
   onReopen,
+  onVoid,
   onSelect,
   onScoreChange,
   onSettle,
@@ -5407,6 +5461,7 @@ function AdminSettleCard({
   now: Date;
   onDelete: () => void;
   onReopen: () => void;
+  onVoid: () => void;
   onSelect: (optionId: string) => void;
   onScoreChange: (draft: ScoreDraft) => void;
   onSettle: () => void;
@@ -5418,6 +5473,7 @@ function AdminSettleCard({
   const total = getMatchTotal(match, votes);
   const matchVotes = getMatchVotes(match, votes);
   const settled = Boolean(match.resultOptionId);
+  const voided = isMatchVoided(match);
   const [homeOption, awayOption] = getTeamOptions(match);
   const homeScoreValue = parseScoreInput(scoreDraft.home);
   const awayScoreValue = parseScoreInput(scoreDraft.away);
@@ -5433,6 +5489,15 @@ function AdminSettleCard({
   return (
     <article className="admin-settle-card">
       <MatchHeader match={match} now={now} votes={votes} />
+      {voided && (
+        <div className="result-panel voided-result-panel">
+          <div>
+            <RotateCcw size={18} aria-hidden />
+            無効試合: 投票ポイント返還済み
+          </div>
+          <span>{match.voidReason || "試合無効による投票返還"}</span>
+        </div>
+      )}
       <div className="admin-settle-stats">
         <span>{matchVotes.length}件の投票</span>
         <span>総プール {formatPoints(total)}</span>
@@ -5446,6 +5511,7 @@ function AdminSettleCard({
               <input
                 inputMode="numeric"
                 min={0}
+                disabled={voided}
                 onChange={(event) => onScoreChange({ ...scoreDraft, home: event.target.value })}
                 pattern="[0-9]*"
                 placeholder="0"
@@ -5459,6 +5525,7 @@ function AdminSettleCard({
               <input
                 inputMode="numeric"
                 min={0}
+                disabled={voided}
                 onChange={(event) => onScoreChange({ ...scoreDraft, away: event.target.value })}
                 pattern="[0-9]*"
                 placeholder="0"
@@ -5473,7 +5540,7 @@ function AdminSettleCard({
               {[homeOption, awayOption].filter(Boolean).map((option) => (
                 <button
                   className={scoreDraft.pkWinnerOptionId === option.id ? "selected" : ""}
-                  disabled={!isRawScoreDraw || settled}
+                  disabled={!isRawScoreDraw || settled || voided}
                   key={option.id}
                   type="button"
                   onClick={() =>
@@ -5537,7 +5604,7 @@ function AdminSettleCard({
                 selected ? "selected" : "",
                 result ? "result" : "",
               ].filter(Boolean).join(" ")}
-              disabled={scoreMode || settled}
+              disabled={scoreMode || settled || voided}
               key={option.id}
               onClick={() => onSelect(option.id)}
               type="button"
@@ -5558,17 +5625,23 @@ function AdminSettleCard({
       <div className="admin-settle-actions">
         <button
           className="primary-action"
-          disabled={!adminToken || settled || (scoreMode ? !scoreEvaluation?.ok : !selectedOptionId)}
+          disabled={!adminToken || settled || voided || (scoreMode ? !scoreEvaluation?.ok : !selectedOptionId)}
           onClick={onSettle}
           type="button"
         >
           <CheckCircle2 size={18} aria-hidden />
           {scoreMode ? "得点から確定" : "この結果で確定"}
         </button>
-        {settled && (
+        {(settled || voided) && (
           <button className="ghost-action" disabled={!adminToken} onClick={onReopen} type="button">
             <RotateCcw size={18} aria-hidden />
-            確定解除
+            {voided ? "無効解除" : "確定解除"}
+          </button>
+        )}
+        {!voided && (
+          <button className="ghost-action danger" disabled={!adminToken} onClick={onVoid} type="button">
+            <RotateCcw size={18} aria-hidden />
+            無効化して返還
           </button>
         )}
         <button className="ghost-action danger" disabled={!adminToken} onClick={onDelete} type="button">
@@ -5591,7 +5664,7 @@ function PersonBalanceHistory({
         date: string;
         vote: VoteRecord;
         match: MatchRecord | undefined;
-        payout: { gross: number; net: number; won: boolean; settled: boolean };
+        payout: { gross: number; net: number; won: boolean; settled: boolean; voided?: boolean };
         amount: number;
         balance: number;
       }
@@ -5986,11 +6059,17 @@ function BettorChip({
       <small>
         {optionLabel(match, vote.optionId)} / {formatDateTime(vote.createdAt)}
       </small>
-      {payout.settled && (
-        <small className={payout.won ? "positive" : "negative"}>
-          {getVoteOutcomeText(payout)} / リターン {formatPoints(payout.gross)} / 収支{" "}
-          {payout.net >= 0 ? "+" : ""}
-          {formatPoints(payout.net)}
+      {(payout.settled || payout.voided) && (
+        <small className={payout.voided ? "neutral" : payout.won ? "positive" : "negative"}>
+          {payout.voided
+            ? "返還済み / リターン 返還 / 収支 ±0 pt"
+            : (
+              <>
+                {getVoteOutcomeText(payout)} / リターン {formatPoints(payout.gross)} / 収支{" "}
+                {payout.net >= 0 ? "+" : ""}
+                {formatPoints(payout.net)}
+              </>
+            )}
         </small>
       )}
       {cancellable && (
