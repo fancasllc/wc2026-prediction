@@ -12,6 +12,14 @@
 - DB変更の有無
 - 戻す場合の方針
 
+## 2026-07-08
+
+### pending - Seed confirmed quarterfinal matches
+
+- 変更内容: 準々決勝の確定4試合を自動登録対象に追加。開始時刻と締切時刻は同一で、選択肢は国名2択のみ。
+- DB変更: 既存スキーマ変更なし。デプロイ時に未登録の試合データを `matches` / `match_options` に追加。
+- 戻す場合: このコミットを `git revert`。既に本番DBへ登録済みの試合を消す場合は、投票有無を確認して管理画面で個別対応する。
+
 ## 2026-07-04
 
 ### pending - Seed confirmed round of 16 matches

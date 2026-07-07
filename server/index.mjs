@@ -711,6 +711,38 @@ const knockoutAutoRegisterMatches = [
     startsAt: "2026-07-08T05:00",
     options: ["スイス", "コロンビア"],
   },
+  {
+    id: "wc26-qf-france-morocco",
+    title: "フランス VS モロッコ",
+    stage: "準々決勝",
+    venue: "Boston Stadium",
+    startsAt: "2026-07-10T05:00",
+    options: ["フランス", "モロッコ"],
+  },
+  {
+    id: "wc26-qf-spain-belgium",
+    title: "スペイン VS ベルギー",
+    stage: "準々決勝",
+    venue: "Los Angeles Stadium",
+    startsAt: "2026-07-11T04:00",
+    options: ["スペイン", "ベルギー"],
+  },
+  {
+    id: "wc26-qf-norway-england",
+    title: "ノルウェー VS イングランド",
+    stage: "準々決勝",
+    venue: "Miami Stadium",
+    startsAt: "2026-07-12T06:00",
+    options: ["ノルウェー", "イングランド"],
+  },
+  {
+    id: "wc26-qf-argentina-switzerland",
+    title: "アルゼンチン VS スイス",
+    stage: "準々決勝",
+    venue: "Kansas City Stadium",
+    startsAt: "2026-07-12T10:00",
+    options: ["アルゼンチン", "スイス"],
+  },
 ];
 
 function normalizeFixtureText(value) {
