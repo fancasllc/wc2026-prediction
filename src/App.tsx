@@ -1337,7 +1337,7 @@ function ReferenceMenu({ onAddClick }: { onAddClick: () => void }) {
 function App() {
   const now = useNow();
   const [view, setView] = useState<View>("open");
-  const [closedFilter, setClosedFilter] = useState<"settled" | "pending">("settled");
+  const [closedFilter, setClosedFilter] = useState<"all" | "settled" | "pending">("all");
   const [peopleSort, setPeopleSort] = useState<{
     key: "net" | "return" | "win";
     direction: "desc" | "asc";
@@ -1888,9 +1888,11 @@ function App() {
 
   const visibleClosedMatches = useMemo(
     () =>
-      closedMatches.filter((match) =>
-        closedFilter === "settled" ? Boolean(match.resultOptionId || match.voidedAt) : !match.resultOptionId && !isMatchVoided(match),
-      ),
+      closedMatches.filter((match) => {
+        if (closedFilter === "all") return true;
+        if (closedFilter === "settled") return Boolean(match.resultOptionId || match.voidedAt);
+        return !match.resultOptionId && !isMatchVoided(match);
+      }),
     [closedFilter, closedMatches],
   );
 
@@ -2980,6 +2982,13 @@ function App() {
           <section className="view-stack">
             <div className="closed-filter-control" aria-label="締切済み試合の表示切り替え">
               <button
+                className={closedFilter === "all" ? "active" : ""}
+                type="button"
+                onClick={() => setClosedFilter("all")}
+              >
+                全て
+              </button>
+              <button
                 className={closedFilter === "settled" ? "active" : ""}
                 type="button"
                 onClick={() => setClosedFilter("settled")}
@@ -3006,7 +3015,15 @@ function App() {
                   />
                 ))
               ) : (
-                <EmptyState title={closedFilter === "settled" ? "確定済みの予想テーマはありません" : "未確定の予想テーマはありません"} />
+                <EmptyState
+                  title={
+                    closedFilter === "all"
+                      ? "締切済みの予想テーマはありません"
+                      : closedFilter === "settled"
+                        ? "確定済みの予想テーマはありません"
+                        : "未確定の予想テーマはありません"
+                  }
+                />
               )}
             </div>
           </section>
