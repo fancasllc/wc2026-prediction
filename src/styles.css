@@ -648,6 +648,36 @@ label span {
   line-height: 1.35;
 }
 
+.all-in-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 14px;
+  color: #ffffff;
+  font-weight: 950;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.22), transparent 30%),
+    linear-gradient(135deg, #172554 0%, #0f6b91 48%, #00a89c 100%);
+  border: 2px solid #67e8f9;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 -4px 0 rgba(3, 44, 88, 0.42),
+    0 10px 20px rgba(0, 91, 136, 0.26);
+}
+
+.all-in-action:hover {
+  filter: brightness(1.06);
+}
+
+.all-in-action:disabled {
+  color: #bfd4df;
+  background: linear-gradient(135deg, #597184, #7d98a7);
+  border-color: #b8ced8;
+  box-shadow: none;
+}
+
 .schedule-min-vote-field {
   display: grid;
   gap: 5px;
@@ -1893,6 +1923,62 @@ label span {
   margin: 0;
   font-weight: 950;
   overflow-wrap: anywhere;
+}
+
+.all-in-confirm {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 12% 16%, rgba(255, 255, 255, 0.2), transparent 32%),
+    linear-gradient(135deg, #071b4a 0%, #085e82 55%, #078477 100%);
+  border: 2px solid #67e8f9;
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(0, 65, 120, 0.26);
+}
+
+.all-in-confirm-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 950;
+}
+
+.all-in-confirm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.all-in-confirm-grid div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+
+.all-in-confirm-grid span {
+  color: #b9f6ff;
+  font-size: 0.68rem;
+  font-weight: 950;
+}
+
+.all-in-confirm-grid b {
+  font-size: 0.86rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.all-in-confirm p {
+  margin: 0;
+  color: #dffcff;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.45;
 }
 
 .cancel-limit-note {

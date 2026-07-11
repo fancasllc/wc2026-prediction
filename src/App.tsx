@@ -273,6 +273,11 @@ type PendingVote = {
   optionLabel: string;
   userName: string;
   amount: number;
+  allInSummary?: {
+    net: number;
+    pending: number;
+    available: number;
+  };
 };
 
 type PendingVoteDelete = {
@@ -2279,6 +2284,24 @@ function App() {
     }));
   }
 
+  function getAllInSummary(nameInput: string) {
+    const normalizedName = normalizeName(nameInput);
+    if (!normalizedName) return null;
+
+    const canonicalName = visibleKnownUsers.find((name) => normalizeName(name) === normalizedName);
+    if (!canonicalName) return null;
+
+    const row = userRows.find((item) => item.name === canonicalName);
+    if (!row) return null;
+
+    return {
+      userName: canonicalName,
+      net: row.net,
+      pending: row.pending,
+      available: Math.floor(row.net - row.pending),
+    };
+  }
+
   async function handleVote(match: MatchRecord, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const draft = getDraft(match);
@@ -2318,6 +2341,69 @@ function App() {
       optionLabel: optionDisplayLabel(match, selectedOption),
       userName: name,
       amount,
+    });
+  }
+
+  function handleAllIn(match: MatchRecord) {
+    const draft = getDraft(match);
+
+    if (!hasRemoteState) {
+      window.alert("本番DBとの同期が終わってから投票してください。画面を更新してもう一度お試しください。");
+      return;
+    }
+
+    if (!isMatchOpen(match, now)) {
+      window.alert("この試合は投票締切を過ぎています。");
+      return;
+    }
+
+    const allInSummary = getAllInSummary(draft.name);
+    if (!allInSummary) {
+      window.alert("オールインするユーザーを確認できませんでした。登録済みの名前を入力してください。");
+      return;
+    }
+
+    if (!draft.optionId) {
+      window.alert("オールインする投票先を選んでください。");
+      return;
+    }
+
+    const minVoteAmount = getMatchMinVoteAmount(match);
+    if (allInSummary.available <= 0) {
+      window.alert(
+        [
+          "オールインする余裕がありません。",
+          `確定収支: ${allInSummary.net >= 0 ? "+" : ""}${formatPoints(allInSummary.net)}`,
+          `投票中: ${formatPoints(allInSummary.pending)}`,
+          `安定ポイント: ${formatPoints(Math.max(0, allInSummary.available))}`,
+        ].join("\n"),
+      );
+      return;
+    }
+
+    if (allInSummary.available < minVoteAmount) {
+      window.alert(
+        [
+          "オールイン可能なポイントが、この試合の最低投票ポイントに届いていません。",
+          `安定ポイント: ${formatPoints(allInSummary.available)}`,
+          `最低投票pt: ${formatPoints(minVoteAmount)}`,
+        ].join("\n"),
+      );
+      return;
+    }
+
+    const selectedOption = match.options.find((option) => option.id === draft.optionId);
+    setPendingVote({
+      matchId: match.id,
+      optionId: draft.optionId,
+      optionLabel: optionDisplayLabel(match, selectedOption),
+      userName: allInSummary.userName,
+      amount: allInSummary.available,
+      allInSummary: {
+        net: allInSummary.net,
+        pending: allInSummary.pending,
+        available: allInSummary.available,
+      },
     });
   }
 
@@ -3060,6 +3146,7 @@ function App() {
                 now={now}
                 votes={visibleVotes}
                 onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
+                onAllIn={() => handleAllIn(selectedMatch)}
                 onSubmit={(event) => handleVote(selectedMatch, event)}
               />
 
@@ -4338,6 +4425,32 @@ function App() {
                 <dd>{formatPoints(pendingVote.amount)}</dd>
               </div>
             </dl>
+            {pendingVote.allInSummary && (
+              <section className="all-in-confirm" aria-label="オールイン確認">
+                <div className="all-in-confirm-heading">
+                  <Flame size={18} aria-hidden />
+                  <span>オールイン確認</span>
+                </div>
+                <div className="all-in-confirm-grid">
+                  <div>
+                    <span>確定収支</span>
+                    <b>
+                      {pendingVote.allInSummary.net >= 0 ? "+" : ""}
+                      {formatPoints(pendingVote.allInSummary.net)}
+                    </b>
+                  </div>
+                  <div>
+                    <span>投票中</span>
+                    <b>{formatPoints(pendingVote.allInSummary.pending)}</b>
+                  </div>
+                  <div>
+                    <span>安定ポイント</span>
+                    <b>{formatPoints(pendingVote.allInSummary.available)}</b>
+                  </div>
+                </div>
+                <p>投票中ポイントが全て外れる前提で残るポイントを、この投票先へ全額投入します。</p>
+              </section>
+            )}
             {pendingVoteImpact && (
               <section className="confirm-impact" aria-label="投票後のオッズ変動">
                 <div className="impact-heading">
@@ -5782,6 +5895,7 @@ function VoteForm({
   now,
   votes,
   onChange,
+  onAllIn,
   onSubmit,
 }: {
   draft: VoteDraft;
@@ -5791,6 +5905,7 @@ function VoteForm({
   now: Date;
   votes: VoteRecord[];
   onChange: (patch: Partial<VoteDraft>) => void;
+  onAllIn: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const open = isMatchOpen(match, now);
@@ -5891,6 +6006,10 @@ function VoteForm({
         <button className="primary-action" type="submit" disabled={!canSubmit}>
           <WalletCards size={18} aria-hidden />
           {isSaving ? "同期中" : "投票する"}
+        </button>
+        <button className="all-in-action" type="button" onClick={onAllIn} disabled={!canSubmit}>
+          <Flame size={18} aria-hidden />
+          オールイン（All in）
         </button>
       </div>
     </form>
