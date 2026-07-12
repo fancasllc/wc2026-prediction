@@ -1210,14 +1210,6 @@ function sortByDateAsc(a: MatchRecord, b: MatchRecord) {
   return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
 }
 
-function sortByCloseDateAsc(a: MatchRecord, b: MatchRecord) {
-  return new Date(a.closesAt).getTime() - new Date(b.closesAt).getTime();
-}
-
-function sortByCloseDateDesc(a: MatchRecord, b: MatchRecord) {
-  return new Date(b.closesAt).getTime() - new Date(a.closesAt).getTime();
-}
-
 function parseCsvMatches(text: string) {
   const parsed = Papa.parse<CsvMatchRow>(text, {
     header: true,
