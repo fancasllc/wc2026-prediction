@@ -614,6 +614,31 @@ label span {
   stroke-width: 2.8;
 }
 
+.deadline-extension-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  color: #075c55;
+  font-size: 0.66rem;
+  font-weight: 950;
+  line-height: 1.1;
+  background: linear-gradient(180deg, #dffff8, #c7fff3);
+  border: 1px solid rgba(0, 166, 147, 0.34);
+  border-radius: 999px;
+  box-shadow: 0 4px 10px rgba(0, 123, 115, 0.12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-timebar .deadline-extension-badge {
+  color: #075c55;
+  font-size: 0.66rem;
+  font-weight: 950;
+}
+
 .summary-side {
   display: grid;
   grid-template-columns: 1fr;

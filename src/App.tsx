@@ -384,6 +384,7 @@ const MIN_VOTE_AMOUNT = 100;
 const VOTE_AMOUNT_STEP = 100;
 const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 const VOTE_CANCEL_CLOCK_SKEW_MS = 10 * 1000;
+const DEADLINE_EXTENSION_WINDOW_MS = 60 * 60 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
 const hiddenUserNames = new Set(["いつき"]);
 const personIconFileNames = new Set([
@@ -781,7 +782,7 @@ function formatExternalBackupStatus(backup: BackupRecord) {
   return "外部保存未設定";
 }
 
-function minutesRemaining(closesAt: string, now: Date) {
+function minutesRemaining(closesAt: string | number | Date, now: Date) {
   const diff = new Date(closesAt).getTime() - now.getTime();
   if (diff <= 0) return "締切済み";
   const minutes = Math.ceil(diff / 60_000);
@@ -1081,13 +1082,61 @@ function formatExternalOddsSource(source: string | undefined) {
   return normalized || "PINNACLE";
 }
 
-function isMatchOpen(match: MatchRecord, now: Date) {
-  return !isMatchVoided(match) && !match.resultOptionId && new Date(match.closesAt).getTime() > now.getTime();
+function getVoteCreatedAtMs(vote: Pick<VoteRecord, "createdAt">) {
+  const value = new Date(vote.createdAt).getTime();
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function getEffectiveClosesAtMs(match: MatchRecord, votes: VoteRecord[] = []) {
+  const baseClosesAtMs = new Date(match.closesAt).getTime();
+  const startsAtMs = new Date(match.startsAt).getTime();
+  if (!Number.isFinite(baseClosesAtMs)) return baseClosesAtMs;
+  if (!Number.isFinite(startsAtMs) || startsAtMs <= baseClosesAtMs) return baseClosesAtMs;
+
+  let effectiveClosesAtMs = baseClosesAtMs;
+  const voteTimes = votes
+    .filter((vote) => vote.matchId === match.id)
+    .map(getVoteCreatedAtMs)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  for (const voteTime of voteTimes) {
+    if (voteTime < effectiveClosesAtMs - DEADLINE_EXTENSION_WINDOW_MS || voteTime >= effectiveClosesAtMs) {
+      continue;
+    }
+    effectiveClosesAtMs = Math.min(effectiveClosesAtMs + DEADLINE_EXTENSION_WINDOW_MS, startsAtMs);
+    if (effectiveClosesAtMs >= startsAtMs) break;
+  }
+
+  return effectiveClosesAtMs;
+}
+
+function getDeadlineExtensionInfo(match: MatchRecord, votes: VoteRecord[] = []) {
+  const baseClosesAtMs = new Date(match.closesAt).getTime();
+  const effectiveClosesAtMs = getEffectiveClosesAtMs(match, votes);
+  const extended =
+    Number.isFinite(baseClosesAtMs) &&
+    Number.isFinite(effectiveClosesAtMs) &&
+    effectiveClosesAtMs > baseClosesAtMs;
+
+  return {
+    baseClosesAtMs,
+    effectiveClosesAtMs,
+    extended,
+  };
+}
+
+function isMatchOpen(match: MatchRecord, now: Date, votes: VoteRecord[] = []) {
+  return (
+    !isMatchVoided(match) &&
+    !match.resultOptionId &&
+    getEffectiveClosesAtMs(match, votes) > now.getTime()
+  );
 }
 
 function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: VoteRecord[], now: Date) {
   const referenceTime = Math.max(now.getTime(), Date.now());
-  if (!match || !isMatchOpen(match, new Date(referenceTime))) return false;
+  if (!match || !isMatchOpen(match, new Date(referenceTime), votes)) return false;
   const createdAt = new Date(vote.createdAt).getTime();
   if (Number.isNaN(createdAt)) return false;
   const hasLaterVote = votes.some((item) => {
@@ -1099,10 +1148,10 @@ function canCancelVote(vote: VoteRecord, match: MatchRecord | undefined, votes: 
   return age >= -VOTE_CANCEL_CLOCK_SKEW_MS && age <= VOTE_CANCEL_WINDOW_MS;
 }
 
-function getStatusLabel(match: MatchRecord, now: Date) {
+function getStatusLabel(match: MatchRecord, now: Date, votes: VoteRecord[] = []) {
   if (isMatchVoided(match)) return "無効";
   if (match.resultOptionId) return "確定済み";
-  if (isMatchOpen(match, now)) return "受付中";
+  if (isMatchOpen(match, now, votes)) return "受付中";
   return "受付終了";
 }
 
@@ -1599,7 +1648,7 @@ function App() {
 
   function getDefaultReservationExecuteAt(match: MatchRecord) {
     const offsetMinutes = autoBetConfig?.executeOffsetMinutes ?? 10;
-    const executeDate = new Date(new Date(match.closesAt).getTime() - offsetMinutes * 60 * 1000);
+    const executeDate = new Date(getEffectiveClosesAtMs(match, visibleVotes) - offsetMinutes * 60 * 1000);
     return Number.isNaN(executeDate.getTime()) ? "" : executeDate.toISOString();
   }
 
@@ -1881,14 +1930,30 @@ function App() {
     [data.matches],
   );
 
+  const visibleKnownUsers = useMemo(
+    () => data.knownUsers.filter((name) => !isHiddenUserName(name)),
+    [data.knownUsers],
+  );
+
+  const visibleVotes = useMemo(
+    () => data.votes.filter((vote) => !isHiddenUserName(vote.userName)),
+    [data.votes],
+  );
+
   const openMatches = useMemo(
-    () => data.matches.filter((match) => isMatchOpen(match, now)).sort(sortByCloseDateAsc),
-    [data.matches, now],
+    () =>
+      data.matches
+        .filter((match) => isMatchOpen(match, now, visibleVotes))
+        .sort((a, b) => getEffectiveClosesAtMs(a, visibleVotes) - getEffectiveClosesAtMs(b, visibleVotes)),
+    [data.matches, now, visibleVotes],
   );
 
   const closedMatches = useMemo(
-    () => data.matches.filter((match) => !isMatchOpen(match, now)).sort(sortByCloseDateDesc),
-    [data.matches, now],
+    () =>
+      data.matches
+        .filter((match) => !isMatchOpen(match, now, visibleVotes))
+        .sort((a, b) => getEffectiveClosesAtMs(b, visibleVotes) - getEffectiveClosesAtMs(a, visibleVotes)),
+    [data.matches, now, visibleVotes],
   );
 
   const visibleClosedMatches = useMemo(
@@ -1901,26 +1966,16 @@ function App() {
     [closedFilter, closedMatches],
   );
 
-  const visibleKnownUsers = useMemo(
-    () => data.knownUsers.filter((name) => !isHiddenUserName(name)),
-    [data.knownUsers],
-  );
-
-  const visibleVotes = useMemo(
-    () => data.votes.filter((vote) => !isHiddenUserName(vote.userName)),
-    [data.votes],
-  );
-
   const settleCandidateMatches = useMemo(
     () =>
       data.matches
-        .filter((match) => !isMatchOpen(match, now) && !match.resultOptionId)
+        .filter((match) => !isMatchOpen(match, now, visibleVotes) && !match.resultOptionId)
         .sort((a, b) => {
-          const aTime = new Date(a.closesAt).getTime();
-          const bTime = new Date(b.closesAt).getTime();
+          const aTime = getEffectiveClosesAtMs(a, visibleVotes);
+          const bTime = getEffectiveClosesAtMs(b, visibleVotes);
           return bTime - aTime;
         }),
-    [data.matches, now],
+    [data.matches, now, visibleVotes],
   );
 
   const settledMatches = useMemo(
@@ -2313,7 +2368,7 @@ function App() {
       return;
     }
 
-    if (!isMatchOpen(match, now)) {
+    if (!isMatchOpen(match, now, visibleVotes)) {
       window.alert("この試合は投票締切を過ぎています。");
       return;
     }
@@ -2352,7 +2407,7 @@ function App() {
       return;
     }
 
-    if (!isMatchOpen(match, now)) {
+    if (!isMatchOpen(match, now, visibleVotes)) {
       window.alert("この試合は投票締切を過ぎています。");
       return;
     }
@@ -2432,7 +2487,7 @@ function App() {
           throw new Error("この選択肢は本番DB上に見つかりません。画面を更新してください。");
         }
 
-        if (!isMatchOpen(latestMatch, new Date())) {
+        if (!isMatchOpen(latestMatch, new Date(), latestState.votes)) {
           setData(latestState);
           throw new Error("この試合は投票締切を過ぎています。");
         }
@@ -2648,7 +2703,7 @@ function App() {
       window.alert("先に管理者認証をしてください。");
       return;
     }
-    if (isMatchOpen(match, now)) {
+    if (isMatchOpen(match, now, visibleVotes)) {
       window.alert("受付中の予想テーマは確定できません。締切後に確定してください。");
       return;
     }
@@ -2946,7 +3001,7 @@ function App() {
 
   function goBackFromDetail() {
     if (view === "matchDetail") {
-      setView(selectedMatch && isMatchOpen(selectedMatch, now) ? "open" : "closed");
+      setView(selectedMatch && isMatchOpen(selectedMatch, now, visibleVotes) ? "open" : "closed");
     }
     if (view === "personDetail") {
       setView("people");
@@ -2972,7 +3027,7 @@ function App() {
 
   const showReferenceOdds =
     SHOW_REFERENCE_MENU &&
-    (view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now)));
+    (view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now, visibleVotes)));
   const isMatchDetailView = view === "matchDetail";
 
   return (
@@ -3000,7 +3055,7 @@ function App() {
 
       <nav className="tabs" aria-label="メインナビゲーション">
         <button
-          className={view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now)) ? "active open-tab" : "open-tab"}
+          className={view === "open" || (view === "matchDetail" && selectedMatch && isMatchOpen(selectedMatch, now, visibleVotes)) ? "active open-tab" : "open-tab"}
           onClick={() => setView("open")}
           type="button"
         >
@@ -3008,7 +3063,7 @@ function App() {
           受付中
         </button>
         <button
-          className={view === "closed" || (view === "matchDetail" && selectedMatch && !isMatchOpen(selectedMatch, now)) ? "active closed-tab" : "closed-tab"}
+          className={view === "closed" || (view === "matchDetail" && selectedMatch && !isMatchOpen(selectedMatch, now, visibleVotes)) ? "active closed-tab" : "closed-tab"}
           onClick={() => setView("closed")}
           type="button"
         >
@@ -5114,10 +5169,11 @@ function MatchSummaryCard({
 }) {
   const total = getMatchTotal(match, votes);
   const oddsItems = getOddsTickerItems(match, votes);
-  const open = isMatchOpen(match, now);
+  const open = isMatchOpen(match, now, votes);
   const settled = Boolean(match.resultOptionId);
   const voided = isMatchVoided(match);
   const recentVoteTotal = getRecentVoteTotal(match.id, votes, now);
+  const deadlineInfo = getDeadlineExtensionInfo(match, votes);
 
   return (
     <button className="summary-card" type="button" onClick={onOpen}>
@@ -5141,8 +5197,13 @@ function MatchSummaryCard({
         <div className="summary-live">
           <span className="summary-countdown">
             <Clock3 size={16} aria-hidden />
-            {minutesRemaining(match.closesAt, now)}
+            {minutesRemaining(deadlineInfo.effectiveClosesAtMs, now)}
           </span>
+          {open && deadlineInfo.extended && (
+            <span className="deadline-extension-badge">
+              直前投票あり・期限延長
+            </span>
+          )}
           {recentVoteTotal > 0 && (
             <span className="summary-recent-votes">
               <Flame size={14} aria-hidden />
@@ -5317,10 +5378,11 @@ function MatchHeader({
   showStatus?: boolean;
 }) {
   const total = getMatchTotal(match, votes);
-  const status = getStatusLabel(match, now);
-  const statusClass = isMatchVoided(match) ? "voided" : isMatchOpen(match, now) ? "open" : match.resultOptionId ? "settled" : "closed";
+  const status = getStatusLabel(match, now, votes);
+  const statusClass = isMatchVoided(match) ? "voided" : isMatchOpen(match, now, votes) ? "open" : match.resultOptionId ? "settled" : "closed";
   const handicap = getMatchHandicap(match);
   const notice = getVisibleNotice(match);
+  const deadlineInfo = getDeadlineExtensionInfo(match, votes);
 
   return (
     <div className="match-header">
@@ -5334,8 +5396,13 @@ function MatchHeader({
         <div className="match-time-row">
           <span className="deadline">
             <Clock3 size={16} aria-hidden />
-            {minutesRemaining(match.closesAt, now)}
+            {minutesRemaining(deadlineInfo.effectiveClosesAtMs, now)}
           </span>
+          {deadlineInfo.extended && !match.resultOptionId && !isMatchVoided(match) && (
+            <span className="deadline-extension-badge">
+              直前投票あり・期限延長
+            </span>
+          )}
           <span>
             <CalendarClock size={16} aria-hidden />
             開始 {formatDateTime(match.startsAt)}
@@ -5908,7 +5975,7 @@ function VoteForm({
   onAllIn: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const open = isMatchOpen(match, now);
+  const open = isMatchOpen(match, now, votes);
   const canSubmit = open && hasRemoteState && !isSaving;
   const total = getMatchTotal(match, votes);
   const minVoteAmount = getMatchMinVoteAmount(match);

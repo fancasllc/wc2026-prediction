@@ -20,6 +20,7 @@ const isProduction = process.env.NODE_ENV === "production" || Boolean(process.en
 const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
 const rateLimitStore = new Map();
 const backupCheckIntervalMs = 15 * 60 * 1000;
+const deadlineExtensionWindowMs = 60 * 60 * 1000;
 const backupHourJst = Number(process.env.DB_BACKUP_HOUR_JST ?? 4);
 const settlementBackupDelayMs = Math.max(
   0,
@@ -271,8 +272,44 @@ function getMatchClosesAtMs(match) {
   return parseTokyoWallTimeMs(match?.closes_at ?? match?.closesAt);
 }
 
-function isVotingClosed(match, nowMs = Date.now()) {
+function getMatchStartsAtMs(match) {
+  return parseTokyoWallTimeMs(match?.starts_at ?? match?.startsAt);
+}
+
+function getVoteCreatedAtMs(vote) {
+  const date = vote?.created_at ?? vote?.createdAt;
+  const time = date instanceof Date ? date.getTime() : Date.parse(String(date ?? ""));
+  return Number.isFinite(time) ? time : NaN;
+}
+
+function getEffectiveClosesAtMs(match, votes = []) {
   const closesAtMs = getMatchClosesAtMs(match);
+  const startsAtMs = getMatchStartsAtMs(match);
+  if (!Number.isFinite(closesAtMs)) return closesAtMs;
+  if (!Number.isFinite(startsAtMs) || startsAtMs <= closesAtMs) return closesAtMs;
+
+  let effectiveClosesAtMs = closesAtMs;
+  const voteTimes = votes
+    .map(getVoteCreatedAtMs)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  for (const voteTime of voteTimes) {
+    if (
+      voteTime < effectiveClosesAtMs - deadlineExtensionWindowMs ||
+      voteTime >= effectiveClosesAtMs
+    ) {
+      continue;
+    }
+    effectiveClosesAtMs = Math.min(effectiveClosesAtMs + deadlineExtensionWindowMs, startsAtMs);
+    if (effectiveClosesAtMs >= startsAtMs) break;
+  }
+
+  return effectiveClosesAtMs;
+}
+
+function isVotingClosed(match, nowMs = Date.now(), votes = []) {
+  const closesAtMs = getEffectiveClosesAtMs(match, votes);
   return (
     Boolean(match?.voided_at ?? match?.voidedAt) ||
     Boolean(match?.result_option_id ?? match?.resultOptionId) ||
@@ -2686,7 +2723,7 @@ async function callOpenAiForAutoBet(snapshot, maxAmount) {
 async function createAutoBetAnalysis(matchId, maxAmount = autoBetDefaultMaxAmount) {
   const safeMaxAmount = Math.max(100, Math.min(1_000_000_000, Math.floor(Number(maxAmount) || autoBetDefaultMaxAmount)));
   const snapshot = await loadAutoBetSnapshot(matchId);
-  if (isVotingClosed(snapshot.match)) {
+  if (isVotingClosed(snapshot.match, Date.now(), snapshot.votes)) {
     throw createVotingClosedError();
   }
 
@@ -2760,7 +2797,7 @@ async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = poo
 
   const matchResult = await db.query(
     `
-      select id, closes_at, result_option_id, voided_at
+      select id, starts_at, closes_at, result_option_id, voided_at
       from matches
       where id = $1
       for update
@@ -2773,7 +2810,11 @@ async function insertAutoBetVote({ matchId, optionId, amount, reason }, db = poo
     error.status = 404;
     throw error;
   }
-  if (isVotingClosed(match)) {
+  const voteTimesResult = await db.query(
+    "select created_at from votes where match_id = $1 order by created_at asc",
+    [matchId],
+  );
+  if (isVotingClosed(match, Date.now(), voteTimesResult.rows)) {
     throw createVotingClosedError();
   }
 
@@ -2857,7 +2898,7 @@ function calculateMaxBetForMinimumOdds(totalPool, optionPool, minOdds, maxAmount
 
 async function runConditionalBetReservation(reservation, db = pool) {
   const snapshot = await loadAutoBetSnapshot(reservation.matchId, db);
-  if (isVotingClosed(snapshot.match)) {
+  if (isVotingClosed(snapshot.match, Date.now(), snapshot.votes)) {
     throw createVotingClosedError();
   }
 
@@ -3826,7 +3867,7 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
     await withTransaction(async (client) => {
       const matchResult = await client.query(
         `
-          select id, closes_at, result_option_id, voided_at, min_vote_amount
+          select id, starts_at, closes_at, result_option_id, voided_at, min_vote_amount
           from matches
           where id = $1
           for update
@@ -3841,7 +3882,12 @@ app.post("/api/votes", voteRateLimit, async (request, response, next) => {
         throw error;
       }
 
-      if (isVotingClosed(match)) {
+      const voteTimesResult = await client.query(
+        "select created_at from votes where match_id = $1 order by created_at asc",
+        [matchId],
+      );
+
+      if (isVotingClosed(match, Date.now(), voteTimesResult.rows)) {
         throw createVotingClosedError();
       }
 
@@ -4290,7 +4336,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
 
     const matchResult = await query(
       `
-        select id, closes_at, result_option_id, voided_at
+        select id, starts_at, closes_at, result_option_id, voided_at
         from matches
         where id = $1
       `,
@@ -4301,7 +4347,11 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       response.status(404).json({ error: "Match not found" });
       return;
     }
-    if (isVotingClosed(match)) {
+    const voteTimesResult = await query(
+      "select created_at from votes where match_id = $1 order by created_at asc",
+      [matchId],
+    );
+    if (isVotingClosed(match, Date.now(), voteTimesResult.rows)) {
       response.status(409).json({ error: "Voting is closed" });
       return;
     }
@@ -4315,7 +4365,7 @@ app.post("/api/admin/auto-bet/reservations", requireAdmin, requireSettingsAuth, 
       optionLabel: optionsResult.rows.find((option) => option.id === rule.optionId)?.label ?? rule.optionLabel,
     }));
     const maxAmount = rules.reduce((sum, rule) => sum + rule.maxAmount, 0);
-    const closesAtMs = getMatchClosesAtMs(match);
+    const closesAtMs = getEffectiveClosesAtMs(match, voteTimesResult.rows);
     const defaultExecuteDate = Number.isFinite(closesAtMs) ? new Date(closesAtMs - 10 * 60 * 1000) : new Date(NaN);
     const requestedExecuteAt = String(request.body?.executeAt ?? "");
     const executeDate = requestedExecuteAt ? new Date(requestedExecuteAt) : defaultExecuteDate;
