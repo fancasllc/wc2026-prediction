@@ -5386,16 +5386,19 @@ function MatchHeader({
       <h3><MatchTitleWithFlags title={match.title} /></h3>
       <div className="match-timebar">
         <div className="match-time-row">
-          <span className="deadline">
-            <Clock3 size={16} aria-hidden />
-            {minutesRemaining(deadlineInfo.effectiveClosesAtMs, now)}
-          </span>
-          {deadlineInfo.extended && !match.resultOptionId && !isMatchVoided(match) && (
-            <span className="deadline-extension-badge">
-              直前投票あり・期限延長
+          <div className="deadline-stack">
+            <span className="deadline">
+              <Clock3 size={16} aria-hidden />
+              {minutesRemaining(deadlineInfo.effectiveClosesAtMs, now)}
             </span>
-          )}
-          <span>
+            {deadlineInfo.extended && !match.resultOptionId && !isMatchVoided(match) && (
+              <span className="deadline-extension-badge deadline-extension-badge-detail">
+                <span>直前投票あり</span>
+                <span>期限延長中</span>
+              </span>
+            )}
+          </div>
+          <span className="match-start-time">
             <CalendarClock size={16} aria-hidden />
             開始 {formatDateTime(match.startsAt)}
           </span>

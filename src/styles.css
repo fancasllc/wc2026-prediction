@@ -639,6 +639,14 @@ label span {
   font-weight: 950;
 }
 
+.match-timebar .deadline-extension-badge-detail {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 4px 9px;
+  white-space: normal;
+}
+
 .summary-side {
   display: grid;
   grid-template-columns: 1fr;
@@ -1377,11 +1385,11 @@ label span {
 }
 
 .match-time-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 12px;
   min-width: 0;
-  overflow: hidden;
 }
 
 .match-timebar span {
@@ -1395,10 +1403,28 @@ label span {
   white-space: nowrap;
 }
 
+.deadline-stack {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+
 .match-timebar .deadline {
   color: var(--red);
   font-size: 0.84rem;
   font-weight: 900;
+}
+
+.match-timebar .match-start-time {
+  justify-self: end;
+  max-width: 100%;
+  text-align: right;
+  white-space: normal;
+}
+
+.match-timebar .match-start-time svg {
+  flex: 0 0 auto;
 }
 
 .option-board {
