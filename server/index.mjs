@@ -21,6 +21,7 @@ const exposeErrorDetails = process.env.DEBUG_ERRORS === "true";
 const rateLimitStore = new Map();
 const backupCheckIntervalMs = 15 * 60 * 1000;
 const deadlineExtensionWindowMs = 60 * 60 * 1000;
+const voteCancelWindowMs = 5 * 60 * 1000;
 const backupHourJst = Number(process.env.DB_BACKUP_HOUR_JST ?? 4);
 const settlementBackupDelayMs = Math.max(
   0,
@@ -4098,35 +4099,69 @@ app.delete("/api/matches/:id", requireAdmin, async (request, response, next) => 
 
 app.delete("/api/votes/:id/cancel", voteRateLimit, async (request, response, next) => {
   try {
-    const result = await query(
-      `
-        delete from votes
-        using matches
-        where votes.id = $1
-          and votes.match_id = matches.id
-          and matches.result_option_id is null
-          and ((matches.closes_at at time zone 'UTC') at time zone 'Asia/Tokyo') > now()
-          and votes.created_at > now() - interval '5 minutes'
-          and not exists (
-            select 1
-            from votes later_votes
-            where later_votes.match_id = votes.match_id
-              and later_votes.id <> votes.id
-              and later_votes.created_at > votes.created_at
-          )
-        returning votes.match_id as "matchId", votes.user_name as "userName", votes.amount::float as amount
-      `,
-      [request.params.id],
-    );
+    const cancelErrorMessage = "投票から5分経過したか、締切後、またはこの後に別の投票が入ったため削除できません";
+    const deletedVote = await withTransaction(async (client) => {
+      const voteResult = await client.query(
+        `
+          select
+            votes.id as "voteId",
+            votes.match_id as "matchId",
+            votes.user_name as "userName",
+            votes.amount::float as amount,
+            votes.created_at as "createdAt",
+            matches.id,
+            matches.starts_at,
+            matches.closes_at,
+            matches.result_option_id,
+            matches.voided_at
+          from votes
+          join matches on votes.match_id = matches.id
+          where votes.id = $1
+          for update of votes, matches
+        `,
+        [request.params.id],
+      );
+      const vote = voteResult.rows[0];
+      if (!vote) {
+        const error = new Error(cancelErrorMessage);
+        error.status = 409;
+        throw error;
+      }
 
-    if (!result.rowCount) {
-      response.status(409).json({
-        error: "投票から5分経過したか、締切後、またはこの後に別の投票が入ったため削除できません",
+      const voteTimesResult = await client.query(
+        "select id, created_at from votes where match_id = $1 order by created_at asc",
+        [vote.matchId],
+      );
+      const nowMs = Date.now();
+      const createdAtMs = getVoteCreatedAtMs(vote);
+      const hasLaterVote = voteTimesResult.rows.some((item) => {
+        if (item.id === vote.voteId) return false;
+        return getVoteCreatedAtMs(item) > createdAtMs;
       });
-      return;
-    }
 
-    await writeAuditLog("vote.user_cancel", request.params.id, result.rows[0]);
+      if (
+        isVotingClosed(vote, nowMs, voteTimesResult.rows) ||
+        !Number.isFinite(createdAtMs) ||
+        nowMs - createdAtMs > voteCancelWindowMs ||
+        hasLaterVote
+      ) {
+        const error = new Error(cancelErrorMessage);
+        error.status = 409;
+        throw error;
+      }
+
+      const deleteResult = await client.query(
+        `
+          delete from votes
+          where id = $1
+          returning match_id as "matchId", user_name as "userName", amount::float as amount
+        `,
+        [request.params.id],
+      );
+      return deleteResult.rows[0];
+    });
+
+    await writeAuditLog("vote.user_cancel", request.params.id, deletedVote);
     response.json({ state: await getState() });
   } catch (error) {
     next(error);
