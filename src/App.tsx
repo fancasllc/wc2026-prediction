@@ -22,7 +22,6 @@ import {
   UserRound,
   WalletCards,
   X,
-  Zap,
 } from "lucide-react";
 
 type View = "open" | "closed" | "matchDetail" | "people" | "personDetail" | "admin" | "settings";
@@ -278,15 +277,6 @@ type PendingVote = {
     net: number;
     pending: number;
     available: number;
-  };
-  revolutionSummary?: {
-    net: number;
-    pending: number;
-    stable: number;
-    deficit: number;
-    requiredAmount: number;
-    grossAtHit: number;
-    balanceAfterHit: number;
   };
 };
 
@@ -1177,37 +1167,6 @@ function getOptionTotal(match: MatchRecord, votes: VoteRecord[], optionId: strin
 
 function getMatchTotal(match: MatchRecord, votes: VoteRecord[]) {
   return getMatchVotes(match, votes).reduce((sum, vote) => sum + vote.amount, 0);
-}
-
-function getUserOptionStake(match: MatchRecord, votes: VoteRecord[], userName: string, optionId: string) {
-  return getMatchVotes(match, votes)
-    .filter((vote) => vote.userName === userName && vote.optionId === optionId)
-    .reduce((sum, vote) => sum + vote.amount, 0);
-}
-
-function getRevolutionOutcome(
-  match: MatchRecord,
-  votes: VoteRecord[],
-  userName: string,
-  optionId: string,
-  amount: number,
-  stableBalance: number,
-) {
-  const totalBefore = getMatchTotal(match, votes);
-  const optionBefore = getOptionTotal(match, votes, optionId);
-  const userOptionBefore = getUserOptionStake(match, votes, userName, optionId);
-  const totalAfter = totalBefore + amount;
-  const optionAfter = optionBefore + amount;
-  const userOptionAfter = userOptionBefore + amount;
-  const grossAtHit = optionAfter > 0 ? (totalAfter * userOptionAfter) / optionAfter : 0;
-  const balanceAfterHit = stableBalance - amount + grossAtHit;
-
-  return {
-    beforeOdds: optionBefore > 0 ? totalBefore / optionBefore : null,
-    afterOdds: optionAfter > 0 ? totalAfter / optionAfter : 0,
-    grossAtHit,
-    balanceAfterHit,
-  };
 }
 
 function calculateVotePayout(vote: VoteRecord, match: MatchRecord, allVotes: VoteRecord[]) {
@@ -2372,7 +2331,7 @@ function App() {
     }));
   }
 
-  function getUserBalanceSummary(nameInput: string) {
+  function getAllInSummary(nameInput: string) {
     const normalizedName = normalizeName(nameInput);
     if (!normalizedName) return null;
 
@@ -2386,89 +2345,7 @@ function App() {
       userName: canonicalName,
       net: row.net,
       pending: row.pending,
-      stable: Math.floor(row.net - row.pending),
-    };
-  }
-
-  function getAllInSummary(nameInput: string) {
-    const summary = getUserBalanceSummary(nameInput);
-    if (!summary) return null;
-    return {
-      ...summary,
-      available: summary.stable,
-    };
-  }
-
-  function getRevolutionPlan(match: MatchRecord, nameInput: string, optionId: string) {
-    const summary = getUserBalanceSummary(nameInput);
-    if (!summary) return null;
-
-    const stable = summary.stable;
-    if (stable >= 0) {
-      return {
-        error: [
-          "革命は、確定収支から投票中ポイントを差し引いた安定ポイントがマイナスの人だけ使えます。",
-          `安定ポイント: ${stable >= 0 ? "+" : ""}${formatPoints(stable)}`,
-        ].join("\n"),
-      };
-    }
-
-    const totalBefore = getMatchTotal(match, visibleVotes);
-    const optionBefore = getOptionTotal(match, visibleVotes, optionId);
-    const otherPool = Math.max(0, totalBefore - optionBefore);
-    const userOptionBefore = getUserOptionStake(match, visibleVotes, summary.userName, optionId);
-    const deficit = Math.abs(stable);
-    const maxRecoverable = userOptionBefore + otherPool;
-
-    if (deficit <= userOptionBefore) {
-      return {
-        error: [
-          "この投票先は、既存の投票が的中すればゼロ復帰できる状態です。",
-          "革命として追加投票する必要はありません。",
-        ].join("\n"),
-      };
-    }
-
-    if (deficit > maxRecoverable) {
-      return {
-        error: [
-          "この投票先では革命が成立しません。",
-          `ゼロ復帰に必要: ${formatPoints(deficit)}`,
-          `この投票先で回収できる上限目安: ${formatPoints(maxRecoverable)}`,
-          "他プールが不足しているため、投票額を増やしてもゼロ復帰ラインに届きません。",
-        ].join("\n"),
-      };
-    }
-
-    const minVoteAmount = getMatchMinVoteAmount(match);
-    const denominator = otherPool - deficit + userOptionBefore;
-    const rawRequired =
-      denominator > 0
-        ? ((deficit - userOptionBefore) * optionBefore - otherPool * userOptionBefore) / denominator
-        : Number.POSITIVE_INFINITY;
-    let amount = Math.max(
-      minVoteAmount,
-      Math.ceil(Math.max(0, rawRequired) / VOTE_AMOUNT_STEP) * VOTE_AMOUNT_STEP,
-    );
-    let outcome = getRevolutionOutcome(match, visibleVotes, summary.userName, optionId, amount, stable);
-
-    for (let guard = 0; outcome.balanceAfterHit < 0 && guard < 5000; guard += 1) {
-      amount += VOTE_AMOUNT_STEP;
-      outcome = getRevolutionOutcome(match, visibleVotes, summary.userName, optionId, amount, stable);
-    }
-
-    if (!Number.isFinite(amount) || outcome.balanceAfterHit < 0) {
-      return {
-        error: "革命に必要な投票額を計算できませんでした。別の投票先でお試しください。",
-      };
-    }
-
-    return {
-      ...summary,
-      deficit,
-      requiredAmount: amount,
-      grossAtHit: outcome.grossAtHit,
-      balanceAfterHit: outcome.balanceAfterHit,
+      available: Math.floor(row.net - row.pending),
     };
   }
 
@@ -2573,59 +2450,6 @@ function App() {
         net: allInSummary.net,
         pending: allInSummary.pending,
         available: allInSummary.available,
-      },
-    });
-  }
-
-  function handleRevolution(match: MatchRecord) {
-    const draft = getDraft(match);
-
-    if (!hasRemoteState) {
-      window.alert("本番DBとの同期が終わってから投票してください。画面を更新してもう一度お試しください。");
-      return;
-    }
-
-    if (!isMatchOpen(match, now, visibleVotes)) {
-      window.alert("この試合は投票締切を過ぎています。");
-      return;
-    }
-
-    if (!draft.optionId) {
-      window.alert("革命する投票先を選んでください。");
-      return;
-    }
-
-    const selectedOption = match.options.find((option) => option.id === draft.optionId);
-    if (!selectedOption) {
-      window.alert("選択中の投票先が見つかりません。");
-      return;
-    }
-
-    const revolutionPlan = getRevolutionPlan(match, draft.name, draft.optionId);
-    if (!revolutionPlan) {
-      window.alert("革命するユーザーを確認できませんでした。登録済みの名前を入力してください。");
-      return;
-    }
-
-    if ("error" in revolutionPlan) {
-      window.alert(revolutionPlan.error);
-      return;
-    }
-
-    setPendingVote({
-      matchId: match.id,
-      optionId: draft.optionId,
-      optionLabel: optionDisplayLabel(match, selectedOption),
-      userName: revolutionPlan.userName,
-      amount: revolutionPlan.requiredAmount,
-      revolutionSummary: {
-        net: revolutionPlan.net,
-        pending: revolutionPlan.pending,
-        stable: revolutionPlan.stable,
-        deficit: revolutionPlan.deficit,
-        requiredAmount: revolutionPlan.requiredAmount,
-        grossAtHit: revolutionPlan.grossAtHit,
-        balanceAfterHit: revolutionPlan.balanceAfterHit,
       },
     });
   }
@@ -3370,7 +3194,6 @@ function App() {
                 votes={visibleVotes}
                 onChange={(patch) => updateVoteDraft(selectedMatch.id, patch)}
                 onAllIn={() => handleAllIn(selectedMatch)}
-                onRevolution={() => handleRevolution(selectedMatch)}
                 onSubmit={(event) => handleVote(selectedMatch, event)}
               />
 
@@ -4673,51 +4496,6 @@ function App() {
                   </div>
                 </div>
                 <p>投票中ポイントが全て外れる前提で残るポイントを、この投票先へ全額投入します。</p>
-              </section>
-            )}
-            {pendingVote.revolutionSummary && (
-              <section className="revolution-confirm" aria-label="革命確認">
-                <div className="revolution-confirm-heading">
-                  <Zap size={19} aria-hidden />
-                  <span>革命確認</span>
-                </div>
-                <div className="revolution-confirm-grid">
-                  <div>
-                    <span>確定収支</span>
-                    <b>
-                      {pendingVote.revolutionSummary.net >= 0 ? "+" : ""}
-                      {formatPoints(pendingVote.revolutionSummary.net)}
-                    </b>
-                  </div>
-                  <div>
-                    <span>投票中</span>
-                    <b>{formatPoints(pendingVote.revolutionSummary.pending)}</b>
-                  </div>
-                  <div>
-                    <span>安定ポイント</span>
-                    <b>
-                      {pendingVote.revolutionSummary.stable >= 0 ? "+" : ""}
-                      {formatPoints(pendingVote.revolutionSummary.stable)}
-                    </b>
-                  </div>
-                  <div>
-                    <span>ゼロ復帰に必要</span>
-                    <b>{formatPoints(pendingVote.revolutionSummary.deficit)}</b>
-                  </div>
-                </div>
-                <div className="revolution-strike">
-                  <span>革命投票pt</span>
-                  <b>{formatPoints(pendingVote.revolutionSummary.requiredAmount)}</b>
-                </div>
-                <p>
-                  的中時リターン見込み {formatPoints(pendingVote.revolutionSummary.grossAtHit)}。
-                  的中した場合の安定ポイントは
-                  <strong>
-                    {pendingVote.revolutionSummary.balanceAfterHit >= 0 ? "+" : ""}
-                    {formatPoints(pendingVote.revolutionSummary.balanceAfterHit)}
-                  </strong>
-                  です。
-                </p>
               </section>
             )}
             {pendingVoteImpact && (
@@ -6180,7 +5958,6 @@ function VoteForm({
   votes,
   onChange,
   onAllIn,
-  onRevolution,
   onSubmit,
 }: {
   draft: VoteDraft;
@@ -6191,7 +5968,6 @@ function VoteForm({
   votes: VoteRecord[];
   onChange: (patch: Partial<VoteDraft>) => void;
   onAllIn: () => void;
-  onRevolution: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const open = isMatchOpen(match, now, votes);
@@ -6296,10 +6072,6 @@ function VoteForm({
         <button className="all-in-action" type="button" onClick={onAllIn} disabled={!canSubmit}>
           <Flame size={18} aria-hidden />
           オールイン（All in）
-        </button>
-        <button className="revolution-action" type="button" onClick={onRevolution} disabled={!canSubmit}>
-          <Zap size={20} aria-hidden />
-          革命
         </button>
       </div>
     </form>
