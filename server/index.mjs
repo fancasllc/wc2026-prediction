@@ -797,6 +797,22 @@ const knockoutAutoRegisterMatches = [
     startsAt: "2026-07-16T04:00",
     options: ["イングランド", "アルゼンチン"],
   },
+  {
+    id: "wc26-third-place-france-england",
+    title: "フランス VS イングランド",
+    stage: "3位決定戦",
+    venue: "Miami Stadium",
+    startsAt: "2026-07-19T06:00",
+    options: ["フランス", "イングランド"],
+  },
+  {
+    id: "wc26-final-argentina-spain",
+    title: "アルゼンチン VS スペイン",
+    stage: "決勝",
+    venue: "New York New Jersey Stadium",
+    startsAt: "2026-07-20T04:00",
+    options: ["アルゼンチン", "スペイン"],
+  },
 ];
 
 function normalizeFixtureText(value) {
