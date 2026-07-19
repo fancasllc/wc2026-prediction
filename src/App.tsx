@@ -386,7 +386,7 @@ const VOTE_CANCEL_WINDOW_MS = 5 * 60 * 1000;
 const VOTE_CANCEL_CLOCK_SKEW_MS = 10 * 1000;
 const DEADLINE_EXTENSION_WINDOW_MS = 60 * 60 * 1000;
 const HANDICAP_VALUES = Array.from({ length: 11 }, (_, index) => index * 0.5);
-const hiddenUserNames = new Set(["いつき"]);
+const hiddenUserNames = new Set(["いつき", "test"]);
 const personIconFileNames = new Set([
   "あずみ",
   "あづみ",
